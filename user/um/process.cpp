@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-HANDLE UserMode::GetHandleToProcessGivenName( std::string ProcessName )
+HANDLE usermode::process::GetHandleToProcessGivenName( std::string ProcessName )
 {
 	std::wstring wide_process_name;
 	std::wstring target_process_name;
@@ -17,7 +17,7 @@ HANDLE UserMode::GetHandleToProcessGivenName( std::string ProcessName )
 
 	if ( process_snapshot_handle == INVALID_HANDLE_VALUE )
 	{
-		LOG_ERROR( "Failed to create snapshot of current running processes" );
+		LOG_ERROR( "Failed to create snapshot of current running processes error: 0x%x", GetLastError() );
 		return INVALID_HANDLE_VALUE;
 	}
 
@@ -25,7 +25,7 @@ HANDLE UserMode::GetHandleToProcessGivenName( std::string ProcessName )
 
 	if ( !Process32First( process_snapshot_handle, &process_entry ) )
 	{
-		LOG_ERROR( "Failed to get the first process using Process32First" );
+		LOG_ERROR( "Failed to get the first process using Process32First error: 0x%x", GetLastError() );
 		CloseHandle( process_snapshot_handle );
 		return INVALID_HANDLE_VALUE;
 	}
@@ -40,7 +40,7 @@ HANDLE UserMode::GetHandleToProcessGivenName( std::string ProcessName )
 
 		if ( process_handle == NULL )
 		{
-			LOG_ERROR( "OpenProcess failed with error 0x%lx", GetLastError() );
+			LOG_ERROR( "OpenProcess failed with error 0x%x", GetLastError() );
 			continue;
 		}
 

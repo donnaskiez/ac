@@ -7,7 +7,10 @@
 
 namespace UserMode 
 {
-	HANDLE GetHandleToProcessGivenName( std::string ProcessName );
+	namespace Process
+	{
+		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
+	}
 }
 
 #endif
