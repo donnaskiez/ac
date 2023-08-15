@@ -5,9 +5,9 @@
 #include <TlHelp32.h>
 #include <string>
 
-namespace UserMode 
+namespace usermode 
 {
-	namespace Process
+	namespace process
 	{
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
 	}
