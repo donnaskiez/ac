@@ -18,7 +18,7 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\ummanager.cpp">
+    <ClCompile Include="um\manager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="km\kprotection.cpp">
@@ -33,12 +33,15 @@
     <ClCompile Include="um\imports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="um\module.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\ummanager.h">
+    <ClInclude Include="um\manager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="km\kprotection.h">
@@ -51,6 +54,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="um\imports.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="um\module.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

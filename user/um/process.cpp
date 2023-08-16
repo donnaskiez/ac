@@ -5,8 +5,6 @@
 
 #include <iostream>
 
-#define ThreadQuerySetWin32StartAddress 9
-
 usermode::Process::Process( int ThreadCount, std::string ProcessName )
 {
 	this->process_name = ProcessName;
@@ -32,7 +30,20 @@ usermode::Process::~Process()
 
 void usermode::Process::ValidateProcessThreads()
 {
+	bool result = false;
 	std::vector<UINT64> threads = GetProcessThreadsStartAddresses();
+
+	for ( int i = 0; i < threads.size(); i++ )
+	{
+		if ( CheckIfAddressLiesWithinValidProcessModule( threads[ i ], &result ) )
+		{
+			if ( result == false )
+			{
+				//REPORT 
+				LOG_ERROR( "thread start address nto from process module OMG" );
+			}
+		}
+	}
 }
 
 std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
@@ -44,8 +55,10 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 	UINT64 start_address;
 	std::vector<UINT64> start_addresses;
 
-	pNtQueryInformationThread NtQueryInfo = ( pNtQueryInformationThread )this->function_imports->ImportMap["NtQueryInformationThread"];
+	pNtQueryInformationThread NtQueryInfo = 
+		( pNtQueryInformationThread )this->function_imports->ImportMap["NtQueryInformationThread"];
 
+	/* th32ProcessId ignored for TH32CS_SNAPTHREAD value */
 	thread_snapshot_handle = CreateToolhelp32Snapshot( TH32CS_SNAPTHREAD, 0 );
 
 	if ( thread_snapshot_handle == INVALID_HANDLE_VALUE )
@@ -92,6 +105,55 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 	} while ( Thread32Next( thread_snapshot_handle, &thread_entry ) );
 
 	return start_addresses;
+}
+
+/*
+* Iterates through a processes modules and confirms whether the address lies within the memory region
+* of the module. A simple way to check if a thread is a valid thread, however there are ways around
+* this check so it is not a perfect solution.
+*/
+bool usermode::Process::CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* result )
+{
+	HANDLE process_modules_handle;
+	MODULEENTRY32 module_entry;
+
+	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, this->process_id );
+
+	LOG_INFO( "Address: %llx", Address );
+
+	if ( process_modules_handle == INVALID_HANDLE_VALUE )
+	{
+		LOG_ERROR( "CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with status 0x%x", GetLastError() );
+		return false;
+	}
+
+	module_entry.dwSize = sizeof( MODULEENTRY32 );
+
+	if ( !Module32First( process_modules_handle, &module_entry ) )
+	{
+		LOG_ERROR( "Module32First failed with status 0x%x", GetLastError() );
+		CloseHandle( process_modules_handle );
+		return false;
+	}
+
+	do
+	{
+		UINT64 base = (UINT64)module_entry.modBaseAddr;
+		UINT64 end = base + module_entry.modBaseSize;
+
+		if ( Address >= base && Address <= end )
+		{
+			LOG_INFO( "found valid module LOL" );
+			CloseHandle( process_modules_handle );
+			*result = true;
+			return true;
+		}
+
+	} while ( Module32Next( process_modules_handle, &module_entry ) );
+
+	CloseHandle( process_modules_handle );
+	*result = false;
+	return true;
 }
 
 

@@ -1,4 +1,4 @@
-#include "ummanager.h"
+#include "manager.h"
 
 #include "../common.h"
 #include "process.h"

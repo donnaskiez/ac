@@ -5,7 +5,7 @@
 #include "common.h"
 
 #include "../user/um/threadpool.h"
-#include "../user/um/ummanager.h"
+#include "../user/um/manager.h"
 
 void TestFunction()
 {

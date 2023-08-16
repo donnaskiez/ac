@@ -130,17 +130,19 @@
     <ClCompile Include="km\kprotection.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="um\imports.cpp" />
+    <ClCompile Include="um\module.cpp" />
     <ClCompile Include="um\process.cpp" />
     <ClCompile Include="um\threadpool.cpp" />
-    <ClCompile Include="um\ummanager.cpp" />
+    <ClCompile Include="um\manager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />
     <ClInclude Include="km\kprotection.h" />
     <ClInclude Include="um\imports.h" />
+    <ClInclude Include="um\module.h" />
     <ClInclude Include="um\process.h" />
     <ClInclude Include="um\threadpool.h" />
-    <ClInclude Include="um\ummanager.h" />
+    <ClInclude Include="um\manager.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

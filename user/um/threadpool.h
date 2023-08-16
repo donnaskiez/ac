@@ -8,6 +8,11 @@
 
 namespace usermode
 {
+	/*
+	* This ThreadPool class is a simple threadpool implementation that will allow us 
+	* to delegate jobs to a set number of threads without the constant need to close
+	* and open new threads.
+	*/
 	class ThreadPool
 	{
 		int thread_count;
