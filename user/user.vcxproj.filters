@@ -27,6 +27,12 @@
     <ClCompile Include="um\process.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="um\threadpool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="um\imports.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h">
@@ -39,6 +45,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="um\process.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="um\threadpool.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="um\imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

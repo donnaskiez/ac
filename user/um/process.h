@@ -1,16 +1,34 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#include <Windows.h>
+#include <windows.h>
+#include <winternl.h>
 #include <TlHelp32.h>
 #include <string>
 
+#include "../um/threadpool.h"
+#include "../um/imports.h"
+
 namespace usermode 
 {
-	namespace process
+	class Process
 	{
+		HANDLE process_handle;
+		DWORD process_id;
+		std::string process_name;
+		std::mutex mutex;
+		std::unique_ptr<Imports> function_imports;
+
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
-	}
+		std::vector<UINT64> GetProcessThreadsStartAddresses();
+	public:
+		std::unique_ptr<ThreadPool> thread_pool;
+
+		Process( int ThreadCount, std::string ProcessName );
+		~Process();
+
+		void ValidateProcessThreads();
+	};
 }
 
 #endif

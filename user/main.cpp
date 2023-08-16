@@ -3,16 +3,29 @@
 #include <string>
 
 #include "common.h"
+
+#include "../user/um/threadpool.h"
 #include "../user/um/ummanager.h"
+
+void TestFunction()
+{
+
+}
 
 int main(int argc, char* argv[])
 {
-	if ( argc == 1 )
+	//if ( argc == 1 )
+	//{
+	//	LOG_INFO( "No target process passed, terminating" );
+	//	return ERROR;
+	//}
+
+	usermode::Manager manager( "notepad.exe" );
+	manager.ValidateProcessThreads();
+
+
+	while ( 1 )
 	{
-		LOG_INFO( "No target process passed, terminating" );
-		return ERROR;
+
 	}
-
-	UserMode::Manager um_manager( argv[1]);
-
 }
