@@ -58,8 +58,10 @@ void global::ThreadPool::QueueJob( const std::function<void()>& job )
 {
 	/* push a job into our job queue safely by holding our queue lock */
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
+
 	this->jobs.push( job );
 	lock.unlock();
+
 	mutex_condition.notify_one();
 }
 
@@ -69,8 +71,10 @@ void global::ThreadPool::Stop()
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
 	should_terminate = true;
 	lock.unlock();
+
 	/* unlock all threads waiting on our condition */
 	mutex_condition.notify_all();
+
 	/* join the threads and clear our threads vector */
 	for ( std::thread& thread : threads ) { thread.join(); }
 	threads.clear();
@@ -80,7 +84,9 @@ bool global::ThreadPool::Busy()
 {
 	/* allows us to wait for when the job queue is empty allowing us to safely call the destructor */
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
+
 	bool pool_busy = !jobs.empty();
 	this->queue_mutex.unlock();
+
 	return pool_busy;
 }
