@@ -4,28 +4,64 @@
 
 #include "common.h"
 
-#include "../user/um/threadpool.h"
-#include "../user/um/manager.h"
+#include "threadpool.h"
 
-void TestFunction()
+#include "../user/um/umanager.h"
+#include "../user/km/kmanager.h"
+
+DWORD WINAPI Init(HINSTANCE hinstDLL)
 {
+    AllocConsole();
+    FILE* file;
+    freopen_s( &file, "CONOUT$", "w", stdout );
+    freopen_s( &file, "CONIN$", "r", stdin );
 
+    std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
+
+    std::shared_ptr<global::ThreadPool> thread_pool = std::make_shared<global::ThreadPool>( 4 );
+
+    usermode::UManager umanager( thread_pool );
+    //kernelmode::KManager kmanager( L"DonnaAC", thread_pool);
+    umanager.ValidateProcessModules();
+
+    while ( !GetAsyncKeyState( VK_DELETE ) )
+    {
+        std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+    }
+
+    fclose( stdout );
+    fclose( stdin );
+    FreeConsole();
+
+    FreeLibraryAndExitThread( hinstDLL, 0);
+    return 0;
 }
 
-int main(int argc, char* argv[])
+BOOL WINAPI DllMain(
+    HINSTANCE hinstDLL,  // handle to DLL module
+    DWORD fdwReason,     // reason for calling function
+    LPVOID lpvReserved )  // reserved
 {
-	//if ( argc == 1 )
-	//{
-	//	LOG_INFO( "No target process passed, terminating" );
-	//	return ERROR;
-	//}
+    // Perform actions based on the reason for calling.
+    switch ( fdwReason )
+    {
+    case DLL_PROCESS_ATTACH:
 
-	usermode::Manager manager( "notepad.exe" );
-	manager.ValidateProcessThreads();
+        DisableThreadLibraryCalls( hinstDLL );
 
+        const auto thread = CreateThread(
+            nullptr,
+            0,
+            reinterpret_cast< LPTHREAD_START_ROUTINE >( Init ),
+            hinstDLL,
+            0,
+            nullptr
+        );
 
-	while ( 1 )
-	{
+        if ( thread )
+            CloseHandle( thread );
 
-	}
+        break;
+    }
+    return TRUE;  // Successful DLL_PROCESS_ATTACH.
 }

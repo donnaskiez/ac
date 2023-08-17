@@ -6,7 +6,7 @@
 #include <queue>
 #include <functional>
 
-namespace usermode
+namespace global
 {
 	/*
 	* This ThreadPool class is a simple threadpool implementation that will allow us 

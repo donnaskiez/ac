@@ -14,7 +14,10 @@ namespace usermode
 	{
 	public:
 		std::map<std::string, void*> ImportMap;
+
 		void* NtQueryInformationThread;
+		void* NtQueryVirtualMemory;
+
 		Imports();
 	};
 }

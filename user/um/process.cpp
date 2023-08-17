@@ -2,30 +2,16 @@
 
 #include "../common.h"
 #include "../um/imports.h"
+#include "memory.h"
 
+#include <ImageHlp.h>
 #include <iostream>
 
-usermode::Process::Process( int ThreadCount, std::string ProcessName )
+usermode::Process::Process()
 {
-	this->process_name = ProcessName;
-	this->thread_pool = std::make_unique<ThreadPool>( ThreadCount );
-	this->process_handle = GetHandleToProcessGivenName( ProcessName );
+	this->process_handle = GetCurrentProcess();
+	this->process_id = GetCurrentProcessId();
 	this->function_imports = std::make_unique<Imports>();
-
-	if ( this->process_handle == INVALID_HANDLE_VALUE )
-	{
-		this->thread_pool->Stop();
-		throw std::invalid_argument("Failed to initiate process class handle with error");
-	}
-}
-
-usermode::Process::~Process()
-{
-	/* Wait for our jobs to be finished, then safely stop our pool */
-	while ( true )
-	{
-		if ( this->thread_pool->Busy() == FALSE ) { this->thread_pool->Stop(); }
-	}
 }
 
 void usermode::Process::ValidateProcessThreads()
@@ -112,7 +98,7 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 * of the module. A simple way to check if a thread is a valid thread, however there are ways around
 * this check so it is not a perfect solution.
 */
-bool usermode::Process::CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* result )
+bool usermode::Process::CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* Result )
 {
 	HANDLE process_modules_handle;
 	MODULEENTRY32 module_entry;
@@ -145,14 +131,14 @@ bool usermode::Process::CheckIfAddressLiesWithinValidProcessModule( UINT64 Addre
 		{
 			LOG_INFO( "found valid module LOL" );
 			CloseHandle( process_modules_handle );
-			*result = true;
+			*Result = true;
 			return true;
 		}
 
 	} while ( Module32Next( process_modules_handle, &module_entry ) );
 
 	CloseHandle( process_modules_handle );
-	*result = false;
+	*Result = false;
 	return true;
 }
 
@@ -204,7 +190,6 @@ HANDLE usermode::Process::GetHandleToProcessGivenName( std::string ProcessName )
 		{
 			LOG_INFO( "Found target process" );
 			CloseHandle( process_snapshot_handle );
-			this->process_id = process_entry.th32ProcessID;
 			return process_handle;
 		}
 
@@ -212,4 +197,141 @@ HANDLE usermode::Process::GetHandleToProcessGivenName( std::string ProcessName )
 
 	CloseHandle( process_snapshot_handle );
 	return INVALID_HANDLE_VALUE;
+}
+
+bool usermode::Process::GetProcessBaseAddress( UINT64* Result )
+{
+	HANDLE process_modules_handle;
+	MODULEENTRY32 module_entry;
+
+	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, this->process_id );
+
+	if ( process_modules_handle == INVALID_HANDLE_VALUE )
+	{
+		LOG_ERROR( "CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with status 0x%x", GetLastError() );
+		return false;
+	}
+
+	module_entry.dwSize = sizeof( MODULEENTRY32 );
+
+	if ( !Module32First( process_modules_handle, &module_entry ) )
+	{
+		LOG_ERROR( "Module32First failed with status 0x%x", GetLastError() );
+		CloseHandle( process_modules_handle );
+		return false;
+	}
+
+	*Result = (UINT64)module_entry.modBaseAddr;
+	CloseHandle( process_modules_handle );
+	return true;
+}
+
+void usermode::Process::ScanProcessMemory()
+{
+	MEMORY_BASIC_INFORMATION memory_info = { 0 };
+	UINT64 base_address;
+
+	if ( !GetProcessBaseAddress( &base_address ) )
+	{
+		LOG_ERROR( "Failed to get process base address with status 0x%x", GetLastError() );
+		return;
+	}
+
+	while ( VirtualQueryEx(
+		this->process_handle,
+		( PVOID )base_address,
+		&memory_info,
+		sizeof( MEMORY_BASIC_INFORMATION )) 
+		)
+	{
+		this->CheckPageProtection( &memory_info );
+		this->PatternScanRegion(base_address, &memory_info);
+
+		base_address += memory_info.RegionSize;
+	}
+}
+
+void usermode::Process::PatternScanRegion( UINT64 Address, MEMORY_BASIC_INFORMATION* Page )
+{
+
+}
+
+void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
+{
+	/* MEM_IMAGE indicates the pages are mapped into view of an image section */
+	if ( Page->Type == MEM_IMAGE )
+		return;
+
+	if ( Page->AllocationProtect & PAGE_EXECUTE ||
+		Page->AllocationProtect & PAGE_EXECUTE_READ ||
+		Page->AllocationProtect & PAGE_EXECUTE_READWRITE ||
+		Page->AllocationProtect & PAGE_EXECUTE_WRITECOPY
+		)
+	{
+		// report area or smth
+	}
+}
+
+void usermode::Process::VerifyLoadedModuleChecksums()
+{
+	HANDLE process_modules_handle;
+	MODULEENTRY32 module_entry;
+	PVOID mapped_image;
+	DWORD in_memory_header_sum;
+	DWORD in_memory_check_sum;
+	DWORD disk_header_sum;
+	DWORD disk_check_sum;
+	DWORD result;
+
+	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, this->process_id );
+
+	if ( process_modules_handle == INVALID_HANDLE_VALUE )
+	{
+		LOG_ERROR( "CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with status 0x%x", GetLastError() );
+		return;
+	}
+
+	module_entry.dwSize = sizeof( MODULEENTRY32 );
+
+	if ( !Module32First( process_modules_handle, &module_entry ) )
+	{
+		LOG_ERROR( "Module32First failed with status 0x%x", GetLastError() );
+		return;
+	}
+
+	do
+	{
+		/* compute checksum for the in memory module */
+		mapped_image = CheckSumMappedFile( 
+			module_entry.modBaseAddr, 
+			module_entry.modBaseSize, 
+			&in_memory_header_sum, 
+			&in_memory_check_sum 
+		);
+
+		if ( !mapped_image )
+		{
+			LOG_ERROR( "CheckSumMappedFile failed with status 0x%x", GetLastError() );
+			goto end;
+		}
+
+		/* computer the checksum for the module on disk */
+		result = MapFileAndCheckSum(
+			(PCWSTR)module_entry.szExePath,
+			&disk_header_sum,
+			&disk_check_sum
+		);
+
+		if ( result != CHECKSUM_SUCCESS )
+		{
+			LOG_ERROR( "MapFileAndCheckSum failed with status 0x%x", GetLastError() );
+			goto end;
+		}
+
+		LOG_INFO( "in memory checksum: %x, disk checksum: %x", in_memory_check_sum, disk_check_sum );
+
+	} while ( Module32Next( process_modules_handle, &module_entry ) );
+
+end:
+	CloseHandle( process_modules_handle );
 }

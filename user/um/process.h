@@ -6,7 +6,7 @@
 #include <TlHelp32.h>
 #include <string>
 
-#include "../um/threadpool.h"
+#include "../threadpool.h"
 #include "../um/imports.h"
 
 #define ThreadQuerySetWin32StartAddress 9
@@ -23,22 +23,23 @@ namespace usermode
 	{
 		HANDLE process_handle;
 		DWORD process_id;
-		std::string process_name;
 		std::mutex mutex;
 		std::unique_ptr<Imports> function_imports;
 
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
 		std::vector<UINT64> GetProcessThreadsStartAddresses();
-		bool CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* result );
+		bool CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* Result );
+		bool GetProcessBaseAddress( UINT64* Result );
+		void CheckPageProtection( MEMORY_BASIC_INFORMATION* Page );
+		void PatternScanRegion( UINT64 Address, MEMORY_BASIC_INFORMATION* Page );
 
 	public:
 
-		std::unique_ptr<ThreadPool> thread_pool;
-
-		Process( int ThreadCount, std::string ProcessName );
-		~Process();
+		Process();
 
 		void ValidateProcessThreads();
+		void ScanProcessMemory();
+		void VerifyLoadedModuleChecksums();
 	};
 }
 

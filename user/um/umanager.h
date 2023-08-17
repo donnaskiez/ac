@@ -1,5 +1,5 @@
-#ifndef MANAGER_H
-#define MANAGER_H
+#ifndef UMANAGER_H
+#define UMANAGER_H
 
 #include <string>
 #include <winternl.h>
@@ -17,16 +17,18 @@ namespace usermode
 	* class and the threadpool class to allow a single thread (or multiple) to easily run
 	* the core business logic of running tasks in a certain order.
 	*/
-	class Manager
+	class UManager
 	{
-		std::string process_name;
 		std::unique_ptr<Process> process;
+		std::shared_ptr<global::ThreadPool> thread_pool;
 
 	public:
-		Manager( std::string ProcessName );
-		~Manager();
+		UManager( std::shared_ptr<global::ThreadPool> ThreadPool );
+		~UManager();
 
 		void ValidateProcessThreads();
+		void ValidateProcessMemory();
+		void ValidateProcessModules();
 	};
 }
 

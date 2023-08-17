@@ -18,22 +18,22 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\manager.cpp">
+    <ClCompile Include="um\umanager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="km\kprotection.cpp">
+    <ClCompile Include="km\kmanager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="um\process.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\threadpool.cpp">
+    <ClCompile Include="threadpool.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="um\imports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\module.cpp">
+    <ClCompile Include="km\driver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -41,22 +41,22 @@
     <ClInclude Include="common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\manager.h">
+    <ClInclude Include="um\umanager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="km\kprotection.h">
+    <ClInclude Include="km\kmanager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="um\process.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\threadpool.h">
+    <ClInclude Include="threadpool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="um\imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\module.h">
+    <ClInclude Include="km\driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

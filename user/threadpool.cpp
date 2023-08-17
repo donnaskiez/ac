@@ -4,7 +4,7 @@
 * This is the idle loop each thread will be running until a job is ready 
 * for execution
 */
-void usermode::ThreadPool::ThreadLoop()
+void global::ThreadPool::ThreadLoop()
 {
 	while ( true )
 	{
@@ -42,7 +42,7 @@ void usermode::ThreadPool::ThreadLoop()
 	}
 }
 
-usermode::ThreadPool::ThreadPool(int ThreadCount)
+global::ThreadPool::ThreadPool(int ThreadCount)
 {
 	this->thread_count = ThreadCount;
 	this->should_terminate = false;
@@ -54,7 +54,7 @@ usermode::ThreadPool::ThreadPool(int ThreadCount)
 	}
 }
 
-void usermode::ThreadPool::QueueJob( const std::function<void()>& job )
+void global::ThreadPool::QueueJob( const std::function<void()>& job )
 {
 	/* push a job into our job queue safely by holding our queue lock */
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
@@ -63,7 +63,7 @@ void usermode::ThreadPool::QueueJob( const std::function<void()>& job )
 	mutex_condition.notify_one();
 }
 
-void usermode::ThreadPool::Stop()
+void global::ThreadPool::Stop()
 {
 	/* safely set our termination flag to true */
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
@@ -76,7 +76,7 @@ void usermode::ThreadPool::Stop()
 	threads.clear();
 }
 
-bool usermode::ThreadPool::Busy()
+bool global::ThreadPool::Busy()
 {
 	/* allows us to wait for when the job queue is empty allowing us to safely call the destructor */
 	std::unique_lock<std::mutex> lock( this->queue_mutex );
