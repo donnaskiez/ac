@@ -25,6 +25,7 @@ namespace usermode
 		DWORD process_id;
 		std::mutex mutex;
 		std::unique_ptr<Imports> function_imports;
+		std::vector<DWORD> in_memory_module_checksums;
 
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
 		std::vector<UINT64> GetProcessThreadsStartAddresses();
@@ -39,7 +40,7 @@ namespace usermode
 
 		void ValidateProcessThreads();
 		void ScanProcessMemory();
-		void VerifyLoadedModuleChecksums();
+		void VerifyLoadedModuleChecksums(bool Init);
 	};
 }
 

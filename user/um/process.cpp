@@ -12,6 +12,7 @@ usermode::Process::Process()
 	this->process_handle = GetCurrentProcess();
 	this->process_id = GetCurrentProcessId();
 	this->function_imports = std::make_unique<Imports>();
+	this->VerifyLoadedModuleChecksums( true );
 }
 
 void usermode::Process::ValidateProcessThreads()
@@ -272,16 +273,16 @@ void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
 	}
 }
 
-void usermode::Process::VerifyLoadedModuleChecksums()
+void usermode::Process::VerifyLoadedModuleChecksums(bool Init)
 {
 	HANDLE process_modules_handle;
 	MODULEENTRY32 module_entry;
 	PVOID mapped_image;
 	DWORD in_memory_header_sum;
 	DWORD in_memory_check_sum;
-	DWORD disk_header_sum;
-	DWORD disk_check_sum;
 	DWORD result;
+	INT index = 0;
+	std::vector<DWORD> temp;
 
 	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, this->process_id );
 
@@ -302,11 +303,11 @@ void usermode::Process::VerifyLoadedModuleChecksums()
 	do
 	{
 		/* compute checksum for the in memory module */
-		mapped_image = CheckSumMappedFile( 
-			module_entry.modBaseAddr, 
-			module_entry.modBaseSize, 
-			&in_memory_header_sum, 
-			&in_memory_check_sum 
+		mapped_image = CheckSumMappedFile(
+			module_entry.modBaseAddr,
+			module_entry.modBaseSize,
+			&in_memory_header_sum,
+			&in_memory_check_sum
 		);
 
 		if ( !mapped_image )
@@ -315,22 +316,28 @@ void usermode::Process::VerifyLoadedModuleChecksums()
 			goto end;
 		}
 
-		/* computer the checksum for the module on disk */
-		result = MapFileAndCheckSum(
-			(PCWSTR)module_entry.szExePath,
-			&disk_header_sum,
-			&disk_check_sum
-		);
-
-		if ( result != CHECKSUM_SUCCESS )
+		/* if we are initiliasing simply fill the vector with checksums */
+		if ( Init )
 		{
-			LOG_ERROR( "MapFileAndCheckSum failed with status 0x%x", GetLastError() );
-			goto end;
+			this->in_memory_module_checksums.push_back( in_memory_check_sum );
+			continue;
 		}
 
-		LOG_INFO( "in memory checksum: %x, disk checksum: %x", in_memory_check_sum, disk_check_sum );
+		/* compare the current checksum to the previously calculated checksum */
+		if ( this->in_memory_module_checksums[ index ] != in_memory_check_sum )
+		{
+			LOG_INFO( "checksum changed!!!" );
+			/* if the checksum has changed do we store the new one or the old one? */
+		}
+
+		//store the new checksums in a temp vector
+		temp.push_back( in_memory_check_sum );
+		index++;
 
 	} while ( Module32Next( process_modules_handle, &module_entry ) );
+
+	if (!Init ) 
+		this->in_memory_module_checksums = temp;
 
 end:
 	CloseHandle( process_modules_handle );

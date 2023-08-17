@@ -37,6 +37,6 @@ void usermode::UManager::ValidateProcessMemory()
 
 void usermode::UManager::ValidateProcessModules()
 {
-	this->thread_pool->QueueJob( [ this ]() {this->process->VerifyLoadedModuleChecksums(); } );
+	this->thread_pool->QueueJob( [ this ]() {this->process->VerifyLoadedModuleChecksums( false ); } );
 }
 
