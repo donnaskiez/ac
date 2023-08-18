@@ -3,8 +3,6 @@
 
 #include <Windows.h>
 
-#include "report.h"
-
 namespace global
 {
 	class Client
@@ -14,7 +12,7 @@ namespace global
 
 	public:
 		Client(LPTSTR PipeName);
-		void WriteToPipe( TestReport* Report );
+		void WriteToPipe( PVOID Buffer, SIZE_T Size );
 	};
 }
 

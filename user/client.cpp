@@ -22,14 +22,14 @@ global::Client::Client( LPTSTR PipeName )
 	}
 }
 
-void global::Client::WriteToPipe( TestReport* Report )
+void global::Client::WriteToPipe( PVOID Buffer, SIZE_T Size )
 {
 	DWORD bytes_written;
 
 	WriteFile(
 		this->pipe_handle,
-		Report,
-		sizeof( TestReport ),
+		Buffer,
+		Size,
 		&bytes_written,
 		NULL
 	);
@@ -39,4 +39,6 @@ void global::Client::WriteToPipe( TestReport* Report )
 		LOG_ERROR( "WriteFile failed with status code 0x%x", GetLastError() );
 		return;
 	}
+
+	LOG_INFO( "Sent bytes over pipe" );
 }

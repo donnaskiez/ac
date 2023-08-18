@@ -6,18 +6,18 @@
 #include "threadpool.h"
 #include "client.h"
 
-struct TestReport
-{
-	UINT64 value1;
-	UINT64 value2;
-};
-
 namespace global
 {
+	struct TestReport
+	{
+		UINT64 value1;
+		UINT64 value2;
+	};
+
 	class Report
 	{
 		std::shared_ptr<global::ThreadPool> thread_pool;
-		std::unique_ptr<global::Client> client;
+		std::shared_ptr<global::Client> client;
 	public:
 		Report( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
 		void ReportViolation( TestReport* Report );
