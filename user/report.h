@@ -15,6 +15,8 @@
 #define REPORT_PAGE_PROTECTION_VERIFICATION 30
 #define REPORT_PATTERN_SCAN_FAILURE 40
 
+
+
 namespace global
 {
 	class Report
@@ -28,13 +30,20 @@ namespace global
 
 		Report( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
 
+		/* lock buffer, copy report, send to service then clear buffer */
 		template <typename T>
 		void ReportViolation( T* Report )
 		{
 			mutex.lock();
-			memcpy( this->buffer, Report, sizeof( T ) );
+
+			global::headers::PIPE_PACKET_HEADER header;
+			header.message_type = REPORT_PACKET_ID;
+			memcpy( this->buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
+
+			memcpy( this->buffer + sizeof( global::headers::PIPE_PACKET_HEADER ), Report, sizeof(T));
 			this->client->WriteToPipe( buffer, sizeof(T) );
 			RtlZeroMemory( this->buffer, REPORT_BUFFER_SIZE );
+
 			mutex.unlock();
 		}
 	};

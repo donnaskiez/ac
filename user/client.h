@@ -3,6 +3,9 @@
 
 #include <Windows.h>
 
+#define REPORT_PACKET_ID 1
+#define REQUEST_PATTERNS_TO_BE_SCANNED 2
+
 namespace global
 {
 	class Client
@@ -12,8 +15,18 @@ namespace global
 
 	public:
 		Client(LPTSTR PipeName);
+
 		void WriteToPipe( PVOID Buffer, SIZE_T Size );
+		void ReadPipe( PVOID Buffer, SIZE_T Size );
 	};
+
+	namespace headers
+	{
+		struct PIPE_PACKET_HEADER
+		{
+			int message_type;
+		};
+	}
 }
 
 #endif

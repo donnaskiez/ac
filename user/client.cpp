@@ -20,6 +20,11 @@ global::Client::Client( LPTSTR PipeName )
 		LOG_ERROR( "CreateFile failed with status 0x%x", GetLastError() );
 		return;
 	}
+
+	/* test the write function */
+	global::headers::PIPE_PACKET_HEADER header;
+	header.message_type = REQUEST_PATTERNS_TO_BE_SCANNED;
+	this->WriteToPipe( &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 }
 
 void global::Client::WriteToPipe( PVOID Buffer, SIZE_T Size )
@@ -41,4 +46,31 @@ void global::Client::WriteToPipe( PVOID Buffer, SIZE_T Size )
 	}
 
 	LOG_INFO( "Sent bytes over pipe" );
+}
+
+void global::Client::ReadPipe(PVOID Buffer, SIZE_T Size)
+{
+	BOOL status = FALSE;
+	DWORD bytes_read;
+
+	do
+	{
+		status = ReadFile(
+			this->pipe_handle,
+			Buffer,
+			Size,
+			&bytes_read,
+			NULL
+		);
+
+		if ( !status && GetLastError() != ERROR_MORE_DATA )
+			break;
+
+	} while ( !status );
+
+	if ( !status )
+	{
+		LOG_ERROR( "ReadFile failed with status 0x%x", GetLastError() );
+		return;
+	}
 }

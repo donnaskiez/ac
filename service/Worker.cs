@@ -1,14 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Serilog;
-using System.Runtime.CompilerServices;
 using service.Types;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
@@ -22,35 +13,70 @@ namespace service
         private readonly ILogger<Worker> _logger;
         private NamedPipeServerStream _pipeServer;
         private byte[] _buffer;
+        private byte[] _headerBuf;
+        private int _headerBufSize;
 
         private const int REPORT_CODE_MODULE_VERIFICATION = 10;
         private const int REPORT_CODE_START_ADDRESS_VERIFICATION = 20;
         private const int REPORT_PAGE_PROTECTION_VERIFICATION = 30;
         private const int REPORT_PATTERN_SCAN_FAILURE = 40;
 
+        private const int MESSAGE_TYPE_REPORT = 1;
+        private const int MESSAGE_TYPE_REQUEST = 2;
+
+        private int PIPE_BUFFER_READ_SIZE;
+
+        struct PIPE_PACKET_HEADER
+        {
+            int message_type;
+        };
+
         public Worker(ILogger<Worker> logger)
         {
             _logger = logger;
             _buffer = new byte[1024];
+            unsafe { _headerBufSize = sizeof(PIPE_PACKET_HEADER); }
+            _headerBuf = new byte[_headerBufSize]; 
             _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1);
+            PIPE_BUFFER_READ_SIZE = 1024 - _headerBufSize;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Windows service starting, waiting for client to connect");
 
+            // to do: verify whos connecting 
             _pipeServer.WaitForConnection();
 
             _logger.LogInformation("Client connected to the pipe server");
+
+            int header = 0;
 
             while (!stoppingToken.IsCancellationRequested)
             { 
                 try
                 {
-                    if (_pipeServer.Read(_buffer, 0, 1024) > 0)
+                    if (_pipeServer.Read(_headerBuf, 0, _headerBufSize) > 0)
                     {
-                        _logger.LogInformation("Report received, decoding buffer");
-                        await TranslatePipeBuffer();
+                        // for now the header is only an int... LOL
+                        header = BitConverter.ToInt32(_headerBuf, 0);
+
+                        _logger.LogInformation("Message received with id: {0}", header);
+
+                        switch (header)
+                        {
+                            case MESSAGE_TYPE_REPORT:
+
+                                _pipeServer.Read(_buffer, 0, PIPE_BUFFER_READ_SIZE + _headerBufSize);
+                                await TranslatePipeBuffer();
+                                break;
+
+                            case MESSAGE_TYPE_REQUEST:
+
+                                _logger.LogInformation("Request received lLOL");
+                                Array.Clear(_buffer, 0, _buffer.Length);
+                                break;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -133,7 +159,7 @@ namespace service
 
             try
             {
-                Marshal.Copy(_buffer, 0, ptr, size);
+                unsafe { Marshal.Copy(_buffer, 0, ptr, size); }
                 return (T)Marshal.PtrToStructure(ptr, typeof(T));
             }
             finally
