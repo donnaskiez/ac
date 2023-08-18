@@ -7,12 +7,13 @@
 #include <ImageHlp.h>
 #include <iostream>
 
-usermode::Process::Process()
+usermode::Process::Process( std::shared_ptr<global::Report> ReportInterface )
 {
 	this->process_handle = GetCurrentProcess();
 	this->process_id = GetCurrentProcessId();
 	this->function_imports = std::make_unique<Imports>();
 	this->VerifyLoadedModuleChecksums( true );
+	this->report_interface = ReportInterface;
 }
 
 void usermode::Process::ValidateProcessThreads()

@@ -6,10 +6,10 @@
 
 #include <TlHelp32.h>
 
-usermode::UManager::UManager( std::shared_ptr<global::ThreadPool> ThreadPool )
+usermode::UManager::UManager( std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Report> ReportInterface )
 {
 	this->thread_pool = ThreadPool;
-	this->process = std::make_unique<Process>();
+	this->process = std::make_unique<Process>(ReportInterface);
 }
 
 usermode::UManager::~UManager()

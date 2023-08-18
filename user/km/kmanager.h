@@ -3,7 +3,9 @@
 
 #include <windows.h>
 
+#include "../report.h"
 #include "..\threadpool.h"
+
 #include "driver.h"
 
 namespace kernelmode
@@ -13,7 +15,7 @@ namespace kernelmode
 		std::unique_ptr<Driver> driver_interface;
 		std::shared_ptr<global::ThreadPool> thread_pool;
 	public:
-		KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool );
+		KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Report> ReportInterface);
 	};
 }
 

@@ -129,6 +129,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="client.cpp" />
     <ClCompile Include="km\driver.cpp" />
     <ClCompile Include="km\kmanager.cpp" />
     <ClCompile Include="main.cpp" />
@@ -136,11 +137,14 @@
     <ClCompile Include="um\process.cpp" />
     <ClCompile Include="threadpool.cpp" />
     <ClCompile Include="um\umanager.cpp" />
+    <ClCompile Include="report.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="client.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="km\driver.h" />
     <ClInclude Include="km\kmanager.h" />
+    <ClInclude Include="report.h" />
     <ClInclude Include="um\imports.h" />
     <ClInclude Include="um\process.h" />
     <ClInclude Include="threadpool.h" />

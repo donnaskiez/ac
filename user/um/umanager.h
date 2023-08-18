@@ -8,6 +8,8 @@
 #include <thread>
 #include <vector>
 
+#include "../report.h"
+
 #include "process.h"
 
 namespace usermode
@@ -23,7 +25,7 @@ namespace usermode
 		std::shared_ptr<global::ThreadPool> thread_pool;
 
 	public:
-		UManager( std::shared_ptr<global::ThreadPool> ThreadPool );
+		UManager( std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Report> ReportInterface );
 		~UManager();
 
 		void ValidateProcessThreads();

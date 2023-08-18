@@ -6,6 +6,7 @@
 #include <TlHelp32.h>
 #include <string>
 
+#include "../report.h"
 #include "../threadpool.h"
 #include "../um/imports.h"
 
@@ -26,6 +27,7 @@ namespace usermode
 		std::mutex mutex;
 		std::unique_ptr<Imports> function_imports;
 		std::vector<DWORD> in_memory_module_checksums;
+		std::shared_ptr<global::Report> report_interface;
 
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
 		std::vector<UINT64> GetProcessThreadsStartAddresses();
@@ -36,7 +38,7 @@ namespace usermode
 
 	public:
 
-		Process();
+		Process( std::shared_ptr<global::Report> ReportInterface );
 
 		void ValidateProcessThreads();
 		void ScanProcessMemory();

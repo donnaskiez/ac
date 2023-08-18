@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include "../threadpool.h"
+#include "../report.h"
 
 namespace kernelmode
 {
@@ -11,11 +12,12 @@ namespace kernelmode
 	{
 		HANDLE driver_handle;
 		LPCWSTR driver_name;
+		std::shared_ptr<global::Report> report_interface;
 	public:
 
 		std::shared_ptr<global::ThreadPool> thread_pool;
 
-		Driver(LPCWSTR DriverName);
+		Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface );
 	};
 }
 
