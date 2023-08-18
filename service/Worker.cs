@@ -23,6 +23,11 @@ namespace service
         private NamedPipeServerStream _pipeServer;
         private byte[] _buffer;
 
+        private const int REPORT_CODE_MODULE_VERIFICATION = 10;
+        private const int REPORT_CODE_START_ADDRESS_VERIFICATION = 20;
+        private const int REPORT_PAGE_PROTECTION_VERIFICATION = 30;
+        private const int REPORT_PATTERN_SCAN_FAILURE = 40;
+
         public Worker(ILogger<Worker> logger)
         {
             _logger = logger;
@@ -63,16 +68,52 @@ namespace service
 
             switch (reportCode)
             {
-                case 10:
-                    var packet = BytesToStructure<MODULE_VERIFICATION_CHECKSUM_FAILURE>();
+                case REPORT_CODE_MODULE_VERIFICATION:
+
+                    var checksumFailurePacket = BytesToStructure<MODULE_VERIFICATION_CHECKSUM_FAILURE>();
 
                     unsafe
                     {
                         _logger.LogInformation("Report code: {0}, Base address: {1}, Size: {2}, Name: ",
-                            packet.ReportCode,
-                            packet.ModuleBaseAddress,
-                            packet.ModuleSize);
+                            checksumFailurePacket.ReportCode,
+                            checksumFailurePacket.ModuleBaseAddress,
+                            checksumFailurePacket.ModuleSize);
                     }
+
+                    goto end;
+
+                case REPORT_CODE_START_ADDRESS_VERIFICATION:
+
+                    var startAddressFailurePacket = BytesToStructure<PROCESS_THREAD_START_FAILURE>();
+
+                    _logger.LogInformation("Report code: {0}, Thread Id: {1}, Start Address: {2}",
+                        startAddressFailurePacket.ReportCode,
+                        startAddressFailurePacket.ThreadId,
+                        startAddressFailurePacket.StartAddress);
+
+                    goto end;
+
+                case REPORT_PAGE_PROTECTION_VERIFICATION:
+
+                    var pageProtectionFailure = BytesToStructure<PAGE_PROTECTION_FAILURE>();
+
+                    _logger.LogInformation("Report code: {0}, page base address: {1}, allocation protection {2}, allocation state: {3}, allocation type: {4}",
+                        pageProtectionFailure.ReportCode,
+                        pageProtectionFailure.PageBaseAddress,
+                        pageProtectionFailure.AllocationProtection,
+                        pageProtectionFailure.AllocationState,
+                        pageProtectionFailure.AllocationType);
+
+                    goto end;
+
+                case REPORT_PATTERN_SCAN_FAILURE:
+
+                    var patternScanFailure = BytesToStructure<PATTERN_SCAN_FAILURE>();
+
+                    _logger.LogInformation("Report code: {0}, signature id: {1}, Address: {2}",
+                        patternScanFailure.ReportCode,
+                        patternScanFailure.SignatureId,
+                        patternScanFailure.Address);
 
                     goto end;
 

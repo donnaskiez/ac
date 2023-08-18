@@ -4,8 +4,12 @@
 #include "../um/imports.h"
 #include "memory.h"
 
+#include "../report.h"
+
 #include <ImageHlp.h>
 #include <iostream>
+
+const static char MASK_BYTE = '\x00';
 
 usermode::Process::Process( std::shared_ptr<global::Report> ReportInterface )
 {
@@ -18,30 +22,12 @@ usermode::Process::Process( std::shared_ptr<global::Report> ReportInterface )
 
 void usermode::Process::ValidateProcessThreads()
 {
-	bool result = false;
-	std::vector<UINT64> threads = GetProcessThreadsStartAddresses();
-
-	for ( int i = 0; i < threads.size(); i++ )
-	{
-		if ( CheckIfAddressLiesWithinValidProcessModule( threads[ i ], &result ) )
-		{
-			if ( result == false )
-			{
-				//REPORT 
-				LOG_ERROR( "thread start address nto from process module OMG" );
-			}
-		}
-	}
-}
-
-std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
-{
 	HANDLE thread_snapshot_handle = INVALID_HANDLE_VALUE;
 	THREADENTRY32 thread_entry;
 	NTSTATUS status;
 	HANDLE thread_handle;
 	UINT64 start_address;
-	std::vector<UINT64> start_addresses;
+	bool result;
 
 	pNtQueryInformationThread NtQueryInfo = 
 		( pNtQueryInformationThread )this->function_imports->ImportMap["NtQueryInformationThread"];
@@ -52,7 +38,7 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 	if ( thread_snapshot_handle == INVALID_HANDLE_VALUE )
 	{
 		LOG_ERROR( "thread snapshot handle invalid with error 0x%x", GetLastError() );
-		return {};
+		return;
 	}
 
 	thread_entry.dwSize = sizeof( THREADENTRY32 );
@@ -61,7 +47,7 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 	{
 		LOG_ERROR( "Thread32First failed with status 0x%x", GetLastError() );
 		CloseHandle( thread_snapshot_handle );
-		return {};
+		return;
 	}
 
 	do
@@ -88,11 +74,19 @@ std::vector<UINT64> usermode::Process::GetProcessThreadsStartAddresses()
 			continue;
 		}
 
-		start_addresses.push_back( start_address );
+		if ( CheckIfAddressLiesWithinValidProcessModule( start_address, &result ) )
+		{
+			if ( result == false )
+			{
+				global::report_structures::PROCESS_THREAD_START_FAILURE report;
+				report.report_code = REPORT_CODE_START_ADDRESS_VERIFICATION;
+				report.start_address = start_address;
+				report.thread_id = thread_entry.th32ThreadID;
+				this->report_interface->ReportViolation( &report );
+			}
+		}
 
 	} while ( Thread32Next( thread_snapshot_handle, &thread_entry ) );
-
-	return start_addresses;
 }
 
 /*
@@ -231,31 +225,73 @@ bool usermode::Process::GetProcessBaseAddress( UINT64* Result )
 void usermode::Process::ScanProcessMemory()
 {
 	MEMORY_BASIC_INFORMATION memory_info = { 0 };
-	UINT64 base_address;
+	UINT64 address;
 
-	if ( !GetProcessBaseAddress( &base_address ) )
+	if ( !GetProcessBaseAddress( &address) )
 	{
 		LOG_ERROR( "Failed to get process base address with status 0x%x", GetLastError() );
 		return;
 	}
 
 	while ( VirtualQueryEx(
-		this->process_handle,
-		( PVOID )base_address,
-		&memory_info,
-		sizeof( MEMORY_BASIC_INFORMATION )) 
-		)
+			this->process_handle,
+			( PVOID )address,
+			&memory_info,
+			sizeof( MEMORY_BASIC_INFORMATION )))
 	{
 		this->CheckPageProtection( &memory_info );
-		this->PatternScanRegion(base_address, &memory_info);
+		this->PatternScanRegion(address, &memory_info);
 
-		base_address += memory_info.RegionSize;
+		address += memory_info.RegionSize;
 	}
 }
 
 void usermode::Process::PatternScanRegion( UINT64 Address, MEMORY_BASIC_INFORMATION* Page )
 {
+	/* todo: stream signatures from server */
+	//char buf[] = "\x85\xc0\x74\x00\xb9\x00\x00\x00\x00\xcd";
+	char buf[] = "\x55\x8B\xEC\xFF\x75\x00\xD9\x45\x00\x51\xD9\x1C\x00\xE8\x00\x00\x00\x00\x5D\xC2\x00\x00\xCC\xCC\xCC\xCC\xCC\xCC\xCC";
+	std::vector<char> signature;
 
+	for ( int i = 0; i < 10; i++ )
+		signature.push_back( buf[ i ] );
+
+	/* skip free or reserved pages */
+	if ( Page->State == MEM_RESERVE || Page->State == MEM_FREE )
+		return;
+
+	char* base = ( char* )Address;
+
+	for ( unsigned int i = 0; i < Page->RegionSize; i++ )
+	{
+		for ( unsigned j = 0; j < signature.size(); j++ )
+		{
+			char current_byte = *( base + i );
+			char current_sig_byte = signature[j];
+
+			/* if we've found the signature, report */
+			if ( j + 1 == signature.size())
+			{
+				global::report_structures::PATTERN_SCAN_FAILURE report;
+				report.report_code = REPORT_PATTERN_SCAN_FAILURE;
+				report.address = (UINT64)base + i;
+				report.signature_id = 1; /* this will be taken from the vector in future */
+				this->report_interface->ReportViolation( &report );
+
+				/* 
+				* for now return, however when we stream the signatures we iterate over
+				* each signature for every page
+				*/
+				return;
+			}
+
+			/* else, continue searching */
+			if ( current_byte != current_sig_byte && current_sig_byte != MASK_BYTE )
+				break;
+
+			i++;
+		}
+	}
 }
 
 void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
@@ -270,7 +306,14 @@ void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
 		Page->AllocationProtect & PAGE_EXECUTE_WRITECOPY
 		)
 	{
-		// report area or smth
+		//Not etirely sure about this check, needs to be looked into further.
+		global::report_structures::PAGE_PROTECTION_FAILURE report;
+		report.report_code = REPORT_PAGE_PROTECTION_VERIFICATION;
+		report.page_base_address = (UINT64)Page->AllocationBase;
+		report.allocation_protection = Page->AllocationProtect;
+		report.allocation_state = Page->State;
+		report.allocation_type = Page->Type;
+		this->report_interface->ReportViolation( &report );
 	}
 }
 

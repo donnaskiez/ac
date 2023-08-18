@@ -27,6 +27,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     usermode::UManager umanager( thread_pool, report_interface );
     //kernelmode::KManager kmanager( L"DonnaAC", thread_pool);
     umanager.ValidateProcessModules();
+    umanager.ValidateProcessMemory();
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {

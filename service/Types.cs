@@ -21,5 +21,28 @@ namespace service
             [FieldOffset(0)]
             public fixed char ModuleName[512];
         }
+
+        public struct PROCESS_THREAD_START_FAILURE
+        {
+            public int ReportCode;
+            public long ThreadId;
+            public UInt64 StartAddress;
+        }
+
+        public struct PAGE_PROTECTION_FAILURE
+        {
+            public int ReportCode;
+            public UInt64 PageBaseAddress;
+            public long AllocationProtection;
+            public long AllocationState;
+            public long AllocationType;
+        }
+
+        public struct PATTERN_SCAN_FAILURE
+        {
+            public int ReportCode;
+            public int SignatureId;
+            public UInt64 Address;
+        }
     }
 }
