@@ -327,8 +327,13 @@ void usermode::Process::VerifyLoadedModuleChecksums(bool Init)
 		/* compare the current checksum to the previously calculated checksum */
 		if ( this->in_memory_module_checksums[ index ] != in_memory_check_sum )
 		{
-			LOG_INFO( "checksum changed!!!" );
-			/* if the checksum has changed do we store the new one or the old one? */
+			global::report_structures::MODULE_VERIFICATION_CHECKSUM_FAILURE report;
+			report.report_code = REPORT_CODE_MODULE_VERIFICATION;
+			report.module_base_address = (UINT64)module_entry.modBaseAddr;
+			report.module_size = module_entry.modBaseSize;
+			std::wstring wstr( module_entry.szModule );
+			report.module_name = std::string( wstr.begin(), wstr.end() );
+			this->report_interface->ReportViolation( &report );
 		}
 
 		//store the new checksums in a temp vector

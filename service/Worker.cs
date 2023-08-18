@@ -9,31 +9,27 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Runtime.CompilerServices;
+using service.Types;
+
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+#pragma warning disable CS8600
+#pragma warning disable CS8603
 
 namespace service
 {
-    public struct TestReport
-    {
-        public UInt64 Num1;
-        public UInt64 Num2;
-    }
     public class Worker : BackgroundService
     {
         private readonly ILogger<Worker> _logger;
         private NamedPipeServerStream _pipeServer;
-        private int _threadId;
         private byte[] _buffer;
-        private Mutex _mutex;
 
         public Worker(ILogger<Worker> logger)
         {
             _logger = logger;
             _buffer = new byte[1024];
             _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1);
-            _threadId = Thread.CurrentThread.ManagedThreadId;
         }
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Windows service starting, waiting for client to connect");
@@ -61,15 +57,37 @@ namespace service
 
         private async Task TranslatePipeBuffer()
         {
-            var packet = BytesToStructure<TestReport>();
+            int reportCode = BitConverter.ToInt32(_buffer, 0);
+
+            _logger.LogInformation("Report received with code: {0}", reportCode);
+
+            switch (reportCode)
+            {
+                case 10:
+                    var packet = BytesToStructure<MODULE_VERIFICATION_CHECKSUM_FAILURE>();
+
+                    unsafe
+                    {
+                        _logger.LogInformation("Report code: {0}, Base address: {1}, Size: {2}, Name: ",
+                            packet.ReportCode,
+                            packet.ModuleBaseAddress,
+                            packet.ModuleSize);
+                    }
+
+                    goto end;
+
+                default:
+                    _logger.LogError("Invalid report code received");
+                    goto end;
+
+            }
+        end:
             Array.Clear(_buffer, 0, _buffer.Length);
-            _logger.LogInformation("Num1: {0}, Num2: {1}", packet.Num1, packet.Num2);
         }
 
         private T BytesToStructure<T>()
         {
             int size = Marshal.SizeOf(typeof(T));
-
             IntPtr ptr = Marshal.AllocHGlobal(size);
 
             try
@@ -85,3 +103,5 @@ namespace service
     }
 }
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
+#pragma warning restore CS8600
+#pragma warning restore CS8603
