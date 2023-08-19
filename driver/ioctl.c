@@ -52,7 +52,7 @@ NTSTATUS DeviceControl(
 
 		/* return early as IRP completion was handled inside the function */
 		ZwClose( handle );
-		return status;
+		break;
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );

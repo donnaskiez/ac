@@ -56,7 +56,7 @@ void kernelmode::Driver::RunNmiCallbacks()
 void kernelmode::Driver::VerifySystemModules()
 {
 	BOOLEAN status;
-	DWORD bytes_returned;
+	DWORD bytes_returned = 0;
 	PVOID buffer;
 	SIZE_T buffer_size;
 	SIZE_T header_size;
@@ -97,20 +97,20 @@ void kernelmode::Driver::VerifySystemModules()
 		return;
 	}
 
-	memcpy( &header, buffer, sizeof( header_size ));
-
-	if ( header.module_count == 0 )
+	if ( bytes_returned == NULL )
 	{
 		LOG_INFO( "All modules valid :)" );
 		free( buffer );
 		return;
-	}
+	}	
 
 	/*
 	* We are splitting up each packet here and passing them on one by one since 
 	* if I am being honest it is just easier in c++ and that way the process
 	* is streamlined just like all other report packets.
 	*/
+	memcpy( &header, buffer, sizeof( header_size ) );
+
 	UINT64 base = ( UINT64 )buffer + sizeof( header_size );
 
 	for ( int i = 0; i < header.module_count; i++ )

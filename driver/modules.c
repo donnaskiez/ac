@@ -329,13 +329,6 @@ NTSTATUS HandleValidateDriversIOCTL(
 	else
 	{
 		DEBUG_LOG( "No INVALID drivers found :)" );
-
-		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER );
-
-		RtlCopyMemory( 
-			Irp->AssociatedIrp.SystemBuffer, 
-			&header, 
-			sizeof( MODULE_VALIDATION_FAILURE_HEADER ) );
 	}
 
 	ExFreePoolWithTag( head, INVALID_DRIVER_LIST_HEAD_POOL );
