@@ -333,5 +333,13 @@ NTSTATUS HandleValidateDriversIOCTL(
 
 	ExFreePoolWithTag( head, INVALID_DRIVER_LIST_HEAD_POOL );
 	ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
+
+	/*
+	* Complete the IRP here so we don't have to implement a waiting mechanism
+	* to prevent an early completion of the IRP.
+	*/
+	IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	Irp->IoStatus.Status = status;
+
 	return status;
 }

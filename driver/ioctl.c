@@ -50,14 +50,9 @@ NTSTATUS DeviceControl(
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "Failed to start thread to validate system drivers" );
 
-		/* 
-		* wait on our thread so we dont complete the IRP before we've filled the 
-		* buffer with information and prevent any weird IRP multithreaded interactions
-		*/
-		KeWaitForSingleObject( handle, Executive, KernelMode, FALSE, NULL );
-
+		/* return early as IRP completion was handled inside the function */
 		ZwClose( handle );
-		break;
+		return status;
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
