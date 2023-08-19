@@ -6,6 +6,9 @@
 #include "../threadpool.h"
 #include "../report.h"
 
+#define IOCCTL_RUN_NMI_CALLBACKS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2001, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_DRIVER_OBJECTS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2002, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 namespace kernelmode
 {
 	class Driver
@@ -15,9 +18,19 @@ namespace kernelmode
 		std::shared_ptr<global::Report> report_interface;
 	public:
 
-		std::shared_ptr<global::ThreadPool> thread_pool;
-
 		Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface );
+
+		void RunNmiCallbacks();
+		void VerifySystemModules();
+		void EnableObRegisterCallbacks();
+		void DisableObRegisterCallbacks();
+		void EnableProcessLoadNotifyCallbacks();
+		void DisableProcessLoadNotifyCallbacks();
+		void ValidateKPRCBThreads();
+		void CheckForHypervisor();
+		void VerifySystemModulesIOCTLDispatchHandler();
+		void CheckDriverHeartbeat();
+		/* todo: driver integrity check */
 	};
 }
 

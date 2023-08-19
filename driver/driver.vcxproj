@@ -119,11 +119,15 @@
   <ItemGroup>
     <ClCompile Include="driver.c" />
     <ClCompile Include="ioctl.c" />
+    <ClCompile Include="modules.c" />
+    <ClCompile Include="nmi.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />
     <ClInclude Include="driver.h" />
     <ClInclude Include="ioctl.h" />
+    <ClInclude Include="modules.h" />
+    <ClInclude Include="nmi.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

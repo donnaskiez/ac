@@ -9,11 +9,14 @@
 
 #define REPORT_BUFFER_SIZE 1024
 #define MAX_SIGNATURE_SIZE 256
+#define MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT 5
 
 #define REPORT_CODE_MODULE_VERIFICATION 10
 #define REPORT_CODE_START_ADDRESS_VERIFICATION 20
 #define REPORT_PAGE_PROTECTION_VERIFICATION 30
 #define REPORT_PATTERN_SCAN_FAILURE 40
+#define REPORT_NMI_CALLBACK_FAILURE 50
+#define REPORT_MODULE_VALIDATION_FAILURE 60
 
 
 
@@ -79,6 +82,27 @@ namespace global
 			INT report_code;
 			INT signature_id;
 			UINT64 address;
+		};
+
+		struct NMI_CALLBACK_FAILURE
+		{
+			INT report_code;
+			INT were_nmis_disabled;
+			UINT64 kthread_address;
+			UINT64 invalid_rip;
+		};
+
+		struct MODULE_VALIDATION_FAILURE_HEADER
+		{
+			INT module_count;
+		};
+
+		struct MODULE_VALIDATION_FAILURE
+		{
+			INT report_code;
+			UINT64 driver_base_address;
+			UINT64 driver_size;
+			BYTE driver_name[ 128 ];
 		};
 	}
 }

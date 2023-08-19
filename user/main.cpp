@@ -25,9 +25,13 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     std::shared_ptr<global::Report> report_interface = std::make_shared<global::Report>( thread_pool, pipe_name );
 
     usermode::UManager umanager( thread_pool, report_interface );
-    //kernelmode::KManager kmanager( L"DonnaAC", thread_pool);
-    umanager.ValidateProcessModules();
-    umanager.ValidateProcessMemory();
+    kernelmode::KManager kmanager( L"DonnaAC", thread_pool, report_interface);
+
+    kmanager.RunNmiCallbacks();
+    kmanager.VerifySystemModules();
+
+    //umanager.ValidateProcessModules();
+    //umanager.ValidateProcessMemory();
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {

@@ -15,14 +15,14 @@ usermode::UManager::UManager( std::shared_ptr<global::ThreadPool> ThreadPool, st
 usermode::UManager::~UManager()
 {
 	/* Wait for our jobs to be finished, then safely stop our pool */
-	while ( true )
-	{
-		if ( this->thread_pool->Busy() == FALSE ) 
-		{
-			this->thread_pool->Stop(); 
-			break;
-		}
-	}
+	//while ( true )
+	//{
+	//	if ( this->thread_pool->Busy() == FALSE ) 
+	//	{
+	//		this->thread_pool->Stop(); 
+	//		break;
+	//	}
+	//}
 }
 
 void usermode::UManager::ValidateProcessThreads()

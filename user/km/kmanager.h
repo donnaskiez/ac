@@ -16,6 +16,9 @@ namespace kernelmode
 		std::shared_ptr<global::ThreadPool> thread_pool;
 	public:
 		KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Report> ReportInterface);
+
+		void RunNmiCallbacks();
+		void VerifySystemModules();
 	};
 }
 
