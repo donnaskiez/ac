@@ -99,7 +99,7 @@ void kernelmode::Driver::VerifySystemModules()
 
 	if ( bytes_returned == NULL )
 	{
-		LOG_INFO( "All threads valid, nmis fine." );
+		LOG_INFO( "All system modules valid" );
 		free( buffer );
 		return;
 	}

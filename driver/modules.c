@@ -287,15 +287,15 @@ NTSTATUS HandleValidateDriversIOCTL(
 		return STATUS_ABANDONED;
 	}
 
+	MODULE_VALIDATION_FAILURE_HEADER header;
+	header.module_count = head->count;
+
 	if ( head->count > 0 )
 	{
 		DEBUG_LOG( "found INVALID drivers with count: %i", head->count );
 
 		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
 			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE );
-
-		MODULE_VALIDATION_FAILURE_HEADER header;
-		header.module_count = head->count;
 
 		RtlCopyMemory( 
 			Irp->AssociatedIrp.SystemBuffer, 
@@ -329,6 +329,13 @@ NTSTATUS HandleValidateDriversIOCTL(
 	else
 	{
 		DEBUG_LOG( "No INVALID drivers found :)" );
+
+		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER );
+
+		RtlCopyMemory( 
+			Irp->AssociatedIrp.SystemBuffer, 
+			&header, 
+			sizeof( MODULE_VALIDATION_FAILURE_HEADER ) );
 	}
 
 	ExFreePoolWithTag( head, INVALID_DRIVER_LIST_HEAD_POOL );
