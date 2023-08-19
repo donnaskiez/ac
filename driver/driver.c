@@ -8,7 +8,7 @@ VOID DriverUnload(
 )
 {
 	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
-	IoDeleteDevice( &DriverObject->DeviceObject );
+	IoDeleteDevice( DriverObject->DeviceObject );
 }
 
 NTSTATUS DriverEntry(
@@ -40,7 +40,7 @@ NTSTATUS DriverEntry(
 
 	if ( !NT_SUCCESS( status ) )
 	{
-		IoDeleteDevice( &DriverObject->DeviceObject );
+		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
