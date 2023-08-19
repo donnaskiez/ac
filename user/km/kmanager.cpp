@@ -8,10 +8,10 @@ kernelmode::KManager::KManager( LPCWSTR DriverName, std::shared_ptr<global::Thre
 
 void kernelmode::KManager::RunNmiCallbacks()
 {
-	this->thread_pool->QueueJob( [ this ]() {this->RunNmiCallbacks(); } );
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RunNmiCallbacks(); } );
 }
 
 void kernelmode::KManager::VerifySystemModules()
 {
-	this->thread_pool->QueueJob( [ this ]() {this->VerifySystemModules(); } );
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifySystemModules(); } );
 }
