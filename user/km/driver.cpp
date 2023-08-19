@@ -6,6 +6,18 @@ kernelmode::Driver::Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> R
 {
 	this->driver_name = DriverName;
 	this->report_interface = ReportInterface;
+	this->driver_handle = CreateFileW(
+		DriverName,
+		GENERIC_WRITE | GENERIC_READ | GENERIC_EXECUTE,
+		0,
+		0,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED,
+		0
+	);
+
+	if ( this->driver_handle == INVALID_HANDLE_VALUE )
+		LOG_ERROR( "Failed to open handle to driver with status 0x%x", GetLastError() );
 }
 
 void kernelmode::Driver::RunNmiCallbacks()
@@ -63,6 +75,9 @@ void kernelmode::Driver::VerifySystemModules()
 		header_size;
 
 	buffer = malloc( buffer_size );
+
+	if ( !buffer )
+		return;
 
 	status = DeviceIoControl(
 		this->driver_handle,
