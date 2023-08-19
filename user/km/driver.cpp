@@ -2,7 +2,7 @@
 
 #include "../common.h"
 
-kernelmode::Driver::Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface )
+kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface )
 {
 	this->driver_name = DriverName;
 	this->report_interface = ReportInterface;
@@ -56,7 +56,7 @@ void kernelmode::Driver::RunNmiCallbacks()
 void kernelmode::Driver::VerifySystemModules()
 {
 	BOOLEAN status;
-	DWORD bytes_returned = 0;
+	DWORD bytes_returned;
 	PVOID buffer;
 	SIZE_T buffer_size;
 	SIZE_T header_size;
@@ -70,7 +70,7 @@ void kernelmode::Driver::VerifySystemModules()
 	*/
 	header_size = sizeof( global::report_structures::MODULE_VALIDATION_FAILURE_HEADER );
 
-	buffer_size = sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) * 
+	buffer_size = sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) *
 		MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT +
 		header_size;
 
@@ -87,7 +87,7 @@ void kernelmode::Driver::VerifySystemModules()
 		buffer,
 		buffer_size,
 		&bytes_returned,
-		( LPOVERLAPPED )NULL
+		NULL
 	);
 
 	if ( status == NULL )
@@ -102,10 +102,10 @@ void kernelmode::Driver::VerifySystemModules()
 		LOG_INFO( "All modules valid :)" );
 		free( buffer );
 		return;
-	}	
+	}
 
 	/*
-	* We are splitting up each packet here and passing them on one by one since 
+	* We are splitting up each packet here and passing them on one by one since
 	* if I am being honest it is just easier in c++ and that way the process
 	* is streamlined just like all other report packets.
 	*/
@@ -115,10 +115,10 @@ void kernelmode::Driver::VerifySystemModules()
 
 	for ( int i = 0; i < header.module_count; i++ )
 	{
-		memcpy( 
-			&report, 
+		memcpy(
+			&report,
 			PVOID( base + i * sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) ),
-			sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) 
+			sizeof( global::report_structures::MODULE_VALIDATION_FAILURE )
 		);
 
 		this->report_interface->ReportViolation( &report );

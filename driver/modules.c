@@ -297,9 +297,9 @@ NTSTATUS HandleValidateDriversIOCTL(
 		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
 			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE );
 
-		RtlCopyMemory( 
-			Irp->AssociatedIrp.SystemBuffer, 
-			&header, 
+		RtlCopyMemory(
+			Irp->AssociatedIrp.SystemBuffer,
+			&header,
 			sizeof( MODULE_VALIDATION_FAILURE_HEADER ) );
 
 		for ( INT i = 0; i < head->count; i++ )
@@ -312,16 +312,16 @@ NTSTATUS HandleValidateDriversIOCTL(
 			report.report_code = REPORT_MODULE_VALIDATION_FAILURE;
 			report.driver_base_address = head->first_entry->driver->DriverStart;
 			report.driver_size = head->first_entry->driver->Size;
-			
+
 			RtlCopyMemory(
 				&report.driver_name,
 				head->first_entry->driver->DriverName.Buffer,
 				MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE );
 
 			RtlCopyMemory(
-				(UINT64)Irp->AssociatedIrp.SystemBuffer + sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + i * sizeof( MODULE_VALIDATION_FAILURE ),
+				( UINT64 )Irp->AssociatedIrp.SystemBuffer + sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + i * sizeof( MODULE_VALIDATION_FAILURE ),
 				&report,
-				sizeof( MODULE_VALIDATION_FAILURE ));
+				sizeof( MODULE_VALIDATION_FAILURE ) );
 
 			RemoveInvalidDriverFromList( head );
 		}
@@ -338,8 +338,8 @@ NTSTATUS HandleValidateDriversIOCTL(
 	* Complete the IRP here so we don't have to implement a waiting mechanism
 	* to prevent an early completion of the IRP.
 	*/
-	IoCompleteRequest( Irp, IO_NO_INCREMENT );
-	Irp->IoStatus.Status = status;
+	//IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	//Irp->IoStatus.Status = status;
 
 	return status;
 }
