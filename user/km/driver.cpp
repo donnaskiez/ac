@@ -97,18 +97,11 @@ void kernelmode::Driver::VerifySystemModules()
 		return;
 	}
 
-	if ( bytes_returned == NULL )
-	{
-		LOG_INFO( "All system modules valid" );
-		free( buffer );
-		return;
-	}
-
 	memcpy( &header, buffer, sizeof( header_size ));
 
-	if ( header.module_count == NULL )
+	if ( header.module_count == 0 )
 	{
-		LOG_ERROR( "weird error with module report" );
+		LOG_INFO( "All modules valid :)" );
 		free( buffer );
 		return;
 	}
