@@ -100,6 +100,7 @@ namespace global
 		struct MODULE_VALIDATION_FAILURE
 		{
 			INT report_code;
+			INT report_type;
 			UINT64 driver_base_address;
 			UINT64 driver_size;
 			BYTE driver_name[ 128 ];

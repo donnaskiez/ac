@@ -9,6 +9,9 @@
 
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
 
+#define REASON_NO_BACKING_MODULE 1
+#define REASON_INVALID_IOCTL_DISPATCH 2
+
 typedef struct _MODULE_VALIDATION_FAILURE_HEADER
 {
 	INT module_count;
@@ -18,6 +21,7 @@ typedef struct _MODULE_VALIDATION_FAILURE_HEADER
 typedef struct _MODULE_VALIDATION_FAILURE
 {
 	INT report_code;
+	INT report_type;
 	UINT64 driver_base_address;
 	UINT64 driver_size;
 	PCHAR driver_name[ 128 ];
@@ -27,6 +31,7 @@ typedef struct _MODULE_VALIDATION_FAILURE
 typedef struct _INVALID_DRIVER
 {
 	struct _INVALID_DRIVER* next;
+	INT reason;
 	PDRIVER_OBJECT driver;
 
 }INVALID_DRIVER, * PINVALID_DRIVER;

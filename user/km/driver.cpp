@@ -53,6 +53,11 @@ void kernelmode::Driver::RunNmiCallbacks()
 	this->report_interface->ReportViolation( &report );
 }
 
+/*
+* 1. Checks that every device object has a system module to back it
+* 2. Checks the IOCTL dispatch routines to ensure they lie within the module
+*/
+
 void kernelmode::Driver::VerifySystemModules()
 {
 	BOOLEAN status;
@@ -151,10 +156,6 @@ void kernelmode::Driver::ValidateKPRCBThreads()
 }
 
 void kernelmode::Driver::CheckForHypervisor()
-{
-}
-
-void kernelmode::Driver::VerifySystemModulesIOCTLDispatchHandler()
 {
 }
 

@@ -44,5 +44,28 @@ namespace service
             public int SignatureId;
             public UInt64 Address;
         }
+
+        public struct NMI_CALLBACK_FAILURE
+        {
+            public int ReportCode;
+            public int WereNmisDisabled;
+            public UInt64 KThreadAddress;
+            public UInt64 InvalidRip;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        public unsafe struct MODULE_VALIDATION_FAILURE
+        {
+            [FieldOffset(0)]
+            public int ReportCode;
+            [FieldOffset(0)]
+            public int ReportType;
+            [FieldOffset(0)]
+            public UInt64 DriverBaseAddress;
+            [FieldOffset(0)]
+            public UInt64 DriverSize;
+            [FieldOffset(0)]
+            public fixed char ModuleName[128];
+        }
     }
 }

@@ -30,6 +30,7 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_VALIDATE_DRIVER_OBJECTS:
 
+		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
 		PAGED_CODE();
 
 		/*

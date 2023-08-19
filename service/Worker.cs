@@ -16,10 +16,12 @@ namespace service
         private byte[] _headerBuf;
         private int _headerBufSize;
 
-        private const int REPORT_CODE_MODULE_VERIFICATION = 10;
-        private const int REPORT_CODE_START_ADDRESS_VERIFICATION = 20;
+        private const int REPORT_PROCESS_MODULE_FAILURE = 10;
+        private const int REPORT_PROCESS_THREAD_START_ADDRESS_FAILURE = 20;
         private const int REPORT_PAGE_PROTECTION_VERIFICATION = 30;
         private const int REPORT_PATTERN_SCAN_FAILURE = 40;
+        private const int REPORT_NMI_CALLBACK_FAILURE = 50;
+        private const int REPORT_KERNEL_MODULE_FAILURE = 60;
 
         private const int MESSAGE_TYPE_REPORT = 1;
         private const int MESSAGE_TYPE_REQUEST = 2;
@@ -94,7 +96,7 @@ namespace service
 
             switch (reportCode)
             {
-                case REPORT_CODE_MODULE_VERIFICATION:
+                case REPORT_PROCESS_MODULE_FAILURE:
 
                     var checksumFailurePacket = BytesToStructure<MODULE_VERIFICATION_CHECKSUM_FAILURE>();
 
@@ -108,7 +110,7 @@ namespace service
 
                     goto end;
 
-                case REPORT_CODE_START_ADDRESS_VERIFICATION:
+                case REPORT_PROCESS_THREAD_START_ADDRESS_FAILURE:
 
                     var startAddressFailurePacket = BytesToStructure<PROCESS_THREAD_START_FAILURE>();
 
@@ -140,6 +142,29 @@ namespace service
                         patternScanFailure.ReportCode,
                         patternScanFailure.SignatureId,
                         patternScanFailure.Address);
+
+                    goto end;
+
+                case REPORT_NMI_CALLBACK_FAILURE:
+
+                    var nmiCallbackFailure = BytesToStructure<NMI_CALLBACK_FAILURE>();
+
+                    _logger.LogInformation("Report code: {0}, WereNmisDisabled: {1}, KThreadAddress: {2}, InvalidRip: {3}",
+                        nmiCallbackFailure.ReportCode,
+                        nmiCallbackFailure.WereNmisDisabled,
+                        nmiCallbackFailure.KThreadAddress,
+                        nmiCallbackFailure.InvalidRip);
+
+                    goto end;
+
+                case REPORT_KERNEL_MODULE_FAILURE:
+
+                    var kernelModuleFailure = BytesToStructure<MODULE_VALIDATION_FAILURE>();
+
+                    _logger.LogInformation("Report code: {0}, DriverBaseAddress: {1}, DriverSize: {2}",
+                        kernelModuleFailure.ReportCode,
+                        kernelModuleFailure.DriverBaseAddress,
+                        kernelModuleFailure.DriverSize);
 
                     goto end;
 

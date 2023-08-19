@@ -3,6 +3,47 @@
 #include "nmi.h"
 #include "common.h"
 
+NTSTATUS ValidateDriverIOCTLDispatchRegion(
+	_In_ PDRIVER_OBJECT Driver,
+	_In_ PSYSTEM_MODULES Modules,
+	_In_ PBOOLEAN Flag
+)
+{
+	NTSTATUS status;
+	UINT64 current_function;
+
+	UINT64 base = ( UINT64 )Driver->DriverStart;
+	UINT64 end = base + Driver->DriverSize;
+
+	*Flag = TRUE;
+
+	/*
+	* If the dispatch routine points to a location that is not in the confines of
+	* the module, report it. Basic check but every effective for catching driver
+	* dispatch hooking.
+	*/
+
+	for ( INT index = 0; index < IRP_MJ_MAXIMUM_FUNCTION + 1; index++ )
+	{
+		current_function = *(UINT64*)
+			( ( UINT64 )Driver->MajorFunction + index * sizeof( PVOID ) );
+
+		DEBUG_LOG( "Current function: %llx", current_function );
+
+		if ( current_function == NULL )
+			continue;
+
+		if ( current_function >= base && current_function <= end )
+		{
+			DEBUG_LOG( "THIS ADDRESS IS INSIDE ITS REGIUON :)" );
+			continue;
+		}
+
+		DEBUG_ERROR( "Driver with invalid IOCTL dispatch routine found" );
+		*Flag = FALSE;
+	}
+}
+
 VOID InitDriverList(
 	_In_ PINVALID_DRIVERS_HEAD ListHead
 )
@@ -13,7 +54,8 @@ VOID InitDriverList(
 
 VOID AddDriverToList(
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
-	_In_ PDRIVER_OBJECT Driver
+	_In_ PDRIVER_OBJECT Driver,
+	_In_ INT Reason
 )
 {
 	PINVALID_DRIVER new_entry = ExAllocatePool2(
@@ -26,6 +68,7 @@ VOID AddDriverToList(
 		return;
 
 	new_entry->driver = Driver;
+	new_entry->reason = Reason;
 	new_entry->next = InvalidDriversHead->first_entry;
 	InvalidDriversHead->first_entry = new_entry;
 }
@@ -215,6 +258,8 @@ NTSTATUS ValidateDriverObjects(
 			PDRIVER_OBJECT current_driver = sub_entry->Object;
 			BOOLEAN flag;
 
+			/* validate driver has backing module */
+
 			if ( !NT_SUCCESS( ValidateDriverObjectHasBackingModule(
 				SystemModules,
 				current_driver,
@@ -231,7 +276,32 @@ NTSTATUS ValidateDriverObjects(
 			if ( !flag )
 			{
 				InvalidDriverListHead->count += 1;
-				AddDriverToList( InvalidDriverListHead, current_driver );
+				AddDriverToList( InvalidDriverListHead, current_driver, REASON_NO_BACKING_MODULE );
+			}
+
+			/* validate drivers IOCTL dispatch routines */
+
+			if ( !NT_SUCCESS( ValidateDriverIOCTLDispatchRegion(
+				current_driver,
+				SystemModules,
+				&flag
+			) ) )
+			{
+				DEBUG_LOG( "Error validating drivers IOCTL routines" );
+				ExReleasePushLockExclusiveEx( &directory_object->Lock, 0 );
+				ObDereferenceObject( directory );
+				ZwClose( handle );
+				return STATUS_ABANDONED;
+			}
+
+			if ( !flag )
+			{
+				InvalidDriverListHead->count += 1;
+				AddDriverToList( InvalidDriverListHead, current_driver, REASON_INVALID_IOCTL_DISPATCH );
+			}
+			else
+			{
+				DEBUG_LOG( "All drivers have valid dispatch routines :)" );
 			}
 
 			sub_entry = sub_entry->ChainLink;
@@ -310,6 +380,7 @@ NTSTATUS HandleValidateDriversIOCTL(
 
 			MODULE_VALIDATION_FAILURE report;
 			report.report_code = REPORT_MODULE_VALIDATION_FAILURE;
+			report.report_type = head->first_entry->reason;
 			report.driver_base_address = head->first_entry->driver->DriverStart;
 			report.driver_size = head->first_entry->driver->Size;
 

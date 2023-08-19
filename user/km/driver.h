@@ -28,7 +28,6 @@ namespace kernelmode
 		void DisableProcessLoadNotifyCallbacks();
 		void ValidateKPRCBThreads();
 		void CheckForHypervisor();
-		void VerifySystemModulesIOCTLDispatchHandler();
 		void CheckDriverHeartbeat();
 		/* todo: driver integrity check */
 	};
