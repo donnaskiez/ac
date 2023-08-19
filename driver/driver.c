@@ -49,7 +49,7 @@ NTSTATUS DriverEntry(
 	DriverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = DeviceControl;
 	DriverObject->DriverUnload = DriverUnload;
 
-	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
+	DEBUG_LOG( "DonnaAC Driver Entry Complete. type: %lx", DriverObject->DeviceObject->DeviceType );
 
 	return status;
 }

@@ -9,9 +9,12 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	_In_ PBOOLEAN Flag
 )
 {
+	if ( !Modules || !Driver || !Flag )
+		return STATUS_INVALID_PARAMETER;
+
 	UINT64 dispatch_function;
-	UINT64 base = ( UINT64 )Driver->DriverStart;
-	UINT64 end = base + Driver->DriverSize;
+	UINT64 ntoskrnl_base = 0;
+	UINT64 ntoskrnl_end = 0;
 
 	*Flag = TRUE;
 
@@ -25,18 +28,68 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	if ( dispatch_function == NULL )
 		return STATUS_SUCCESS;
 
-	DEBUG_LOG( "Current function: %llx", dispatch_function );
+	/* grab ntoskrnl region as default handler is located in here */
 
-	if ( dispatch_function >= base && dispatch_function <= end )
+	for ( INT index = 0; index < Modules->module_count; index++ )
 	{
-		DEBUG_LOG( "THIS ADDRESS IS INSIDE ITS REGIUON :)" );
+		PRTL_MODULE_EXTENDED_INFO system_module = ( PRTL_MODULE_EXTENDED_INFO )(
+			( uintptr_t )Modules->address + index * sizeof( RTL_MODULE_EXTENDED_INFO ) );
+
+		if ( strstr(system_module->FullPathName, "ntoskrnl.exe" ) )
+		{
+			ntoskrnl_base = ( UINT64 )system_module->ImageBase;
+			ntoskrnl_end = ntoskrnl_base + system_module->ImageSize;
+			break;
+		}
+	}
+
+	if ( !ntoskrnl_base || !ntoskrnl_end )
+		return STATUS_ABANDONED;
+
+	DEBUG_LOG( "ntoskrnl base: %llx, end: %llx", ntoskrnl_base, ntoskrnl_end );
+
+	for ( INT index = 0; index < Modules->module_count; index++ )
+	{
+		PRTL_MODULE_EXTENDED_INFO system_module = ( PRTL_MODULE_EXTENDED_INFO )(
+			( uintptr_t )Modules->address + index * sizeof( RTL_MODULE_EXTENDED_INFO ) );
+
+		if ( system_module->ImageBase != Driver->DriverStart )
+			continue;
+
+		if ( Driver->DeviceObject == NULL )
+			continue;
+
+		if ( dispatch_function >= ntoskrnl_base && dispatch_function <= ntoskrnl_end )
+			continue;
+
+		if ( dispatch_function >= system_module->ImageBase && dispatch_function <= ( UINT64 )system_module->ImageBase + system_module->ImageSize )
+			return STATUS_SUCCESS;
+
+		//if ( Driver->DeviceObject->DeviceType != NULL )
+		//	continue;
+
+		DEBUG_LOG( "name: %s, base: %p, size: %lx, dispatch: %llx, type: %lx",
+			system_module->FullPathName,
+			system_module->ImageBase,
+			system_module->ImageSize,
+			dispatch_function,
+			Driver->DeviceObject->DeviceType);
+
+		*Flag = FALSE;
+		DEBUG_ERROR( "system modules ioctl dispatch is outside of its region" );
 		return STATUS_SUCCESS;
 	}
 
-	DEBUG_ERROR( "Driver with invalid IOCTL dispatch routine found" );
-	*Flag = FALSE;
+	//DEBUG_LOG( "Current function: %llx", dispatch_function );
 
-	return STATUS_SUCCESS;
+	//if ( dispatch_function >= base && dispatch_function <= end )
+	//{
+	//	DEBUG_LOG( "THIS ADDRESS IS INSIDE ITS REGIUON :)" );
+	//	return STATUS_SUCCESS;
+	//}
+
+	//DEBUG_ERROR( "Driver with invalid IOCTL dispatch routine found" );
+	//*Flag = FALSE;
 }
 
 VOID InitDriverList(
@@ -293,10 +346,6 @@ NTSTATUS ValidateDriverObjects(
 			{
 				InvalidDriverListHead->count += 1;
 				AddDriverToList( InvalidDriverListHead, current_driver, REASON_INVALID_IOCTL_DISPATCH );
-			}
-			else
-			{
-				DEBUG_LOG( "All drivers have valid dispatch routines :)" );
 			}
 
 			sub_entry = sub_entry->ChainLink;
