@@ -20,12 +20,13 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 
     LPTSTR pipe_name = (LPTSTR)L"\\\\.\\pipe\\DonnaACPipe";
+    LPCWSTR driver_name = L"\\\\.\\DonnaAC";
 
     std::shared_ptr<global::ThreadPool> thread_pool = std::make_shared<global::ThreadPool>( 4 );
     std::shared_ptr<global::Report> report_interface = std::make_shared<global::Report>( thread_pool, pipe_name );
 
     usermode::UManager umanager( thread_pool, report_interface );
-    kernelmode::KManager kmanager( L"DonnaAC", thread_pool, report_interface);
+    kernelmode::KManager kmanager( driver_name, thread_pool, report_interface);
 
     kmanager.RunNmiCallbacks();
     kmanager.VerifySystemModules();
