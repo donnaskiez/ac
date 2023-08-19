@@ -9,9 +9,7 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	_In_ PBOOLEAN Flag
 )
 {
-	NTSTATUS status;
 	UINT64 dispatch_function;
-
 	UINT64 base = ( UINT64 )Driver->DriverStart;
 	UINT64 end = base + Driver->DriverSize;
 
@@ -25,18 +23,20 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	dispatch_function = Driver->MajorFunction[ IRP_MJ_DEVICE_CONTROL ];
 
 	if ( dispatch_function == NULL )
-		return;
+		return STATUS_SUCCESS;
 
 	DEBUG_LOG( "Current function: %llx", dispatch_function );
 
 	if ( dispatch_function >= base && dispatch_function <= end )
 	{
 		DEBUG_LOG( "THIS ADDRESS IS INSIDE ITS REGIUON :)" );
-		return;
+		return STATUS_SUCCESS;
 	}
 
 	DEBUG_ERROR( "Driver with invalid IOCTL dispatch routine found" );
 	*Flag = FALSE;
+
+	return STATUS_SUCCESS;
 }
 
 VOID InitDriverList(
