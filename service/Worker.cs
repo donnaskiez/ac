@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using service.Types;
 
@@ -192,6 +193,19 @@ namespace service
             {
                 Marshal.FreeHGlobal(ptr);
             }
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool GetNamedPipeClientProcessId(IntPtr Pipe, out uint ClientProcessId);
+        public static uint GetNamedPipeClientProcId(NamedPipeServerStream PipeServer)
+        {
+            UInt32 procId;
+            IntPtr pipeHandle = PipeServer.SafePipeHandle.DangerousGetHandle();
+
+            if (GetNamedPipeClientProcessId(pipeHandle, out procId))
+                return procId;
+
+            return 0;
         }
     }
 }

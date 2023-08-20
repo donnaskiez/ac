@@ -15,3 +15,8 @@ void kernelmode::KManager::VerifySystemModules()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifySystemModules(); } );
 }
+
+void kernelmode::KManager::MonitorCallbackReports()
+{
+
+}

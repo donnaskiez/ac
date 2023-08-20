@@ -33,7 +33,7 @@ namespace global
 
 		Report( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
 
-		/* lock buffer, copy report, send to service then clear buffer */
+		/* lock buffer, attach header, copy report, send to service then clear buffer */
 		template <typename T>
 		void ReportViolation( T* Report )
 		{
@@ -104,6 +104,16 @@ namespace global
 			UINT64 driver_base_address;
 			UINT64 driver_size;
 			CHAR driver_name[ 128 ];
+		};
+
+		struct OPEN_HANDLE_FAILURE_REPORT
+		{
+			INT report_code;
+			INT is_kernel_handle;
+			LONG process_id;
+			LONG thread_id;
+			LONG desired_access;
+			CHAR process_name[ 64 ];
 		};
 	}
 }

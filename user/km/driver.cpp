@@ -130,16 +130,92 @@ void kernelmode::Driver::VerifySystemModules()
 	free( buffer );
 }
 
-void kernelmode::Driver::EnableObRegisterCallbacks()
+/*
+* HOW THIS WILL WORK:
+* 
+* 1. On driver initiation, ObRegisterCallbacks will be registered 
+* 2. Each time a process that is not whitelisted tries to open a handle
+*	 to our game we will store the report in an a report queue
+* 3. the user mode app will then periodically query the driver asking
+*	 how many pending reports there are
+* 4. once the number is received, the app will allocate a buffer large enough
+*	 for all the reports and once again call CompleteQueuedCallbackReports
+* 5. This will then retrieve the reports into the buffer and from there
+*    we can iteratively report them the same way as we do with the system
+*	 modules.
+*/
+
+bool kernelmode::Driver::QueueCallbackReportIrp(PHANDLE Event)
 {
+	if ( !Event )
+		return false;
+
+	OVERLAPPED io;
+	BOOLEAN status;
+	DWORD bytes_returned;
+	global::report_structures::OPEN_HANDLE_FAILURE_REPORT report;
+
+	io.hEvent = *Event;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_MONITOR_CALLBACKS_FOR_REPORTS,
+		NULL,
+		NULL,
+		&report,
+		sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ),
+		&bytes_returned,
+		&io
+	);
+
+	if ( status == NULL )
+	{
+		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
+		return false;
+	}
+
+	WaitForSingleObject( io.hEvent, INFINITE );
+
+	/* we EXPECTED to receive bytes so this is an error */
+	if ( bytes_returned == NULL )
+		return false;
+
+
+
 }
 
-void kernelmode::Driver::DisableObRegisterCallbacks()
+void kernelmode::Driver::NotifyDriverOnProcessLaunch()
 {
+	BOOLEAN status;
+	kernelmode::DRIVER_INITIATION_INFORMATION information;
+	information.protected_process_id = GetCurrentProcessId();
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH,
+		&information,
+		sizeof( kernelmode::DRIVER_INITIATION_INFORMATION ),
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
+}
+
+void kernelmode::Driver::CompleteQueuedCallbackReports()
+{
+
 }
 
 void kernelmode::Driver::EnableProcessLoadNotifyCallbacks()
 {
+	/* 
+	* note: no need for these since when the dll is loaded it will simply
+	* notify the driver.
+	*/
 }
 
 void kernelmode::Driver::DisableProcessLoadNotifyCallbacks()
@@ -147,10 +223,6 @@ void kernelmode::Driver::DisableProcessLoadNotifyCallbacks()
 }
 
 void kernelmode::Driver::ValidateKPRCBThreads()
-{
-}
-
-void kernelmode::Driver::CheckForHypervisor()
 {
 }
 

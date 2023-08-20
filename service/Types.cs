@@ -10,16 +10,12 @@ namespace service
 {
     namespace Types
     {
-        [StructLayout(LayoutKind.Explicit)]
+        [StructLayout(LayoutKind.Sequential)]
         public unsafe struct MODULE_VERIFICATION_CHECKSUM_FAILURE
         {
-            [FieldOffset(0)]
             public int ReportCode;
-            [FieldOffset(0)]
             public UInt64 ModuleBaseAddress;
-            [FieldOffset(0)]
             public UInt64 ModuleSize;
-            [FieldOffset(0)]
             public fixed char ModuleName[512];
         }
 

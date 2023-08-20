@@ -8,6 +8,8 @@
 
 #define IOCCTL_RUN_NMI_CALLBACKS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2001, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_DRIVER_OBJECTS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2002, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_MONITOR_CALLBACKS_FOR_REPORTS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2003, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2004, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 namespace kernelmode
 {
@@ -22,14 +24,19 @@ namespace kernelmode
 
 		void RunNmiCallbacks();
 		void VerifySystemModules();
-		void EnableObRegisterCallbacks();
-		void DisableObRegisterCallbacks();
+		bool QueueCallbackReportIrp( PHANDLE Event );
+		void NotifyDriverOnProcessLaunch();
+		void CompleteQueuedCallbackReports();
 		void EnableProcessLoadNotifyCallbacks();
 		void DisableProcessLoadNotifyCallbacks();
 		void ValidateKPRCBThreads();
-		void CheckForHypervisor();
 		void CheckDriverHeartbeat();
 		/* todo: driver integrity check */
+	};
+
+	struct DRIVER_INITIATION_INFORMATION
+	{
+		LONG protected_process_id;
 	};
 }
 

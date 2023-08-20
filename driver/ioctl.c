@@ -4,6 +4,7 @@
 
 #include "nmi.h"
 #include "modules.h"
+#include "driver.h"
 
 NTSTATUS DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
@@ -87,6 +88,13 @@ NTSTATUS DeviceControl(
 		ObDereferenceObject( thread );
 
 		break;
+
+	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
+
+		PDRIVER_INITIATION_INFORMATION information = ( PDRIVER_INITIATION_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
+		UpdateProtectedProcessId( information->protected_process_id );
+		break;
+
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
