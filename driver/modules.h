@@ -24,7 +24,7 @@ typedef struct _MODULE_VALIDATION_FAILURE
 	INT report_type;
 	UINT64 driver_base_address;
 	UINT64 driver_size;
-	PCHAR driver_name[ 128 ];
+	CHAR driver_name[ 128 ];
 
 }MODULE_VALIDATION_FAILURE, *PMODULE_VALIDATION_FAILURE;
 

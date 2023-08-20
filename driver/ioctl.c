@@ -30,9 +30,6 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_VALIDATE_DRIVER_OBJECTS:
 
-		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
-		PAGED_CODE();
-
 		/*
 		* The reason this function is run in a new thread and not the thread
 		* issuing the IOCTL is because ZwOpenDirectoryObject issues a
@@ -40,6 +37,9 @@ NTSTATUS DeviceControl(
 		* This is a problem because when we pass said handle to ObReferenceObjectByHandle
 		* it will issue a bug check under windows driver verifier.
 		*/
+
+		DEBUG_LOG( "irp addr: %p", ( void* )Irp );
+
 		status = PsCreateSystemThread(
 			&handle,
 			PROCESS_ALL_ACCESS,
@@ -78,8 +78,11 @@ NTSTATUS DeviceControl(
 			goto end;
 		}
 
+		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
+		PAGED_CODE();
+		DEBUG_LOG( "waiting for thread to finish" );
 		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );
-
+		DEBUG_LOG( "THREAD FINISHED" );
 		ZwClose( handle );
 		ObDereferenceObject( thread );
 
@@ -91,9 +94,9 @@ NTSTATUS DeviceControl(
 	}
 
 end:
-
-	IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	DEBUG_LOG( "completing irp request" );
 	Irp->IoStatus.Status = status;
+	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return status;
 }
 

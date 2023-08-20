@@ -411,11 +411,6 @@ NTSTATUS HandleValidateDriversIOCTL(
 		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
 			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE );
 
-		RtlCopyMemory(
-			Irp->AssociatedIrp.SystemBuffer,
-			&header,
-			sizeof( MODULE_VALIDATION_FAILURE_HEADER ) );
-
 		for ( INT i = 0; i < head->count; i++ )
 		{
 			/* make sure we free any non reported modules */
@@ -431,10 +426,20 @@ NTSTATUS HandleValidateDriversIOCTL(
 			report.driver_base_address = head->first_entry->driver->DriverStart;
 			report.driver_size = head->first_entry->driver->Size;
 
-			RtlCopyMemory(
-				&report.driver_name,
-				head->first_entry->driver->DriverName.Buffer,
-				MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE );
+			ANSI_STRING string;
+			string.Length = 0;
+			string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
+			string.Buffer = &report.driver_name;
+
+			status = RtlUnicodeStringToAnsiString(
+				&string,
+				&head->first_entry->driver->DriverName,
+				FALSE
+			);
+
+			/* still continue if we fail to get the driver name */
+			if ( !NT_SUCCESS( status ) )
+				DEBUG_ERROR( "RtlUnicodeStringToAnsiString failed with statsu %x", status );
 
 			RtlCopyMemory(
 				( UINT64 )Irp->AssociatedIrp.SystemBuffer + sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + i * sizeof( MODULE_VALIDATION_FAILURE ),
@@ -451,13 +456,6 @@ NTSTATUS HandleValidateDriversIOCTL(
 
 	ExFreePoolWithTag( head, INVALID_DRIVER_LIST_HEAD_POOL );
 	ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
-
-	/*
-	* Complete the IRP here so we don't have to implement a waiting mechanism
-	* to prevent an early completion of the IRP.
-	*/
-	//IoCompleteRequest( Irp, IO_NO_INCREMENT );
-	//Irp->IoStatus.Status = status;
 
 	return status;
 }

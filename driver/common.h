@@ -15,6 +15,7 @@
 #define SYSTEM_MODULES_POOL 'halb'
 #define THREAD_DATA_POOL 'doof'
 #define PROC_AFFINITY_POOL 'eeee'
+#define TEMP_BUFFER_POOL 'ffff'
 
 #define ERROR -1
 #define STACK_FRAME_POOL_SIZE 0x200
