@@ -14,7 +14,10 @@ VOID InitCallbackReportQueue( PBOOLEAN Status )
 	report_queue = QueueCreate();
 
 	if ( report_queue == NULL )
+	{
 		*Status = FALSE;
+		return;
+	}
 
 	KeInitializeGuardedMutex( &mutex );
 
@@ -124,6 +127,11 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 
 	LPCSTR process_creator_name = PsGetProcessImageFileName( process_creator );
 	LPCSTR target_process_name = PsGetProcessImageFileName( target_process );
+
+	/* 
+	* NOTE for whatever fukin reason this shit prevent notepad rfom launching need
+	* 2 fix lol
+	*/
 
 	if ( !strcmp( "notepad.exe", target_process_name) )
 	{
