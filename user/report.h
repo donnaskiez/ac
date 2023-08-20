@@ -103,7 +103,7 @@ namespace global
 			INT report_type;
 			UINT64 driver_base_address;
 			UINT64 driver_size;
-			BYTE driver_name[ 128 ];
+			CHAR driver_name[ 128 ];
 		};
 	}
 }

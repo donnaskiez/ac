@@ -1,5 +1,7 @@
 #include "driver.h"
 
+#include <iostream>
+
 #include "../common.h"
 
 kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface )
@@ -116,6 +118,8 @@ void kernelmode::Driver::VerifySystemModules()
 	*/
 	memcpy( &header, buffer, sizeof( header_size ) );
 
+	LOG_INFO( "module report count: %lx", header.module_count );
+
 	UINT64 base = ( UINT64 )buffer + sizeof( header_size );
 
 	for ( int i = 0; i < header.module_count; i++ )
@@ -125,6 +129,10 @@ void kernelmode::Driver::VerifySystemModules()
 			PVOID( base + i * sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) ),
 			sizeof( global::report_structures::MODULE_VALIDATION_FAILURE )
 		);
+
+		std::cout << report.report_code << " " << report.report_type << " " 
+			<< report.driver_base_address << " " << report.driver_size << " "
+			<< report.driver_name << std::endl;
 
 		this->report_interface->ReportViolation( &report );
 

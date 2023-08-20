@@ -402,7 +402,10 @@ NTSTATUS HandleValidateDriversIOCTL(
 	}
 
 	MODULE_VALIDATION_FAILURE_HEADER header;
-	header.module_count = head->count;
+
+	header.module_count = head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+		? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+		: head->count;
 
 	if ( head->count > 0 )
 	{
