@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -53,18 +54,13 @@ namespace service
             public UInt64 InvalidRip;
         }
 
-        [StructLayout(LayoutKind.Explicit)]
+        [StructLayout(LayoutKind.Sequential)]
         public unsafe struct MODULE_VALIDATION_FAILURE
         {
-            [FieldOffset(0)]
             public int ReportCode;
-            [FieldOffset(0)]
             public int ReportType;
-            [FieldOffset(0)]
-            public UInt64 DriverBaseAddress;
-            [FieldOffset(0)]
-            public UInt64 DriverSize;
-            [FieldOffset(0)]
+            public long DriverBaseAddress;
+            public long DriverSize;
             public fixed char ModuleName[128];
         }
     }

@@ -433,7 +433,7 @@ NTSTATUS HandleValidateDriversIOCTL(
 			report.report_code = REPORT_MODULE_VALIDATION_FAILURE;
 			report.report_type = head->first_entry->reason;
 			report.driver_base_address = head->first_entry->driver->DriverStart;
-			report.driver_size = head->first_entry->driver->Size;
+			report.driver_size = head->first_entry->driver->DriverSize;
 
 			ANSI_STRING string;
 			string.Length = 0;

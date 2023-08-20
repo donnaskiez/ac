@@ -43,8 +43,8 @@ namespace global
 			header.message_type = REPORT_PACKET_ID;
 			memcpy( this->buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
-			memcpy( this->buffer + sizeof( global::headers::PIPE_PACKET_HEADER ), Report, sizeof(T));
-			this->client->WriteToPipe( buffer, sizeof(T) );
+			memcpy( PVOID( ( UINT64 )this->buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ), Report, sizeof( T ) );
+			this->client->WriteToPipe( buffer, sizeof(T) + sizeof( global::headers::PIPE_PACKET_HEADER ) );
 			RtlZeroMemory( this->buffer, REPORT_BUFFER_SIZE );
 
 			mutex.unlock();

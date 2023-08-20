@@ -124,7 +124,7 @@ void kernelmode::Driver::VerifySystemModules()
 				( UINT64 )buffer + sizeof( global::report_structures::MODULE_VALIDATION_FAILURE_HEADER ) + 
 				i * sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) );
 
-		this->report_interface->ReportViolation( &report );
+		this->report_interface->ReportViolation( report );
 	}
 
 	free( buffer );

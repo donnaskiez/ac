@@ -161,8 +161,9 @@ namespace service
 
                     var kernelModuleFailure = BytesToStructure<MODULE_VALIDATION_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, DriverBaseAddress: {1}, DriverSize: {2}",
+                    _logger.LogInformation("Report code: {0}, REportType: {1}, DriverBaseAddress: {2}, DriverSize: {3}",
                         kernelModuleFailure.ReportCode,
+                        kernelModuleFailure.ReportType,
                         kernelModuleFailure.DriverBaseAddress,
                         kernelModuleFailure.DriverSize);
 
