@@ -420,7 +420,10 @@ NTSTATUS HandleValidateDriversIOCTL(
 		{
 			/* make sure we free any non reported modules */
 			if ( i >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT )
+			{
 				RemoveInvalidDriverFromList( head );
+				continue;
+			}
 
 			MODULE_VALIDATION_FAILURE report;
 			report.report_code = REPORT_MODULE_VALIDATION_FAILURE;
