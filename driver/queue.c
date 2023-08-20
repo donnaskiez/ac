@@ -15,7 +15,7 @@ PQUEUE_HEAD QueueCreate()
 	head->start = NULL;
 	head->entries = 0;
 
-	KeInitializeSpinLock( head->lock );
+	KeInitializeSpinLock( &head->lock );
 
 	return head;
 }
@@ -26,7 +26,7 @@ VOID QueuePush(
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( Head->lock, &irql );
+	KeAcquireSpinLock( &Head->lock, &irql );
 
 	PQUEUE_NODE temp = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( QUEUE_NODE ), QUEUE_POOL_TAG );
 
@@ -36,7 +36,6 @@ VOID QueuePush(
 	Head->entries += 1;
 
 	temp->data = Data;
-	temp->lock = Head->lock;
 
 	if ( Head->end != NULL )
 		Head->end->next = temp;
@@ -47,7 +46,7 @@ VOID QueuePush(
 		Head->start = temp;
 
 end:
-	KeReleaseSpinLock( Head->lock, irql );
+	KeReleaseSpinLock( &Head->lock, irql );
 }
 
 PVOID QueuePop(
@@ -55,7 +54,7 @@ PVOID QueuePop(
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( Head->lock, &irql );
+	KeAcquireSpinLock( &Head->lock, &irql );
 
 	PVOID data = NULL;
 	PQUEUE_NODE temp = Head->start;
@@ -74,6 +73,6 @@ PVOID QueuePop(
 	ExFreePoolWithTag( temp, QUEUE_POOL_TAG );
 
 end:
-	KeReleaseSpinLock( Head->lock, irql );
+	KeReleaseSpinLock( &Head->lock, irql );
 	return data;
 }

@@ -176,12 +176,17 @@ void kernelmode::Driver::QueryReportQueue()
 	global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* header =
 		( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* )buffer;
 
+	if ( !header )
+		return;
+
 	for ( int i = 0; i < header->count; i++ )
 	{
 		global::report_structures::OPEN_HANDLE_FAILURE_REPORT* report =
 			( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
 				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) +
 				i * sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) );
+
+		std::cout << report->process_id << " " << report->process_name << std::endl;
 
 		this->report_interface->ReportViolation( report );
 	}

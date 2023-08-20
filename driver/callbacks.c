@@ -125,12 +125,17 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	LPCSTR process_creator_name = PsGetProcessImageFileName( process_creator );
 	LPCSTR target_process_name = PsGetProcessImageFileName( target_process );
 
-	if ( protected_process_id ==  target_process_id)
+	if ( !strcmp( "notepad.exe", target_process_name) )
 	{
 		if ( !strcmp( process_creator_name, "lsass.exe" ) || !strcmp( process_creator_name, "csrss.exe" ) )
 		{
 			/* We will downgrade these handles later */
 			DEBUG_LOG( "Handles created by CSRSS and LSASS are allowed for now..." );
+		}
+		else if ( target_process == process_creator )
+		{
+			DEBUG_LOG( "handles made by NOTEPAD r okay :)" );
+			/* handles created by the game (notepad) are okay */
 		}
 		/* NOTE: try allowing only 1 handle from the proc creator */
 		else if ( parent_process_id == process_creator_id )

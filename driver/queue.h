@@ -8,7 +8,6 @@
 typedef struct _QUEUE_NODE
 {
 	struct _QUEUE_NODE* next;
-	PKSPIN_LOCK lock;
 	PVOID data;
 
 }QUEUE_NODE, *PQUEUE_NODE;
@@ -17,7 +16,7 @@ typedef struct QUEUE_HEAD
 {
 	struct _QUEUE_NODE* start;
 	struct _QUEUE_NODE* end;
-	PKSPIN_LOCK lock;
+	KSPIN_LOCK lock;
 	INT entries;
 
 }QUEUE_HEAD, *PQUEUE_HEAD;

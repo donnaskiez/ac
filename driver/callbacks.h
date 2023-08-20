@@ -62,4 +62,10 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 	_In_ PIRP Irp
 );
 
+VOID ProcessCreateNotifyRoutine(
+	_In_ HANDLE ParentId,
+	_In_ HANDLE ProcessId,
+	_In_ BOOLEAN Create
+);
+
 #endif
