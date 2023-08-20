@@ -17,6 +17,7 @@
 #define REPORT_PATTERN_SCAN_FAILURE 40
 #define REPORT_NMI_CALLBACK_FAILURE 50
 #define REPORT_MODULE_VALIDATION_FAILURE 60
+#define REPORT_ILLEGAL_HANDLE_OPERATION 70
 
 
 
@@ -104,6 +105,12 @@ namespace global
 			UINT64 driver_base_address;
 			UINT64 driver_size;
 			CHAR driver_name[ 128 ];
+		};
+
+		struct OPEN_HANDLE_FAILURE_REPORT_HEADER
+		{
+			INT count;
+
 		};
 
 		struct OPEN_HANDLE_FAILURE_REPORT

@@ -145,42 +145,48 @@ void kernelmode::Driver::VerifySystemModules()
 *	 modules.
 */
 
-bool kernelmode::Driver::QueueCallbackReportIrp(PHANDLE Event)
+void kernelmode::Driver::QueryReportQueue()
 {
-	if ( !Event )
-		return false;
-
-	OVERLAPPED io;
 	BOOLEAN status;
 	DWORD bytes_returned;
+	PVOID buffer;
+	LONG buffer_size;
 	global::report_structures::OPEN_HANDLE_FAILURE_REPORT report;
 
-	io.hEvent = *Event;
+	buffer_size = sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP ;
+	buffer = malloc( buffer_size );
 
 	status = DeviceIoControl(
 		this->driver_handle,
-		IOCTL_MONITOR_CALLBACKS_FOR_REPORTS,
+		IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE,
 		NULL,
 		NULL,
-		&report,
-		sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ),
+		buffer,
+		buffer_size,
 		&bytes_returned,
-		&io
+		NULL
 	);
 
 	if ( status == NULL )
 	{
 		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
-		return false;
+		return;
 	}
 
-	WaitForSingleObject( io.hEvent, INFINITE );
+	global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* header =
+		( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* )buffer;
 
-	/* we EXPECTED to receive bytes so this is an error */
-	if ( bytes_returned == NULL )
-		return false;
+	for ( int i = 0; i < header->count; i++ )
+	{
+		global::report_structures::OPEN_HANDLE_FAILURE_REPORT* report =
+			( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
+				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) +
+				i * sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) );
 
+		this->report_interface->ReportViolation( report );
+	}
 
+	free( buffer );
 
 }
 

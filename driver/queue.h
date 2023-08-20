@@ -18,10 +18,11 @@ typedef struct QUEUE_HEAD
 	struct _QUEUE_NODE* start;
 	struct _QUEUE_NODE* end;
 	PKSPIN_LOCK lock;
+	INT entries;
 
 }QUEUE_HEAD, *PQUEUE_HEAD;
 
-PQUEUE_NODE QueueCreate();
+PQUEUE_HEAD QueueCreate();
 
 VOID QueuePush(
 	_In_ PQUEUE_HEAD Head,

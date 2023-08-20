@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Serilog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -58,6 +59,18 @@ namespace service
             public long DriverBaseAddress;
             public long DriverSize;
             public fixed char ModuleName[128];
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public unsafe struct OPEN_HANDLE_FAILURE_REPORT
+        {
+            public int ReportCode;
+            public int IsKernelHandle;
+            public long ProcessId;
+            public long ThreadId;
+            public long DesiredAccess;
+            public fixed char ProcessName[64];
+
         }
     }
 }

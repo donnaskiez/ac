@@ -23,6 +23,7 @@ namespace service
         private const int REPORT_PATTERN_SCAN_FAILURE = 40;
         private const int REPORT_NMI_CALLBACK_FAILURE = 50;
         private const int REPORT_KERNEL_MODULE_FAILURE = 60;
+        private const int REPORT_OPEN_HANDLE_FAILURE_REPORT = 70;
 
         private const int MESSAGE_TYPE_REPORT = 1;
         private const int MESSAGE_TYPE_REQUEST = 2;
@@ -167,6 +168,18 @@ namespace service
                         kernelModuleFailure.ReportType,
                         kernelModuleFailure.DriverBaseAddress,
                         kernelModuleFailure.DriverSize);
+
+                    goto end;
+
+                case REPORT_OPEN_HANDLE_FAILURE_REPORT:
+
+                    var openHandleFailure = BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>();
+
+                    _logger.LogInformation("Report code: {0}, ProcessID: {1}, ThreadId: {2}, DesiredAccess{3}",
+                        openHandleFailure.ReportCode,
+                        openHandleFailure.ProcessId,
+                        openHandleFailure.ThreadId,
+                        openHandleFailure.DesiredAccess);
 
                     goto end;
 

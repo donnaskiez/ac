@@ -5,6 +5,20 @@
 #include <wdftypes.h>
 #include <wdf.h>
 
+#define REPORT_ILLEGAL_HANDLE_OPERATION 70
+
+#define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
+
+#define REPORT_POOL_TAG 'repo'
+
+#define MAX_HANDLE_REPORTS_PER_IRP 10
+
+typedef struct _OPEN_HANDLE_FAILURE_REPORT_HEADER
+{
+	INT count;
+
+}OPEN_HANDLE_FAILURE_REPORT_HEADER, *POPEN_HANDLE_FAILURE_REPORT_HEADER;
+
 typedef struct _OPEN_HANDLE_FAILURE_REPORT
 {
 	INT report_code;
@@ -12,7 +26,7 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 	LONG process_id;
 	LONG thread_id;
 	LONG desired_access;
-	CHAR process_name[ 64 ];
+	CHAR process_name[ HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH ];
 
 }OPEN_HANDLE_FAILURE_REPORT, *POPEN_HANDLE_FAILURE_REPORT;
 
@@ -43,5 +57,9 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 
 VOID InitCallbackReportQueue(PBOOLEAN Status);
 VOID DeleteCallbackReportQueueHead();
+
+NTSTATUS HandlePeriodicCallbackReportQueue(
+	_In_ PIRP Irp
+);
 
 #endif

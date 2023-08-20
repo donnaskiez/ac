@@ -5,6 +5,7 @@
 #include "nmi.h"
 #include "modules.h"
 #include "driver.h"
+#include "callbacks.h"
 
 NTSTATUS DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
@@ -95,6 +96,14 @@ NTSTATUS DeviceControl(
 		UpdateProtectedProcessId( information->protected_process_id );
 		break;
 
+	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
+
+		status = HandlePeriodicCallbackReportQueue(Irp);
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "Failed to handle period callback report queue" );
+
+		break;
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
@@ -102,7 +111,6 @@ NTSTATUS DeviceControl(
 	}
 
 end:
-	DEBUG_LOG( "completing irp request" );
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return status;

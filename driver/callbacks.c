@@ -7,12 +7,16 @@
 
 PQUEUE_HEAD report_queue = NULL;
 
+KGUARDED_MUTEX mutex;
+
 VOID InitCallbackReportQueue( PBOOLEAN Status )
 {
 	report_queue = QueueCreate();
 
 	if ( report_queue == NULL )
 		*Status = FALSE;
+
+	KeInitializeGuardedMutex( &mutex );
 
 	*Status = TRUE;
 }
@@ -22,14 +26,63 @@ VOID DeleteCallbackReportQueueHead()
 	ExFreePoolWithTag( report_queue, QUEUE_POOL_TAG );
 }
 
-VOID InsertReportToQueue( POPEN_HANDLE_FAILURE_REPORT Report )
+VOID InsertReportToQueue( 
+	_In_ POPEN_HANDLE_FAILURE_REPORT Report 
+)
 {
 	QueuePush( report_queue, Report );
 }
 
-PVOID PopFirstReportFromQueue( report_queue )
+POPEN_HANDLE_FAILURE_REPORT PopFirstReportFromQueue()
 {
 	return QueuePop( report_queue );
+}
+
+NTSTATUS HandlePeriodicCallbackReportQueue( 
+	_In_ PIRP Irp 
+)
+{
+	PVOID report = NULL;
+	INT count = 0;
+	OPEN_HANDLE_FAILURE_REPORT_HEADER header;
+
+	KeAcquireGuardedMutex( &mutex );
+	report = PopFirstReportFromQueue();
+
+	if ( report == NULL )
+	{
+		DEBUG_LOG( "callback report queue is empty, returning" );
+		KeReleaseGuardedMutex( &mutex );
+		Irp->IoStatus.Information = NULL;
+		return STATUS_SUCCESS;
+	}
+
+	Irp->IoStatus.Information = sizeof( OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP + 
+		sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER );
+
+	while ( report != NULL )
+	{
+		if ( count >= MAX_HANDLE_REPORTS_PER_IRP )
+			goto end;
+
+		RtlCopyMemory(
+			 ( ( UINT64 )Irp->AssociatedIrp.SystemBuffer + sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER ) ) + count * sizeof( OPEN_HANDLE_FAILURE_REPORT ),
+			report,
+			sizeof( OPEN_HANDLE_FAILURE_REPORT )
+		);
+
+		report = PopFirstReportFromQueue();
+		count += 1;
+	}
+
+	header.count = count;
+	RtlCopyMemory( Irp->AssociatedIrp.SystemBuffer, &header, sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER ));
+
+	DEBUG_LOG( "Moved all reports into the IRP, sending !" );
+
+end:
+	KeReleaseGuardedMutex( &mutex );
+	return STATUS_SUCCESS;
 }
 
 VOID ObPostOpCallbackRoutine(
@@ -90,8 +143,24 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			OperationInformation->Parameters->CreateHandleInformation.DesiredAccess = deny_access;
 			OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess = deny_access;
 			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
+
+			POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
+
+			if ( !report )
+				goto end;
+
+			report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
+			report->desired_access = OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+			report->is_kernel_handle = OperationInformation->KernelHandle;
+			report->process_id = process_creator_id;
+			report->thread_id = PsGetCurrentThreadId();
+			memcpy( report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+
+			InsertReportToQueue( report );
 		}
 	}
+
+end:
 
 	return OB_PREOP_SUCCESS;
 }
@@ -133,6 +202,6 @@ VOID ProcessCreateNotifyRoutine(
 	{
 		parent_process_id = PsGetProcessId( target_process );
 		UpdateProtectedProcessId( parent_process_id );
-		LOG_INFO( "Protected process parent proc id: %lx", parent_process_id );
+		DEBUG_LOG( "Protected process parent proc id: %lx", parent_process_id );
 	}
 }

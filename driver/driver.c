@@ -10,6 +10,9 @@ LONG protected_process_id;
 LONG protected_process_parent_id;
 KGUARDED_MUTEX mutex;
 
+UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
+UNICODE_STRING DEVICE_SYMBOLIC_LINK = RTL_CONSTANT_STRING( L"\\??\\DonnaAC" );
+
 VOID UpdateProtectedProcessId( 
 	_In_ LONG NewProcessId 
 )

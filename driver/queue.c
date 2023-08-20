@@ -1,5 +1,9 @@
 #include "queue.h"
 
+/*
+* Basic thread-safe queue implementation that can be used to create queues for any data.
+*/
+
 PQUEUE_HEAD QueueCreate()
 {
 	PQUEUE_HEAD head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( PQUEUE_HEAD ), QUEUE_POOL_TAG );
@@ -9,6 +13,7 @@ PQUEUE_HEAD QueueCreate()
 
 	head->end = NULL;
 	head->start = NULL;
+	head->entries = 0;
 
 	KeInitializeSpinLock( head->lock );
 
@@ -27,6 +32,8 @@ VOID QueuePush(
 
 	if ( !temp )
 		goto end;
+
+	Head->entries += 1;
 
 	temp->data = Data;
 	temp->lock = Head->lock;
@@ -55,6 +62,8 @@ PVOID QueuePop(
 
 	if ( temp == NULL )
 		goto end;
+
+	Head->entries -= 1;
 
 	data = temp->data;
 	Head->start = temp->next;
