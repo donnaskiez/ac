@@ -411,6 +411,12 @@ NTSTATUS HandleValidateDriversIOCTL(
 		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
 			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE );
 
+		RtlCopyMemory(
+			Irp->AssociatedIrp.SystemBuffer,
+			&header,
+			sizeof( MODULE_VALIDATION_FAILURE_HEADER )
+		);
+
 		for ( INT i = 0; i < head->count; i++ )
 		{
 			/* make sure we free any non reported modules */
