@@ -67,8 +67,6 @@ void kernelmode::Driver::VerifySystemModules()
 	PVOID buffer;
 	SIZE_T buffer_size;
 	SIZE_T header_size;
-	global::report_structures::MODULE_VALIDATION_FAILURE_HEADER header;
-	global::report_structures::MODULE_VALIDATION_FAILURE report;
 
 	/*
 	* allocate enough to report 5 invalid driver objects + header. The reason we use a raw
@@ -116,28 +114,17 @@ void kernelmode::Driver::VerifySystemModules()
 	* if I am being honest it is just easier in c++ and that way the process
 	* is streamlined just like all other report packets.
 	*/
-	memcpy( &header, buffer, sizeof( header_size ) );
+	global::report_structures::MODULE_VALIDATION_FAILURE_HEADER* header =
+		( global::report_structures::MODULE_VALIDATION_FAILURE_HEADER* )buffer;
 
-	LOG_INFO( "module report count: %lx", header.module_count );
-
-	UINT64 base = ( UINT64 )buffer + sizeof( header_size );
-
-	for ( int i = 0; i < header.module_count; i++ )
+	for ( int i = 0; i < header->module_count; i++ )
 	{
-		memcpy(
-			&report,
-			PVOID( base + i * sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) ),
-			sizeof( global::report_structures::MODULE_VALIDATION_FAILURE )
-		);
-
-		std::cout << report.report_code << " " << report.report_type << " " 
-			<< report.driver_base_address << " " << report.driver_size << " "
-			<< report.driver_name << std::endl;
+		global::report_structures::MODULE_VALIDATION_FAILURE* report =
+			( global::report_structures::MODULE_VALIDATION_FAILURE* )( 
+				( UINT64 )buffer + sizeof( global::report_structures::MODULE_VALIDATION_FAILURE_HEADER ) + 
+				i * sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) );
 
 		this->report_interface->ReportViolation( &report );
-
-		/* sanity clear just in case ;) */
-		RtlZeroMemory( &report, sizeof( global::report_structures::MODULE_VALIDATION_FAILURE ) );
 	}
 
 	free( buffer );
