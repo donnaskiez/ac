@@ -19,14 +19,13 @@ VOID InitCallbackReportQueue( PBOOLEAN Status )
 	test_queue.end = NULL;
 	test_queue.entries = 0;
 	KeInitializeSpinLock( &test_queue.lock );
+	KeInitializeGuardedMutex( &mutex );
 
 	//if ( report_queue == NULL )
 	//{
 	//	*Status = FALSE;
 	//	return;
 	//}
-
-	KeInitializeGuardedMutex( &mutex );
 
 	*Status = TRUE;
 }
