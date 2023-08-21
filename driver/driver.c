@@ -4,6 +4,9 @@
 #include "ioctl.h"
 #include "callbacks.h"
 
+#include "hv.h"
+
+
 PVOID callback_registration_handle;
 
 LONG protected_process_id;

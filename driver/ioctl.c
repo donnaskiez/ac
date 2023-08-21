@@ -7,6 +7,8 @@
 #include "driver.h"
 #include "callbacks.h"
 
+#include "hv.h"
+
 NTSTATUS DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PIRP Irp
@@ -39,8 +41,6 @@ NTSTATUS DeviceControl(
 		* This is a problem because when we pass said handle to ObReferenceObjectByHandle
 		* it will issue a bug check under windows driver verifier.
 		*/
-
-		DEBUG_LOG( "irp addr: %p", ( void* )Irp );
 
 		status = PsCreateSystemThread(
 			&handle,
@@ -97,6 +97,8 @@ NTSTATUS DeviceControl(
 		break;
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
+
+		APERFMsrTimingCheck();
 
 		status = HandlePeriodicCallbackReportQueue(Irp);
 

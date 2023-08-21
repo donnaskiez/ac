@@ -127,6 +127,7 @@
   <ItemGroup>
     <ClCompile Include="callbacks.c" />
     <ClCompile Include="driver.c" />
+    <ClCompile Include="hv.c" />
     <ClCompile Include="ioctl.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="nmi.c" />
@@ -136,6 +137,7 @@
     <ClInclude Include="callbacks.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="driver.h" />
+    <ClInclude Include="hv.h" />
     <ClInclude Include="ioctl.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="nmi.h" />
