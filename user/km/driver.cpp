@@ -182,6 +182,9 @@ void kernelmode::Driver::QueryReportQueue()
 	if ( !header )
 		goto end;
 
+	if ( header->count == 0 )
+		goto end;
+
 	for ( int i = 0; i < header->count; i++ )
 	{
 		global::report_structures::OPEN_HANDLE_FAILURE_REPORT* report =
@@ -196,6 +199,15 @@ void kernelmode::Driver::QueryReportQueue()
 
 end:
 	free( buffer );
+}
+
+void kernelmode::Driver::RunCallbackReportQueue()
+{
+	while ( true )
+	{
+		this->QueryReportQueue();
+		std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
+	}
 }
 
 void kernelmode::Driver::NotifyDriverOnProcessLaunch()

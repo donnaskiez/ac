@@ -62,7 +62,7 @@ PVOID QueuePop(
 	if ( temp == NULL )
 		goto end;
 
-	Head->entries -= 1;
+	Head->entries = Head->entries - 1;
 
 	data = temp->data;
 	Head->start = temp->next;

@@ -28,14 +28,9 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     usermode::UManager umanager( thread_pool, report_interface );
     kernelmode::KManager kmanager( driver_name, thread_pool, report_interface);
 
+    kmanager.MonitorCallbackReports();
     //kmanager.RunNmiCallbacks();
     //kmanager.VerifySystemModules();
-
-    while ( true )
-    {
-        kmanager.MonitorCallbackReports();
-        std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
-    }
 
     //umanager.ValidateProcessModules();
     //umanager.ValidateProcessMemory();

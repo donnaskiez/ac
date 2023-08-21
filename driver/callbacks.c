@@ -62,9 +62,8 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 	if ( report == NULL )
 	{
 		DEBUG_LOG( "callback report queue is empty, returning" );
-		KeReleaseGuardedMutex( &mutex );
-		Irp->IoStatus.Information = NULL;
-		return STATUS_SUCCESS;
+		Irp->IoStatus.Information = sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER );
+		goto end;
 	}
 
 	Irp->IoStatus.Information = sizeof( OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP + 

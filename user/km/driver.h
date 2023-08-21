@@ -21,13 +21,15 @@ namespace kernelmode
 		HANDLE driver_handle;
 		LPCWSTR driver_name;
 		std::shared_ptr<global::Report> report_interface;
+
+		void QueryReportQueue();
 	public:
 
 		Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface );
 
 		void RunNmiCallbacks();
 		void VerifySystemModules();
-		void QueryReportQueue();
+		void RunCallbackReportQueue();
 		void NotifyDriverOnProcessLaunch();
 		void CompleteQueuedCallbackReports();
 		void EnableProcessLoadNotifyCallbacks();
