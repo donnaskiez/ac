@@ -71,6 +71,8 @@ NTSTATUS PopulateWhitelistedModuleBuffer(
 			sizeof( WHITELISTED_REGIONS )
 		);
 	}
+
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS ValidateDriverIOCTLDispatchRegion(
