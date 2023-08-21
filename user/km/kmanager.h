@@ -20,6 +20,7 @@ namespace kernelmode
 		void RunNmiCallbacks();
 		void VerifySystemModules();
 		void MonitorCallbackReports();
+		void DetectSystemVirtualization();
 	};
 }
 

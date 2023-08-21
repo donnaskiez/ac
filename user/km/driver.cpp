@@ -192,8 +192,6 @@ void kernelmode::Driver::QueryReportQueue()
 				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) +
 				i * sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) );
 
-		std::cout << report->process_id << " " << report->process_name << std::endl;
-
 		this->report_interface->ReportViolation( report );
 	}
 
@@ -232,21 +230,33 @@ void kernelmode::Driver::NotifyDriverOnProcessLaunch()
 		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
 }
 
-void kernelmode::Driver::CompleteQueuedCallbackReports()
+void kernelmode::Driver::DetectSystemVirtualization()
 {
+	BOOLEAN status;
+	HYPERVISOR_DETECTION_REPORT report;
+	DWORD bytes_returned;
 
-}
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_PERFORM_VIRTUALIZATION_CHECK,
+		NULL,
+		NULL,
+		&report,
+		sizeof( HYPERVISOR_DETECTION_REPORT ),
+		&bytes_returned,
+		NULL
+	);
 
-void kernelmode::Driver::EnableProcessLoadNotifyCallbacks()
-{
-	/* 
-	* note: no need for these since when the dll is loaded it will simply
-	* notify the driver.
-	*/
-}
+	if ( status == NULL )
+	{
+		LOG_ERROR( "DeviceIoControl failed virtualization detect with status %x", GetLastError() );
+		return;
+	}
 
-void kernelmode::Driver::DisableProcessLoadNotifyCallbacks()
-{
+	if ( report.aperf_msr_timing_check == TRUE || report.invd_emulation_check == TRUE )
+		LOG_INFO( "HYPERVISOR DETECTED!!!" );
+
+	/* shutdown the application or smth lmao */
 }
 
 void kernelmode::Driver::ValidateKPRCBThreads()

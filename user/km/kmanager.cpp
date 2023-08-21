@@ -20,3 +20,8 @@ void kernelmode::KManager::MonitorCallbackReports()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RunCallbackReportQueue(); } );
 }
+
+void kernelmode::KManager::DetectSystemVirtualization()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->DetectSystemVirtualization(); } );
+}

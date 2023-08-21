@@ -11,6 +11,7 @@
 #define IOCTL_MONITOR_CALLBACKS_FOR_REPORTS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2003, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2004, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2005, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_PERFORM_VIRTUALIZATION_CHECK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2006, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define MAX_HANDLE_REPORTS_PER_IRP 10
 
@@ -23,6 +24,7 @@ namespace kernelmode
 		std::shared_ptr<global::Report> report_interface;
 
 		void QueryReportQueue();
+
 	public:
 
 		Driver(LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface );
@@ -31,9 +33,7 @@ namespace kernelmode
 		void VerifySystemModules();
 		void RunCallbackReportQueue();
 		void NotifyDriverOnProcessLaunch();
-		void CompleteQueuedCallbackReports();
-		void EnableProcessLoadNotifyCallbacks();
-		void DisableProcessLoadNotifyCallbacks();
+		void DetectSystemVirtualization();
 		void ValidateKPRCBThreads();
 		void CheckDriverHeartbeat();
 		/* todo: driver integrity check */
@@ -42,6 +42,12 @@ namespace kernelmode
 	struct DRIVER_INITIATION_INFORMATION
 	{
 		LONG protected_process_id;
+	};
+
+	struct HYPERVISOR_DETECTION_REPORT
+	{
+		INT aperf_msr_timing_check;
+		INT invd_emulation_check;
 	};
 }
 

@@ -98,12 +98,19 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
 
-		APERFMsrTimingCheck();
-
 		status = HandlePeriodicCallbackReportQueue(Irp);
 
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "Failed to handle period callback report queue" );
+
+		break;
+
+	case IOCTL_PERFORM_VIRTUALIZATION_CHECK:
+
+		status = PerformVirtualizationDetection( Irp );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "PerformVirtualizationDetection failed with status %x", status );
 
 		break;
 
