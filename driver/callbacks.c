@@ -5,46 +5,55 @@
 
 #include "queue.h"
 
-PQUEUE_HEAD report_queue = NULL;
+QUEUE_HEAD head = { 0 };
 
-QUEUE_HEAD test_queue = { 0 };
-
+/*
+* This mutex is to prevent a new item being pushed to the queue
+* while the HandlePeriodicCallbackReportQueue is iterating through
+* the objects. This can be an issue because the spinlock is released
+* after each report is placed in the IRP buffer which means a new report
+* can be pushed into the queue before the next iteration can take ownership
+* of the spinlock. 
+*/
 KGUARDED_MUTEX mutex;
 
-VOID InitCallbackReportQueue( PBOOLEAN Status )
+VOID InitCallbackReportQueue(
+	_In_ PBOOLEAN Status 
+)
 {
-	//report_queue = QueueCreate();
+	head.start = NULL;
+	head.end = NULL;
+	head.entries = 0;
 
-	test_queue.start = NULL;
-	test_queue.end = NULL;
-	test_queue.entries = 0;
-	KeInitializeSpinLock( &test_queue.lock );
+	KeInitializeSpinLock( &head.lock );
 	KeInitializeGuardedMutex( &mutex );
-
-	//if ( report_queue == NULL )
-	//{
-	//	*Status = FALSE;
-	//	return;
-	//}
 
 	*Status = TRUE;
 }
 
-//VOID DeleteCallbackReportQueueHead()
-//{
-//	ExFreePoolWithTag( report_queue, QUEUE_POOL_TAG );
-//}
-
-VOID InsertReportToQueue( 
-	_In_ POPEN_HANDLE_FAILURE_REPORT Report 
+VOID InsertReportToQueue(
+	_In_ POPEN_HANDLE_FAILURE_REPORT Report
 )
 {
-	QueuePush( &test_queue, Report );
+	KeAcquireGuardedMutex( &mutex );
+	QueuePush( &head, Report );
+	KeReleaseGuardedMutex( &mutex );
 }
 
-POPEN_HANDLE_FAILURE_REPORT PopFirstReportFromQueue()
+VOID FreeQueueObjectsAndCleanup()
 {
-	return QueuePop( &test_queue );
+	KeAcquireGuardedMutex( &mutex );
+
+	PVOID report = QueuePop(&head );
+
+	if ( report == NULL )
+		goto end;
+
+	while ( report != NULL )
+		report = QueuePop( &head );
+
+end:
+	KeReleaseGuardedMutex( &mutex );
 }
 
 NTSTATUS HandlePeriodicCallbackReportQueue( 
@@ -56,7 +65,7 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 	OPEN_HANDLE_FAILURE_REPORT_HEADER header;
 
 	KeAcquireGuardedMutex( &mutex );
-	report = PopFirstReportFromQueue();
+	report = QueuePop( &head );
 
 	if ( report == NULL )
 	{
@@ -79,11 +88,12 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 			sizeof( OPEN_HANDLE_FAILURE_REPORT )
 		);
 
-		report = PopFirstReportFromQueue();
+		report = QueuePop( &head );
 		count += 1;
 	}
 
 end:
+
 	header.count = count;
 	RtlCopyMemory( Irp->AssociatedIrp.SystemBuffer, &header, sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER ));
 	KeReleaseGuardedMutex( &mutex );

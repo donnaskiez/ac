@@ -3,6 +3,8 @@
 #include "modules.h"
 #include "common.h"
 
+#define NMI_DELAY 100 * 10000
+
 typedef struct _NMI_POOLS
 {
 	PVOID thread_data_pool;
@@ -208,7 +210,7 @@ NTSTATUS LaunchNonMaskableInterrupt(
 	}
 
 	LARGE_INTEGER delay = { 0 };
-	delay.QuadPart -= 100 * 10000;
+	delay.QuadPart -= NMI_DELAY;
 
 	for ( ULONG core = 0; core < NumCores; core++ )
 	{

@@ -55,8 +55,9 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 );
 
-VOID InitCallbackReportQueue(PBOOLEAN Status);
-VOID DeleteCallbackReportQueueHead();
+VOID InitCallbackReportQueue(
+	_In_ PBOOLEAN Status
+);
 
 NTSTATUS HandlePeriodicCallbackReportQueue(
 	_In_ PIRP Irp
@@ -67,5 +68,7 @@ VOID ProcessCreateNotifyRoutine(
 	_In_ HANDLE ProcessId,
 	_In_ BOOLEAN Create
 );
+
+VOID FreeQueueObjectsAndCleanup();
 
 #endif

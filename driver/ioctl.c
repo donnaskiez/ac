@@ -82,9 +82,9 @@ NTSTATUS DeviceControl(
 
 		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
 		PAGED_CODE();
-		DEBUG_LOG( "waiting for thread to finish" );
+
 		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );
-		DEBUG_LOG( "THREAD FINISHED" );
+
 		ZwClose( handle );
 		ObDereferenceObject( thread );
 
@@ -131,6 +131,7 @@ NTSTATUS DeviceCreate(
 	_In_ PIRP Irp
 )
 {
+	DEBUG_LOG( "Handle opened to DonnaAC" );
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return Irp->IoStatus.Status;
 }

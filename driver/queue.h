@@ -21,8 +21,6 @@ typedef struct QUEUE_HEAD
 
 }QUEUE_HEAD, *PQUEUE_HEAD;
 
-PQUEUE_HEAD QueueCreate();
-
 VOID QueuePush(
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
