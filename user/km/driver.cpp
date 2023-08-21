@@ -203,6 +203,7 @@ end:
 
 void kernelmode::Driver::RunCallbackReportQueue()
 {
+	/*TODO have some volatile flag instead */
 	while ( true )
 	{
 		this->QueryReportQueue();

@@ -3,50 +3,96 @@
 #include "nmi.h"
 #include "common.h"
 
+#define WHITELISTED_MODULE_TAG 'whte'
+
+#define WHITELISTED_MODULE_COUNT 3
+#define MODULE_MAX_STRING_SIZE 256
+
+#define NTOSKRNL 1
+#define CLASSPNP 2
+#define WDF01000 3
+
+CHAR WHITELISTED_MODULES[ WHITELISTED_MODULE_COUNT ][ MODULE_MAX_STRING_SIZE ] =
+{
+	"ntoskrnl.exe",
+	"CLASSPNP.SYS",
+	"Wdf01000.sys",
+};
+
+typedef struct _WHITELISTED_REGIONS
+{
+	UINT64 base;
+	UINT64 end;
+
+}WHITELISTED_REGIONS, *PWHITELISTED_REGIONS;
+
+PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
+	_In_ LPCSTR ModuleName,
+	_In_ PSYSTEM_MODULES SystemModules,
+	_In_ PVOID Buffer
+)
+{
+	if ( !ModuleName || !SystemModules || !Buffer )
+		return STATUS_INVALID_PARAMETER;
+
+	for ( INT index = 0; index < SystemModules->module_count; index++ )
+	{
+		PRTL_MODULE_EXTENDED_INFO system_module = ( PRTL_MODULE_EXTENDED_INFO )(
+			( uintptr_t )SystemModules->address + index * sizeof( RTL_MODULE_EXTENDED_INFO ) );
+
+		if ( strstr( system_module->FullPathName, ModuleName ) )
+		{
+			return system_module;
+		}
+	}
+}
+
+NTSTATUS PopulateWhitelistedModuleBuffer(
+	_In_ PVOID Buffer,
+	_In_ PSYSTEM_MODULES SystemModules
+)
+{
+	if ( !Buffer || !SystemModules)
+		return STATUS_INVALID_PARAMETER;
+
+	for ( INT index = 0; index < WHITELISTED_MODULE_COUNT; index++ )
+	{
+		LPCSTR name = WHITELISTED_MODULES[ index ];
+
+		PRTL_MODULE_EXTENDED_INFO module = FindSystemModuleByName( name, SystemModules, Buffer );
+
+		WHITELISTED_REGIONS region;
+		region.base = (UINT64)module->ImageBase;
+		region.end = region.base + module->ImageSize;
+
+		RtlCopyMemory(
+			( UINT64 )Buffer + index * sizeof( WHITELISTED_REGIONS ),
+			&region,
+			sizeof( WHITELISTED_REGIONS )
+		);
+	}
+}
+
 NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	_In_ PDRIVER_OBJECT Driver,
 	_In_ PSYSTEM_MODULES Modules,
+	_In_ PWHITELISTED_REGIONS WhitelistedRegions,
 	_In_ PBOOLEAN Flag
 )
 {
-	if ( !Modules || !Driver || !Flag )
+	if ( !Modules || !Driver || !Flag || !WhitelistedRegions )
 		return STATUS_INVALID_PARAMETER;
 
 	UINT64 dispatch_function;
-	UINT64 ntoskrnl_base = 0;
-	UINT64 ntoskrnl_end = 0;
+	UINT64 module_base;
+	UINT64 module_end;
 
 	*Flag = TRUE;
 
-	/*
-	* If the dispatch routine points to a location that is not in the confines of
-	* the module, report it. Basic check but every effective for catching driver
-	* dispatch hooking.
-	*/
 	dispatch_function = Driver->MajorFunction[ IRP_MJ_DEVICE_CONTROL ];
 
 	if ( dispatch_function == NULL )
 		return STATUS_SUCCESS;
-
-	/* grab ntoskrnl region as default handler is located in here */
-
-	for ( INT index = 0; index < Modules->module_count; index++ )
-	{
-		PRTL_MODULE_EXTENDED_INFO system_module = ( PRTL_MODULE_EXTENDED_INFO )(
-			( uintptr_t )Modules->address + index * sizeof( RTL_MODULE_EXTENDED_INFO ) );
-
-		if ( strstr(system_module->FullPathName, "ntoskrnl.exe" ) )
-		{
-			ntoskrnl_base = ( UINT64 )system_module->ImageBase;
-			ntoskrnl_end = ntoskrnl_base + system_module->ImageSize;
-			break;
-		}
-	}
-
-	if ( !ntoskrnl_base || !ntoskrnl_end )
-		return STATUS_ABANDONED;
-
-	DEBUG_LOG( "ntoskrnl base: %llx, end: %llx", ntoskrnl_base, ntoskrnl_end );
 
 	for ( INT index = 0; index < Modules->module_count; index++ )
 	{
@@ -56,17 +102,35 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 		if ( system_module->ImageBase != Driver->DriverStart )
 			continue;
 
+		/* make sure our driver has a device object which is required for IOCTL */
 		if ( Driver->DeviceObject == NULL )
-			continue;
-
-		if ( dispatch_function >= ntoskrnl_base && dispatch_function <= ntoskrnl_end )
-			continue;
-
-		if ( dispatch_function >= system_module->ImageBase && dispatch_function <= ( UINT64 )system_module->ImageBase + system_module->ImageSize )
 			return STATUS_SUCCESS;
 
-		//if ( Driver->DeviceObject->DeviceType != NULL )
-		//	continue;
+		module_base = ( UINT64 )system_module->ImageBase;
+		module_end = module_base + system_module->ImageSize;
+
+		/* firstly, check if its inside its own module */
+		if ( dispatch_function >= module_base && dispatch_function <= module_end )
+			return STATUS_SUCCESS;
+
+		/*
+		* The WDF framework and other low level drivers often hook the dispatch routines
+		* when initiating the respective config of their framework or system. With a bit of
+		* digging you can view the drivers reponsible for the hooks. What this means is that
+		* there will be legit drivers with dispatch routines that point outside of ntoskrnl 
+		* and their own memory region. So, I have formed a list which contains the drivers
+		* that perform these hooks and we iteratively check if the dispatch routine is contained
+		* within one of these whitelisted regions. A note on how to imrpove this is the fact
+		* that a code cave can be used inside a whitelisted region which then jumps to an invalid
+		* region such as a manually mapped driver. So in the future we should implement a function
+		* which checks for standard hook implementations like mov rax jmp rax etc.
+		*/
+		for ( INT index = 0; index < WHITELISTED_MODULE_COUNT; index++ )
+		{
+			if ( dispatch_function >= WhitelistedRegions[ index ].base &&
+				dispatch_function <= WhitelistedRegions[ index ].end )
+				return STATUS_SUCCESS;
+		}
 
 		DEBUG_LOG( "name: %s, base: %p, size: %lx, dispatch: %llx, type: %lx",
 			system_module->FullPathName,
@@ -76,20 +140,10 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 			Driver->DeviceObject->DeviceType);
 
 		*Flag = FALSE;
-		DEBUG_ERROR( "system modules ioctl dispatch is outside of its region" );
 		return STATUS_SUCCESS;
 	}
 
-	//DEBUG_LOG( "Current function: %llx", dispatch_function );
-
-	//if ( dispatch_function >= base && dispatch_function <= end )
-	//{
-	//	DEBUG_LOG( "THIS ADDRESS IS INSIDE ITS REGIUON :)" );
-	//	return STATUS_SUCCESS;
-	//}
-
-	//DEBUG_ERROR( "Driver with invalid IOCTL dispatch routine found" );
-	//*Flag = FALSE;
+	return STATUS_SUCCESS;
 }
 
 VOID InitDriverList(
@@ -240,6 +294,7 @@ NTSTATUS ValidateDriverObjects(
 	OBJECT_ATTRIBUTES attributes = { 0 };
 	PVOID directory = { 0 };
 	UNICODE_STRING directory_name;
+	NTSTATUS status;
 
 	RtlInitUnicodeString( &directory_name, L"\\Driver" );
 
@@ -292,6 +347,25 @@ NTSTATUS ValidateDriverObjects(
 
 	ExAcquirePushLockExclusiveEx( &directory_object->Lock, NULL );
 
+	PVOID whitelisted_regions_buffer = ExAllocatePool2(
+		POOL_FLAG_NON_PAGED,
+		WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
+		WHITELISTED_MODULE_TAG );
+
+	if ( !whitelisted_regions_buffer )
+		goto end;
+
+	status = PopulateWhitelistedModuleBuffer(
+		whitelisted_regions_buffer,
+		SystemModules
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "PopulateWhiteListedBuffer failed with status %x", status );
+		goto end;
+	}
+
 	for ( INT i = 0; i < NUMBER_HASH_BUCKETS; i++ )
 	{
 		POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[ i ];
@@ -332,6 +406,7 @@ NTSTATUS ValidateDriverObjects(
 			if ( !NT_SUCCESS( ValidateDriverIOCTLDispatchRegion(
 				current_driver,
 				SystemModules,
+				(PWHITELISTED_REGIONS)whitelisted_regions_buffer,
 				&flag
 			) ) )
 			{
@@ -351,6 +426,10 @@ NTSTATUS ValidateDriverObjects(
 			sub_entry = sub_entry->ChainLink;
 		}
 	}
+
+end:
+	if ( whitelisted_regions_buffer) 
+		ExFreePoolWithTag( whitelisted_regions_buffer, WHITELISTED_MODULE_TAG );
 
 	ExReleasePushLockExclusiveEx( &directory_object->Lock, 0 );
 	ObDereferenceObject( directory );

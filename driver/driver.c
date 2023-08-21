@@ -141,7 +141,6 @@ NTSTATUS DriverEntry(
 
 	KeInitializeGuardedMutex( &mutex );
 
-	__debugbreak();
 	InitCallbackReportQueue(&flag);
 
 	if ( !flag )
