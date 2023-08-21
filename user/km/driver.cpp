@@ -153,7 +153,9 @@ void kernelmode::Driver::QueryReportQueue()
 	LONG buffer_size;
 	global::report_structures::OPEN_HANDLE_FAILURE_REPORT report;
 
-	buffer_size = sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP ;
+	buffer_size = sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP + 
+		sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER );
+
 	buffer = malloc( buffer_size );
 
 	status = DeviceIoControl(
@@ -170,6 +172,7 @@ void kernelmode::Driver::QueryReportQueue()
 	if ( status == NULL )
 	{
 		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
+		free( buffer );
 		return;
 	}
 
@@ -177,7 +180,7 @@ void kernelmode::Driver::QueryReportQueue()
 		( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* )buffer;
 
 	if ( !header )
-		return;
+		goto end;
 
 	for ( int i = 0; i < header->count; i++ )
 	{
@@ -191,8 +194,8 @@ void kernelmode::Driver::QueryReportQueue()
 		this->report_interface->ReportViolation( report );
 	}
 
+end:
 	free( buffer );
-
 }
 
 void kernelmode::Driver::NotifyDriverOnProcessLaunch()

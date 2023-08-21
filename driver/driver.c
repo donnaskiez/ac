@@ -53,7 +53,8 @@ VOID DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
 {
-	ExUnregisterCallback( callback_registration_handle );
+	PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
+	ObUnRegisterCallbacks( callback_registration_handle );
 	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
@@ -140,6 +141,7 @@ NTSTATUS DriverEntry(
 
 	KeInitializeGuardedMutex( &mutex );
 
+	__debugbreak();
 	InitCallbackReportQueue(&flag);
 
 	if ( !flag )
@@ -163,7 +165,7 @@ NTSTATUS DriverEntry(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "failed to launch thread to start tings" );
-		DeleteCallbackReportQueueHead();
+		//DeleteCallbackReportQueueHead();
 		IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;

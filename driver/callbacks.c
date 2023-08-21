@@ -7,38 +7,45 @@
 
 PQUEUE_HEAD report_queue = NULL;
 
+QUEUE_HEAD test_queue = { 0 };
+
 KGUARDED_MUTEX mutex;
 
 VOID InitCallbackReportQueue( PBOOLEAN Status )
 {
-	report_queue = QueueCreate();
+	//report_queue = QueueCreate();
 
-	if ( report_queue == NULL )
-	{
-		*Status = FALSE;
-		return;
-	}
+	test_queue.start = NULL;
+	test_queue.end = NULL;
+	test_queue.entries = 0;
+	KeInitializeSpinLock( &test_queue.lock );
+
+	//if ( report_queue == NULL )
+	//{
+	//	*Status = FALSE;
+	//	return;
+	//}
 
 	KeInitializeGuardedMutex( &mutex );
 
 	*Status = TRUE;
 }
 
-VOID DeleteCallbackReportQueueHead()
-{
-	ExFreePoolWithTag( report_queue, QUEUE_POOL_TAG );
-}
+//VOID DeleteCallbackReportQueueHead()
+//{
+//	ExFreePoolWithTag( report_queue, QUEUE_POOL_TAG );
+//}
 
 VOID InsertReportToQueue( 
 	_In_ POPEN_HANDLE_FAILURE_REPORT Report 
 )
 {
-	QueuePush( report_queue, Report );
+	QueuePush( &test_queue, Report );
 }
 
 POPEN_HANDLE_FAILURE_REPORT PopFirstReportFromQueue()
 {
-	return QueuePop( report_queue );
+	return QueuePop( &test_queue );
 }
 
 NTSTATUS HandlePeriodicCallbackReportQueue( 
@@ -78,13 +85,12 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 		count += 1;
 	}
 
+end:
 	header.count = count;
 	RtlCopyMemory( Irp->AssociatedIrp.SystemBuffer, &header, sizeof( OPEN_HANDLE_FAILURE_REPORT_HEADER ));
+	KeReleaseGuardedMutex( &mutex );
 
 	DEBUG_LOG( "Moved all reports into the IRP, sending !" );
-
-end:
-	KeReleaseGuardedMutex( &mutex );
 	return STATUS_SUCCESS;
 }
 
@@ -162,6 +168,7 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			if ( !report )
 				goto end;
 
+			KeAcquireGuardedMutex( &mutex );
 			report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
 			report->desired_access = OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 			report->is_kernel_handle = OperationInformation->KernelHandle;
@@ -170,6 +177,7 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			memcpy( report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
 			InsertReportToQueue( report );
+			KeReleaseGuardedMutex( &mutex );
 		}
 	}
 

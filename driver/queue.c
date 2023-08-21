@@ -15,7 +15,6 @@ PQUEUE_HEAD QueueCreate()
 	head->start = NULL;
 	head->entries = 0;
 
-	__debugbreak();
 	KeInitializeSpinLock( &head->lock );
 
 	return head;
