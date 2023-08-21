@@ -176,7 +176,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			if ( !report )
 				goto end;
 
-			KeAcquireGuardedMutex( &mutex );
 			report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
 			report->desired_access = OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 			report->is_kernel_handle = OperationInformation->KernelHandle;
@@ -185,7 +184,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			memcpy( report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
 			InsertReportToQueue( report );
-			KeReleaseGuardedMutex( &mutex );
 		}
 	}
 
