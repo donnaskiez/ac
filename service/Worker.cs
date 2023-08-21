@@ -104,7 +104,7 @@ namespace service
 
                     unsafe
                     {
-                        _logger.LogInformation("Report code: {0}, Base address: {1}, Size: {2}, Name: ",
+                        _logger.LogInformation("Report code: {0}, Base address: {1:x}, Size: {2:x}, Name: ",
                             checksumFailurePacket.ReportCode,
                             checksumFailurePacket.ModuleBaseAddress,
                             checksumFailurePacket.ModuleSize);
@@ -116,7 +116,7 @@ namespace service
 
                     var startAddressFailurePacket = BytesToStructure<PROCESS_THREAD_START_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, Thread Id: {1}, Start Address: {2}",
+                    _logger.LogInformation("Report code: {0}, Thread Id: {1:x}, Start Address: {2:x}",
                         startAddressFailurePacket.ReportCode,
                         startAddressFailurePacket.ThreadId,
                         startAddressFailurePacket.StartAddress);
@@ -127,7 +127,7 @@ namespace service
 
                     var pageProtectionFailure = BytesToStructure<PAGE_PROTECTION_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, page base address: {1}, allocation protection {2}, allocation state: {3}, allocation type: {4}",
+                    _logger.LogInformation("Report code: {0}, page base address: {1:x}, allocation protection {2:x}, allocation state: {3:x}, allocation type: {4:x}",
                         pageProtectionFailure.ReportCode,
                         pageProtectionFailure.PageBaseAddress,
                         pageProtectionFailure.AllocationProtection,
@@ -140,7 +140,7 @@ namespace service
 
                     var patternScanFailure = BytesToStructure<PATTERN_SCAN_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, signature id: {1}, Address: {2}",
+                    _logger.LogInformation("Report code: {0}, signature id: {1:x}, Address: {2:x}",
                         patternScanFailure.ReportCode,
                         patternScanFailure.SignatureId,
                         patternScanFailure.Address);
@@ -151,7 +151,7 @@ namespace service
 
                     var nmiCallbackFailure = BytesToStructure<NMI_CALLBACK_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, WereNmisDisabled: {1}, KThreadAddress: {2}, InvalidRip: {3}",
+                    _logger.LogInformation("Report code: {0}, WereNmisDisabled: {1:x}, KThreadAddress: {2:x}, InvalidRip: {3:x}",
                         nmiCallbackFailure.ReportCode,
                         nmiCallbackFailure.WereNmisDisabled,
                         nmiCallbackFailure.KThreadAddress,
@@ -163,7 +163,7 @@ namespace service
 
                     var kernelModuleFailure = BytesToStructure<MODULE_VALIDATION_FAILURE>();
 
-                    _logger.LogInformation("Report code: {0}, REportType: {1}, DriverBaseAddress: {2}, DriverSize: {3}",
+                    _logger.LogInformation("Report code: {0}, REportType: {1:x}, DriverBaseAddress: {2:x}, DriverSize: {3:x}",
                         kernelModuleFailure.ReportCode,
                         kernelModuleFailure.ReportType,
                         kernelModuleFailure.DriverBaseAddress,
@@ -175,7 +175,7 @@ namespace service
 
                     var openHandleFailure = BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>();
 
-                    _logger.LogInformation("Report code: {0}, ProcessID: {1}, ThreadId: {2}, DesiredAccess{3}",
+                    _logger.LogInformation("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                         openHandleFailure.ReportCode,
                         openHandleFailure.ProcessId,
                         openHandleFailure.ThreadId,

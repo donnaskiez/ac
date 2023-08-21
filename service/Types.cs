@@ -66,9 +66,9 @@ namespace service
         {
             public int ReportCode;
             public int IsKernelHandle;
-            public long ProcessId;
-            public long ThreadId;
-            public long DesiredAccess;
+            public uint ProcessId;
+            public uint ThreadId;
+            public uint DesiredAccess;
             public fixed char ProcessName[64];
 
         }
