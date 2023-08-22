@@ -283,6 +283,7 @@ BOOLEAN EnumHandleCallback(
 
 		GetProtectedProcessId( &protected_process_id );
 		PsLookupProcessByProcessId( protected_process_id, &protected_process );
+
 		protected_process_name = PsGetProcessImageFileName( protected_process );
 
 		if ( strcmp( process_name, protected_process_name ) )

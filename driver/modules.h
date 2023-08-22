@@ -3,6 +3,7 @@
 
 #include <ntifs.h>
 #include <intrin.h>
+#include "common.h"
 
 #define REPORT_MODULE_VALIDATION_FAILURE 60
 #define MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT 20
@@ -58,6 +59,11 @@ NTSTATUS GetSystemModuleInformation(
 
 NTSTATUS HandleValidateDriversIOCTL(
 	_In_ PIRP Irp
+);
+
+PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
+	_In_ LPCSTR ModuleName,
+	_In_ PSYSTEM_MODULES SystemModules
 );
 
 #endif

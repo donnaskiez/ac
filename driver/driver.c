@@ -6,6 +6,8 @@
 
 #include "hv.h"
 
+#include "integrity.h"
+
 
 PVOID callback_registration_handle;
 

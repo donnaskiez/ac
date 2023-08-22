@@ -1,7 +1,6 @@
 #include "modules.h"
 
 #include "nmi.h"
-#include "common.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -28,11 +27,10 @@ typedef struct _WHITELISTED_REGIONS
 
 PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
-	_In_ PSYSTEM_MODULES SystemModules,
-	_In_ PVOID Buffer
+	_In_ PSYSTEM_MODULES SystemModules
 )
 {
-	if ( !ModuleName || !SystemModules || !Buffer )
+	if ( !ModuleName || !SystemModules )
 		return STATUS_INVALID_PARAMETER;
 
 	for ( INT index = 0; index < SystemModules->module_count; index++ )
@@ -59,7 +57,7 @@ NTSTATUS PopulateWhitelistedModuleBuffer(
 	{
 		LPCSTR name = WHITELISTED_MODULES[ index ];
 
-		PRTL_MODULE_EXTENDED_INFO module = FindSystemModuleByName( name, SystemModules, Buffer );
+		PRTL_MODULE_EXTENDED_INFO module = FindSystemModuleByName( name, SystemModules );
 
 		WHITELISTED_REGIONS region;
 		region.base = (UINT64)module->ImageBase;
@@ -352,7 +350,8 @@ NTSTATUS ValidateDriverObjects(
 	PVOID whitelisted_regions_buffer = ExAllocatePool2(
 		POOL_FLAG_NON_PAGED,
 		WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
-		WHITELISTED_MODULE_TAG );
+		WHITELISTED_MODULE_TAG 
+	);
 
 	if ( !whitelisted_regions_buffer )
 		goto end;

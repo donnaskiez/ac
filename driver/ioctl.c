@@ -6,6 +6,7 @@
 #include "modules.h"
 #include "driver.h"
 #include "callbacks.h"
+#include "integrity.h"
 
 #include "hv.h"
 
@@ -120,6 +121,15 @@ NTSTATUS DeviceControl(
 		EnumerateProcessListWithCallbackFunction(
 			EnumerateProcessHandles
 		);
+
+		break;
+
+	case IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS:
+
+		status = CopyDriverExecutableRegions( Irp );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "Failed to retrieve executable regions" );
 
 		break;
 

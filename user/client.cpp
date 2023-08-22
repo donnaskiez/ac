@@ -2,75 +2,76 @@
 
 #include "common.h"
 
-global::Client::Client( LPTSTR PipeName )
+#include <cmath>
+
+global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName )
 {
-	this->pipe_name = PipeName;
-	this->pipe_handle = CreateFile(
-		this->pipe_name,
-		GENERIC_READ | GENERIC_WRITE,
-		0,
-		NULL,
-		OPEN_EXISTING,
-		0,
-		NULL
-	);
-
-	if ( this->pipe_handle == INVALID_HANDLE_VALUE )
-	{
-		LOG_ERROR( "CreateFile failed with status 0x%x", GetLastError() );
-		return;
-	}
-
-	/* test the write function */
-	//global::headers::PIPE_PACKET_HEADER header;
-	//header.message_type = REQUEST_PATTERNS_TO_BE_SCANNED;
-	//this->WriteToPipe( &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
+	this->thread_pool = ThreadPool;
+	this->pipe = std::make_shared<global::Pipe>( PipeName );
 }
 
-void global::Client::WriteToPipe( PVOID Buffer, SIZE_T Size )
+/*
+* Request an item from the server
+*/
+void global::Client::ServerRequest()
 {
-	DWORD bytes_written;
-
-	WriteFile(
-		this->pipe_handle,
-		Buffer,
-		Size,
-		&bytes_written,
-		NULL
-	);
-
-	if ( bytes_written == 0 )
-	{
-		LOG_ERROR( "WriteFile failed with status code 0x%x", GetLastError() );
-		return;
-	}
-
-	LOG_INFO( "Sent bytes over pipe" );
 }
 
-void global::Client::ReadPipe(PVOID Buffer, SIZE_T Size)
+/*
+* Send an item to the server
+*/
+void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 {
-	BOOL status = FALSE;
-	DWORD bytes_read;
+	mutex.lock();
 
-	do
+	global::headers::PIPE_PACKET_HEADER header;
+	header.message_type = SERVER_SEND_PACKET_ID;
+	memcpy( this->send_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
+
+	LONG total_size_of_headers = sizeof( global::headers::PIPE_PACKET_HEADER ) + sizeof( global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER );
+
+	if ( Size > ( SEND_BUFFER_SIZE - total_size_of_headers ) )
 	{
-		status = ReadFile(
-			this->pipe_handle,
-			Buffer,
-			Size,
-			&bytes_read,
-			NULL
-		);
+		INT total_packets = std::ceil( Size / ( SEND_BUFFER_SIZE - total_size_of_headers ) );
+		LONG remaining_bytes = Size;
 
-		if ( !status && GetLastError() != ERROR_MORE_DATA )
-			break;
+		for ( INT count = 0; count < total_packets; count++ )
+		{
+			global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER header_extension;
+			header_extension.request_id = RequestId;
+			header_extension.total_incoming_packet_count = total_packets;
+			header_extension.total_incoming_packet_size = Size;
+			header_extension.current_packet_number = count;
+			header_extension.packet_size = ( count + 1 ) == total_packets ? remaining_bytes : SEND_BUFFER_SIZE;
 
-	} while ( !status );
+			memcpy( PVOID( ( UINT64 )this->send_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ),
+				&header_extension, sizeof(global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER));
 
-	if ( !status )
-	{
-		LOG_ERROR( "ReadFile failed with status 0x%x", GetLastError() );
-		return;
+			memcpy(
+				PVOID( ( UINT64 )this->send_buffer + total_size_of_headers ), Buffer,
+				( UINT64 )header_extension.packet_size - total_size_of_headers
+			);
+
+			this->pipe->WriteToPipe( this->send_buffer, header_extension.packet_size );
+
+			remaining_bytes = remaining_bytes - header_extension.packet_size;
+		}
 	}
+	else
+	{
+		global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER header_extension;
+		header_extension.request_id = RequestId;
+		header_extension.total_incoming_packet_count = 1;
+		header_extension.total_incoming_packet_size = Size;
+		header_extension.current_packet_number = 1;
+		header_extension.packet_size = Size;
+
+		memcpy( PVOID( ( UINT64 )this->send_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ),
+			&header_extension, sizeof( global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER ) );
+
+		this->pipe->WriteToPipe( this->send_buffer, header_extension.packet_size );
+	}
+
+	RtlZeroMemory( this->send_buffer, SEND_BUFFER_SIZE );
+	mutex.unlock();
 }

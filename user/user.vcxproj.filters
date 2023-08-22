@@ -36,10 +36,10 @@
     <ClCompile Include="km\driver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="report.cpp">
+    <ClCompile Include="client.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="client.cpp">
+    <ClCompile Include="pipe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -65,10 +65,10 @@
     <ClInclude Include="km\driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="report.h">
+    <ClInclude Include="client.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="client.h">
+    <ClInclude Include="pipe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

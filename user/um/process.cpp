@@ -4,14 +4,14 @@
 #include "../um/imports.h"
 #include "memory.h"
 
-#include "../report.h"
+#include "../client.h"
 
 #include <ImageHlp.h>
 #include <iostream>
 
 const static char MASK_BYTE = '\x00';
 
-usermode::Process::Process( std::shared_ptr<global::Report> ReportInterface )
+usermode::Process::Process( std::shared_ptr<global::Client> ReportInterface )
 {
 	this->process_handle = GetCurrentProcess();
 	this->process_id = GetCurrentProcessId();

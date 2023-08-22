@@ -4,7 +4,7 @@
 
 #include "../common.h"
 
-kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Report> ReportInterface )
+kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> ReportInterface )
 {
 	this->driver_name = DriverName;
 	this->report_interface = ReportInterface;
@@ -282,6 +282,16 @@ void kernelmode::Driver::CheckHandleTableEntries()
 
 	if ( status == NULL )
 		LOG_ERROR( "CheckHandleTableEntries failed with status %x", status );
+}
+
+void kernelmode::Driver::RequestModuleExecutableRegions()
+{
+	BOOLEAN status;
+}
+
+void kernelmode::Driver::RequestTotalModuleSize()
+{
+
 }
 
 void kernelmode::Driver::ValidateKPRCBThreads()

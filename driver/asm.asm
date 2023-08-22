@@ -15,7 +15,7 @@ TestINVDEmulation PROC
 
 	pushfq
 	cli
-	push 1					; push some dummy data onto the stack which will exist in writeback memory
+	push 1					; push some dummy data onto the stack which will exist in writeback cache
 	wbinvd					; flush the internal cpu caches and write back all modified cache 
 							; lines to main memory
 	mov byte ptr [rsp], 0	; set our dummy value to 0, this takes place inside writeback memory

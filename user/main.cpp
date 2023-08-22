@@ -5,7 +5,7 @@
 #include "common.h"
 
 #include "threadpool.h"
-#include "report.h"
+#include "client.h"
 
 #include "../user/um/umanager.h"
 #include "../user/km/kmanager.h"
@@ -23,7 +23,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     LPCWSTR driver_name = L"\\\\.\\DonnaAC";
 
     std::shared_ptr<global::ThreadPool> thread_pool = std::make_shared<global::ThreadPool>( 4 );
-    std::shared_ptr<global::Report> report_interface = std::make_shared<global::Report>( thread_pool, pipe_name );
+    std::shared_ptr<global::Client> report_interface = std::make_shared<global::Client>( thread_pool, pipe_name );
 
     usermode::UManager umanager( thread_pool, report_interface );
     kernelmode::KManager kmanager( driver_name, thread_pool, report_interface);
