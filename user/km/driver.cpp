@@ -259,10 +259,37 @@ void kernelmode::Driver::DetectSystemVirtualization()
 	/* shutdown the application or smth lmao */
 }
 
+void kernelmode::Driver::CheckHandleTableEntries()
+{
+	BOOLEAN status;
+	DWORD bytes_returned;
+
+	/*
+	* Only pass the IOCTL code and nothing else since the reports are bundled
+	* with the handle ObRegisterCallbacks report queue hence the QueryReportQueue
+	* function will handle these reports.
+	*/
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_ENUMERATE_HANDLE_TABLES,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "CheckHandleTableEntries failed with status %x", status );
+}
+
 void kernelmode::Driver::ValidateKPRCBThreads()
 {
+
 }
 
 void kernelmode::Driver::CheckDriverHeartbeat()
 {
+
 }

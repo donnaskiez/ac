@@ -114,6 +114,15 @@ NTSTATUS DeviceControl(
 
 		break;
 
+	case IOCTL_ENUMERATE_HANDLE_TABLES:
+		
+		/* can maybe implement this better so we can extract a status value */
+		EnumerateProcessListWithCallbackFunction(
+			EnumerateProcessHandles
+		);
+
+		break;
+
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
 		break;

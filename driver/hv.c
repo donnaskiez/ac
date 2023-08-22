@@ -13,7 +13,7 @@
 * to an instruction such as FYL2XP1 (source: secret.club) which has an average
 * execution time slightly higher then the CPUID instruction then compare the two.
 * If the average time for the CPUID instruction is higher then the average time 
-* then the FYL2XP1 instruction it is a dead giveaway we are running on a 
+* for the FYL2XP1 instruction it is a dead giveaway we are running on a 
 * virtualized system.
 * 
 * source: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
@@ -34,7 +34,7 @@ INT APERFMsrTimingCheck()
 	old_affinity = KeSetSystemAffinityThreadEx( new_affinity );
 
 	/*
-	* Once we've locked our thread to the current core, we saved the old irql
+	* Once we've locked our thread to the current core, we save the old irql
 	* and raise to HIGH_LEVEL to ensure the chance our thread is preempted 
 	* by a thread with a higher IRQL is extremely low.
 	*/

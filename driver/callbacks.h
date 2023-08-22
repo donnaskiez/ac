@@ -25,7 +25,7 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 	INT is_kernel_handle;
 	LONG process_id;
 	LONG thread_id;
-	LONG desired_access;
+	LONG access;
 	CHAR process_name[ HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH ];
 
 }OPEN_HANDLE_FAILURE_REPORT, *POPEN_HANDLE_FAILURE_REPORT;
@@ -44,6 +44,14 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 #define PROCESS_VM_OPERATION 0x0008
 #define PROCESS_VM_READ 0x0010
 #define PROCESS_VM_WRITE 0x0020
+
+//https://www.sysnative.com/forums/threads/object-headers-handles-and-types.34987/
+#define GET_OBJECT_HEADER_FROM_HANDLE(x) ((x << 4) | 0xffff000000000000)
+
+static const uintptr_t EPROCESS_IMAGE_FILE_NAME_OFFSET = 0x5a8;
+static const uintptr_t EPROCESS_HANDLE_TABLE_OFFSET = 0x570;
+static const uintptr_t OBJECT_HEADER_SIZE = 0x30;
+static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
 
 VOID ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
@@ -70,5 +78,13 @@ VOID ProcessCreateNotifyRoutine(
 );
 
 VOID FreeQueueObjectsAndCleanup();
+
+VOID EnumerateProcessListWithCallbackFunction(
+	_In_ PVOID Function
+);
+
+NTSTATUS EnumerateProcessHandles(
+	_In_ PEPROCESS Process
+);
 
 #endif

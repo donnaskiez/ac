@@ -22,9 +22,9 @@ global::Client::Client( LPTSTR PipeName )
 	}
 
 	/* test the write function */
-	global::headers::PIPE_PACKET_HEADER header;
-	header.message_type = REQUEST_PATTERNS_TO_BE_SCANNED;
-	this->WriteToPipe( &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
+	//global::headers::PIPE_PACKET_HEADER header;
+	//header.message_type = REQUEST_PATTERNS_TO_BE_SCANNED;
+	//this->WriteToPipe( &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 }
 
 void global::Client::WriteToPipe( PVOID Buffer, SIZE_T Size )

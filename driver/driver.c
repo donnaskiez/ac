@@ -11,6 +11,7 @@ PVOID callback_registration_handle;
 
 LONG protected_process_id;
 LONG protected_process_parent_id;
+
 KGUARDED_MUTEX mutex;
 
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
