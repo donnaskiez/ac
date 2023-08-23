@@ -27,22 +27,22 @@ namespace kernelmode
 		LPCWSTR driver_name;
 		std::shared_ptr<global::Client> report_interface;
 
-		void QueryReportQueue();
-		void RequestTotalModuleSize();
+		VOID QueryReportQueue();
+		ULONG RequestTotalModuleSize();
 
 	public:
 
 		Driver(LPCWSTR DriverName, std::shared_ptr<global::Client> ReportInterface );
 
-		void RunNmiCallbacks();
-		void VerifySystemModules();
-		void RunCallbackReportQueue();
-		void NotifyDriverOnProcessLaunch();
-		void DetectSystemVirtualization();
-		void ValidateKPRCBThreads();
-		void CheckDriverHeartbeat();
-		void CheckHandleTableEntries();
-		void RequestModuleExecutableRegions();
+		VOID RunNmiCallbacks();
+		VOID VerifySystemModules();
+		VOID RunCallbackReportQueue();
+		VOID NotifyDriverOnProcessLaunch();
+		VOID DetectSystemVirtualization();
+		VOID ValidateKPRCBThreads();
+		VOID CheckDriverHeartbeat();
+		VOID CheckHandleTableEntries();
+		VOID RequestModuleExecutableRegions();
 		/* todo: driver integrity check */
 	};
 

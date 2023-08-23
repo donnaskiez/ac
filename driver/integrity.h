@@ -9,4 +9,8 @@ NTSTATUS CopyDriverExecutableRegions(
 	_In_ PIRP Irp
 );
 
+NTSTATUS GetDriverImageSize(
+	_In_ PIRP Irp
+);
+
 #endif

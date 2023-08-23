@@ -25,3 +25,13 @@ void kernelmode::KManager::DetectSystemVirtualization()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->DetectSystemVirtualization(); } );
 }
+
+void kernelmode::KManager::EnumerateHandleTables()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->CheckHandleTableEntries(); } );
+}
+
+void kernelmode::KManager::RequestModuleExecutableRegionsForIntegrityCheck()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RequestModuleExecutableRegions(); } );
+}

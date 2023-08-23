@@ -44,6 +44,8 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 			header_extension.current_packet_number = count;
 			header_extension.packet_size = ( count + 1 ) == total_packets ? remaining_bytes : SEND_BUFFER_SIZE;
 
+			LOG_INFO( "current packet number: %lx, packet size: %lx", header_extension.current_packet_number, header_extension.packet_size );
+
 			memcpy( PVOID( ( UINT64 )this->send_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ),
 				&header_extension, sizeof(global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER));
 

@@ -22,7 +22,7 @@ kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> 
 		LOG_ERROR( "Failed to open handle to driver with status 0x%x", GetLastError() );
 }
 
-void kernelmode::Driver::RunNmiCallbacks()
+VOID kernelmode::Driver::RunNmiCallbacks()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
@@ -60,7 +60,7 @@ void kernelmode::Driver::RunNmiCallbacks()
 * 2. Checks the IOCTL dispatch routines to ensure they lie within the module
 */
 
-void kernelmode::Driver::VerifySystemModules()
+VOID kernelmode::Driver::VerifySystemModules()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
@@ -145,7 +145,7 @@ void kernelmode::Driver::VerifySystemModules()
 *	 modules.
 */
 
-void kernelmode::Driver::QueryReportQueue()
+VOID kernelmode::Driver::QueryReportQueue()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
@@ -199,7 +199,7 @@ end:
 	free( buffer );
 }
 
-void kernelmode::Driver::RunCallbackReportQueue()
+VOID kernelmode::Driver::RunCallbackReportQueue()
 {
 	/*TODO have some volatile flag instead */
 	while ( true )
@@ -209,7 +209,7 @@ void kernelmode::Driver::RunCallbackReportQueue()
 	}
 }
 
-void kernelmode::Driver::NotifyDriverOnProcessLaunch()
+VOID kernelmode::Driver::NotifyDriverOnProcessLaunch()
 {
 	BOOLEAN status;
 	kernelmode::DRIVER_INITIATION_INFORMATION information;
@@ -230,7 +230,7 @@ void kernelmode::Driver::NotifyDriverOnProcessLaunch()
 		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
 }
 
-void kernelmode::Driver::DetectSystemVirtualization()
+VOID kernelmode::Driver::DetectSystemVirtualization()
 {
 	BOOLEAN status;
 	HYPERVISOR_DETECTION_REPORT report;
@@ -259,7 +259,7 @@ void kernelmode::Driver::DetectSystemVirtualization()
 	/* shutdown the application or smth lmao */
 }
 
-void kernelmode::Driver::CheckHandleTableEntries()
+VOID kernelmode::Driver::CheckHandleTableEntries()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
@@ -284,22 +284,80 @@ void kernelmode::Driver::CheckHandleTableEntries()
 		LOG_ERROR( "CheckHandleTableEntries failed with status %x", status );
 }
 
-void kernelmode::Driver::RequestModuleExecutableRegions()
+VOID kernelmode::Driver::RequestModuleExecutableRegions()
 {
 	BOOLEAN status;
+	DWORD bytes_returned;
+	ULONG module_size;
+	PVOID buffer;
+
+	module_size = this->RequestTotalModuleSize();
+
+	if ( module_size == NULL )
+	{
+		LOG_ERROR( "RequestTotalModuleSize failed lolz" );
+		return;
+	}
+
+	LOG_INFO( "module size: %lx", module_size );
+
+	buffer = malloc( module_size );
+
+	if ( !buffer )
+		return;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS,
+		NULL,
+		NULL,
+		buffer,
+		module_size,
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL )
+	{
+		LOG_ERROR( "failed to retrieve module executable regions lozl %x", GetLastError() );
+		goto end;
+	}
+
+	LOG_INFO( "bytes returned: %lx", bytes_returned );
+
+end:
+	free( buffer );
 }
 
-void kernelmode::Driver::RequestTotalModuleSize()
+ULONG kernelmode::Driver::RequestTotalModuleSize()
+{
+	BOOLEAN status;
+	DWORD bytes_returned;
+	ULONG module_size;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_REQUEST_TOTAL_MODULE_SIZE,
+		NULL,
+		NULL,
+		&module_size,
+		sizeof(ULONG),
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "CheckHandleTableEntries failed with status %x", status );
+
+	return module_size;
+}
+
+VOID kernelmode::Driver::ValidateKPRCBThreads()
 {
 
 }
 
-void kernelmode::Driver::ValidateKPRCBThreads()
-{
-
-}
-
-void kernelmode::Driver::CheckDriverHeartbeat()
+VOID kernelmode::Driver::CheckDriverHeartbeat()
 {
 
 }

@@ -17,10 +17,12 @@ namespace kernelmode
 	public:
 		KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Client> ReportInterface);
 
-		void RunNmiCallbacks();
-		void VerifySystemModules();
-		void MonitorCallbackReports();
-		void DetectSystemVirtualization();
+		VOID RunNmiCallbacks();
+		VOID VerifySystemModules();
+		VOID MonitorCallbackReports();
+		VOID DetectSystemVirtualization();
+		VOID EnumerateHandleTables();
+		VOID RequestModuleExecutableRegionsForIntegrityCheck();
 	};
 }
 

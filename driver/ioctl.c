@@ -126,10 +126,56 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS:
 
-		status = CopyDriverExecutableRegions( Irp );
+		status = PsCreateSystemThread(
+			&handle,
+			PROCESS_ALL_ACCESS,
+			NULL,
+			NULL,
+			NULL,
+			CopyDriverExecutableRegions,
+			Irp
+		);
+
+		if ( !NT_SUCCESS( status ) )
+		{
+			DEBUG_ERROR( "Failed to start system thread to get executable regions" );
+			goto end;
+		}
+
+		status = ObReferenceObjectByHandle(
+			handle,
+			THREAD_ALL_ACCESS,
+			*PsThreadType,
+			KernelMode,
+			&thread,
+			NULL
+		);
+
+		if ( !NT_SUCCESS( status ) )
+		{
+			DEBUG_ERROR( "ObReferenceObjectbyhandle failed with status %lx", status );
+			ZwClose( handle );
+			goto end;
+		}
+
+		PAGED_CODE();
+
+		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );;
+
+		ZwClose( handle );
+		ObDereferenceObject( thread );
 
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "Failed to retrieve executable regions" );
+
+		break;
+
+	case IOCTL_REQUEST_TOTAL_MODULE_SIZE:
+
+		status = GetDriverImageSize( Irp );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "Failed to retrieve driver image size" );
 
 		break;
 
