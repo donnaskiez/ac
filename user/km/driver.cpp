@@ -325,6 +325,8 @@ VOID kernelmode::Driver::RequestModuleExecutableRegions()
 
 	LOG_INFO( "bytes returned: %lx", bytes_returned );
 
+	this->report_interface->ServerSend( buffer, module_size, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+
 end:
 	free( buffer );
 }
