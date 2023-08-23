@@ -13,22 +13,16 @@ namespace service
     {
         private readonly ILogger<Worker> _logger;
         private NamedPipeServerStream _pipeServer;
-        private byte[] _buffer;
-        private byte[] _headerBuf;
-        private int _headerBufSize;
 
-        private const int REPORT_PROCESS_MODULE_FAILURE = 10;
-        private const int REPORT_PROCESS_THREAD_START_ADDRESS_FAILURE = 20;
-        private const int REPORT_PAGE_PROTECTION_VERIFICATION = 30;
-        private const int REPORT_PATTERN_SCAN_FAILURE = 40;
-        private const int REPORT_NMI_CALLBACK_FAILURE = 50;
-        private const int REPORT_KERNEL_MODULE_FAILURE = 60;
-        private const int REPORT_OPEN_HANDLE_FAILURE_REPORT = 70;
+        private byte[] _header;
+        private int _headerSize;
 
-        private const int MESSAGE_TYPE_REPORT = 1;
-        private const int MESSAGE_TYPE_REQUEST = 2;
-
-        private int PIPE_BUFFER_READ_SIZE;
+        private enum MESSAGE_TYPE
+        {
+            MESSAGE_TYPE_REPORT,
+            MESSAGE_TYPE_RECEIVE,
+            MESSAGE_TYPE_SEND,
+        }
 
         struct PIPE_PACKET_HEADER
         {
@@ -38,11 +32,14 @@ namespace service
         public Worker(ILogger<Worker> logger)
         {
             _logger = logger;
-            _buffer = new byte[1024];
-            unsafe { _headerBufSize = sizeof(PIPE_PACKET_HEADER); }
-            _headerBuf = new byte[_headerBufSize]; 
             _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1);
-            PIPE_BUFFER_READ_SIZE = 1024 - _headerBufSize;
+
+            unsafe 
+            {
+                _headerSize = sizeof(PIPE_PACKET_HEADER); 
+            }
+
+            _header = new byte[_headerSize];
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -54,16 +51,14 @@ namespace service
 
             _logger.LogInformation("Client connected to the pipe server");
 
-            int header = 0;
-
             while (!stoppingToken.IsCancellationRequested)
             { 
                 try
                 {
-                    if (_pipeServer.Read(_headerBuf, 0, _headerBufSize) > 0)
+                    if (_pipeServer.Read(_header, 0, _headerSize) > 0)
                     {
                         // for now the header is only an int... LOL
-                        header = BitConverter.ToInt32(_headerBuf, 0);
+                        int header = BitConverter.ToInt32(_header, 0);
 
                         _logger.LogInformation("Message received with id: {0}", header);
 

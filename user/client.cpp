@@ -39,8 +39,8 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 		{
 			global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER header_extension;
 			header_extension.request_id = RequestId;
-			header_extension.total_incoming_packet_count = total_packets;
-			header_extension.total_incoming_packet_size = Size;
+			header_extension.total_incoming_packet_count = total_packets + 1;
+			header_extension.total_incoming_packet_size = Size + total_packets * total_size_of_headers;
 			header_extension.current_packet_number = count;
 			header_extension.packet_size = count == total_packets ? remaining_bytes : SEND_BUFFER_SIZE;
 
@@ -65,9 +65,9 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 		global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER header_extension;
 		header_extension.request_id = RequestId;
 		header_extension.total_incoming_packet_count = 1;
-		header_extension.total_incoming_packet_size = Size;
+		header_extension.total_incoming_packet_size = Size + total_size_of_headers;
 		header_extension.current_packet_number = 1;
-		header_extension.packet_size = Size;
+		header_extension.packet_size = Size + total_size_of_headers;
 
 		memcpy( PVOID( ( UINT64 )this->send_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ),
 			&header_extension, sizeof( global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER ) );
