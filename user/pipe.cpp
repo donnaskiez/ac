@@ -20,11 +20,6 @@ global::Pipe::Pipe( LPTSTR PipeName )
 		LOG_ERROR( "CreateFile failed with status 0x%x", GetLastError() );
 		return;
 	}
-
-	/* test the write function */
-	//global::headers::PIPE_PACKET_HEADER header;
-	//header.message_type = REQUEST_PATTERNS_TO_BE_SCANNED;
-	//this->WriteToPipe( &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 }
 
 void global::Pipe::WriteToPipe( PVOID Buffer, SIZE_T Size )

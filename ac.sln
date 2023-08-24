@@ -7,7 +7,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "user", "user\user.vcxproj",
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "driver", "driver\driver.vcxproj", "{0AE83EC6-DDEA-4EDE-B1B2-1B2AB1E8BB54}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "service", "service\service.csproj", "{6228E9DD-E1EA-45D8-8054-A00FC2D63414}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "service", "service\service.csproj", "{6228E9DD-E1EA-45D8-8054-A00FC2D63414}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

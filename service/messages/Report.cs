@@ -46,9 +46,11 @@ namespace service.messages
         {
             int reportType = GetReportType();
 
+            Log.Information("REport type: {0}", reportType);
+
             if (!Enum.IsDefined(typeof(REPORT_TYPE), reportType))
             {
-                //_logger.LogError("Enum value of {0} is invalid.", reportType);
+                Log.Error("Enum value of {0} is invalid.", reportType);
 
                 return Task.CompletedTask;
             }

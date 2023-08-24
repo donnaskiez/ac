@@ -20,6 +20,8 @@ kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> 
 
 	if ( this->driver_handle == INVALID_HANDLE_VALUE )
 		LOG_ERROR( "Failed to open handle to driver with status 0x%x", GetLastError() );
+
+	this->NotifyDriverOnProcessLaunch();
 }
 
 VOID kernelmode::Driver::RunNmiCallbacks()

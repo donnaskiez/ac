@@ -93,8 +93,19 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
-		PDRIVER_INITIATION_INFORMATION information = ( PDRIVER_INITIATION_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
-		UpdateProtectedProcessId( information->protected_process_id );
+		status = InitialiseDriverConfigOnProcessLaunch(Irp);
+
+		if ( !NT_SUCCESS( status ) )
+		{
+			DEBUG_ERROR( "Failed to initialise driver config on proc launch with status %x", status );
+			goto end;
+		}
+
+		status = InitiateDriverCallbacks();
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "InitiateDriverCallbacks failed with status %x", status );
+		
 		break;
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
@@ -176,6 +187,12 @@ NTSTATUS DeviceControl(
 
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "Failed to retrieve driver image size" );
+
+		break;
+
+	case IOCTL_CLEAR_CONFIG_ON_PROCESS_CLOSE:
+
+		ClearDriverConfigOnProcessTermination( Irp );
 
 		break;
 

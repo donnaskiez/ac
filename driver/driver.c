@@ -11,55 +11,69 @@
 
 PVOID callback_registration_handle;
 
-LONG protected_process_id;
-LONG protected_process_parent_id;
-
-KGUARDED_MUTEX mutex;
+DRIVER_CONFIG config = { 0 };
 
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
 UNICODE_STRING DEVICE_SYMBOLIC_LINK = RTL_CONSTANT_STRING( L"\\??\\DonnaAC" );
 
-VOID UpdateProtectedProcessId( 
-	_In_ LONG NewProcessId 
+VOID GetProtectedProcessEProcess( 
+	_In_ PEPROCESS Process 
 )
 {
-	KeAcquireGuardedMutex( &mutex );
-	protected_process_id = NewProcessId;
-	KeReleaseGuardedMutex( &mutex );
+	KeAcquireGuardedMutex( &config.lock );
+	Process = config.protected_process_eprocess;
+	KeReleaseGuardedMutex( &config.lock );
 }
 
-VOID GetProtectedProcessId(
-	_Out_ PLONG ProcessId
+VOID GetProtectedProcessId( 
+	_In_ PLONG ProcessId 
 )
 {
-	KeAcquireGuardedMutex( &mutex );
-	*ProcessId = protected_process_id;
-	KeReleaseGuardedMutex( &mutex );
+	KeAcquireGuardedMutex( &config.lock );
+	*ProcessId = config.protected_process_id;
+	KeReleaseGuardedMutex( &config.lock );
 }
 
-VOID GetProtectedProcessParentId( 
-	_Out_ PLONG ProcessId 
+VOID ClearDriverConfigOnProcessTermination(
+	_In_ PIRP Irp
 )
 {
-	KeAcquireGuardedMutex( &mutex );
-	*ProcessId = protected_process_parent_id;
-	KeReleaseGuardedMutex( &mutex );
+	KeAcquireGuardedMutex( &config.lock );
+	config.protected_process_id = NULL;
+	config.protected_process_eprocess = NULL;
+	config.initialised = FALSE;
+	KeReleaseGuardedMutex( &config.lock );
 }
 
-VOID UpdateProtectedProcessParentId( 
-	_In_ LONG NewProcessId 
+NTSTATUS InitialiseDriverConfigOnProcessLaunch(
+	_In_ PIRP Irp
 )
 {
-	KeAcquireGuardedMutex( &mutex );
-	protected_process_parent_id = NewProcessId;
-	KeReleaseGuardedMutex( &mutex );
+	NTSTATUS status;
+	PDRIVER_INITIATION_INFORMATION information;
+	PEPROCESS eprocess;
+
+	information = ( PDRIVER_INITIATION_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
+
+	status = PsLookupProcessByProcessId( information->protected_process_id, &eprocess );
+
+	if ( !NT_SUCCESS( status ) )
+		return status;
+
+	config.protected_process_eprocess = eprocess;
+	config.protected_process_id = information->protected_process_id;
+	config.initialised = TRUE;
+
+	Irp->IoStatus.Status = status;
+
+	return status;
 }
 
 VOID DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
 {
-	PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
+	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	ObUnRegisterCallbacks( callback_registration_handle );
 	FreeQueueObjectsAndCleanup();
 	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
@@ -94,13 +108,13 @@ NTSTATUS InitiateDriverCallbacks()
 		return status;
 	}
 
-	status = PsSetCreateProcessNotifyRoutine(
-		ProcessCreateNotifyRoutine,
-		FALSE
-	);
+	//status = PsSetCreateProcessNotifyRoutine(
+	//	ProcessCreateNotifyRoutine,
+	//	FALSE
+	//);
 
-	if ( !NT_SUCCESS( status ) )
-		DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
+	//if ( !NT_SUCCESS( status ) )
+	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
 
 	return status;
 }
@@ -114,7 +128,8 @@ NTSTATUS DriverEntry(
 
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
-	HANDLE handle;
+
+	KeInitializeGuardedMutex( &config.lock );
 
 	status = IoCreateDevice(
 		DriverObject,
@@ -146,8 +161,6 @@ NTSTATUS DriverEntry(
 	DriverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = DeviceControl;
 	DriverObject->DriverUnload = DriverUnload;
 
-	KeInitializeGuardedMutex( &mutex );
-
 	InitCallbackReportQueue(&flag);
 
 	if ( !flag )
@@ -157,26 +170,6 @@ NTSTATUS DriverEntry(
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
-
-	status = PsCreateSystemThread(
-		&handle,
-		PROCESS_ALL_ACCESS,
-		NULL,
-		NULL,
-		NULL,
-		InitiateDriverCallbacks,
-		NULL
-	);
-
-	if ( !NT_SUCCESS( status ) )
-	{
-		DEBUG_ERROR( "failed to launch thread to start tings" );
-		IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
-		IoDeleteDevice( DriverObject->DeviceObject );
-		return STATUS_FAILED_DRIVER_ENTRY;
-	}
-
-	ZwClose( handle );
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete. type: %lx", DriverObject->DeviceObject->DeviceType );
 

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipes;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,7 +14,6 @@ namespace service.messages
     {
         private byte[] _buffer;
         private static int RECEIVE_BUFFER_SIZE = 8192;
-        private IntPtr _receiveMessageAllocation;
 
         private enum RECEIVE_TYPE
         {
@@ -24,44 +24,27 @@ namespace service.messages
             : base(pipeServer, pipePacketHeaderSize)
         {
             _buffer = new byte[RECEIVE_BUFFER_SIZE];
+
+            StoreMessage();
         }
 
         public void StoreMessage()
         {
             ReadPipeBuffer(ref _buffer, RECEIVE_BUFFER_SIZE);
 
-            Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER header = GetPacketHeader();
+            Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER header =
+                GetPacketHeader<Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER>(ref _buffer);
 
-            _receiveMessageAllocation = Marshal.AllocHGlobal((int)header.total_incoming_packet_size);
-
-            int incoming_packets_count = header.total_incoming_packet_count;
-
-            Log.Information("Incoming packet count: {0}", incoming_packets_count);
-
-            if (incoming_packets_count > 1)
-            {
-                for (int i=0; i < incoming_packets_count; i++)
-                {
-                    Marshal.Copy(_buffer, 0, _receiveMessageAllocation + i * RECEIVE_BUFFER_SIZE, (int)header.packet_size);
-
-                    Array.Clear(_buffer);
-
-                    ReadPipeBuffer(ref _buffer, RECEIVE_BUFFER_SIZE);
-
-                    Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER test = GetPacketHeader();
-
-                    Log.Information("Packet number: {0}, packet size: {1}", test.current_packet_number, test.packet_size);
-                }
-            }
-            else
-            {
-                Marshal.Copy(_buffer, 0, _receiveMessageAllocation, (int)header.total_incoming_packet_size);
-            }
+            PrintPacketInformation(header);
         }
 
-        private Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER GetPacketHeader()
+        private void PrintPacketInformation(Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER header)
         {
-            return Helper.BytesToStructure<Types.Receive.PIPE_PACKET_SEND_EXTENSION_HEADER>(ref _buffer);
+            Log.Information("Incoming packet count: {0:x}, current packet num: {1:x}, current packet size: {2:x}, total packet size: {3:x}",
+                header.total_incoming_packet_count,
+                header.current_packet_number,
+                header.packet_size,
+                header.total_incoming_packet_size);
         }
     }
 }

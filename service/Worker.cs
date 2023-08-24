@@ -67,12 +67,12 @@ namespace service
                         switch (header)
                         {
                             case (int)MESSAGE_TYPE.MESSAGE_TYPE_REPORT:
+                                _logger.LogDebug("We are inside the message report case");
                                 Report report = new Report(_pipeServer, _headerSize);
                                 break;
 
                             case (int)MESSAGE_TYPE.MESSAGE_TYPE_RECEIVE:
                                 Receive receive = new Receive(_pipeServer, _headerSize);
-                                receive.StoreMessage();
                                 break;
                         }
                     }

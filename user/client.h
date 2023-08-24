@@ -72,7 +72,7 @@ namespace global
 			mutex.unlock();
 		}
 
-		void ServerRequest();
+		void ServerReceive();
 
 		void ServerSend( PVOID Buffer, SIZE_T Size, INT RequestId );
 	};

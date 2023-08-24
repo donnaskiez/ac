@@ -18,8 +18,8 @@ namespace service
                 public int request_id;
                 public int current_packet_number;
                 public int total_incoming_packet_count;
-                public long packet_size;
-                public long total_incoming_packet_size;
+                public uint packet_size;
+                public uint total_incoming_packet_size;
             };
         }
 

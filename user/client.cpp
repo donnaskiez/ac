@@ -13,8 +13,9 @@ global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR P
 /*
 * Request an item from the server
 */
-void global::Client::ServerRequest()
+void global::Client::ServerReceive()
 {
+
 }
 
 /*

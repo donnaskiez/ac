@@ -20,7 +20,12 @@ namespace service.messages
 
         public void ReadPipeBuffer(ref byte[] buffer, int bufferSize )
         {
-            _pipeServer.Read(buffer, 0, bufferSize + _packetHeaderSize);
+            _pipeServer.Read(buffer, 0, bufferSize - _packetHeaderSize);
+        }
+
+        public T GetPacketHeader<T>(ref byte[] buffer)
+        {
+            return Helper.BytesToStructure<T>(ref buffer);
         }
     }
 }

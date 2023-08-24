@@ -133,13 +133,11 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	PEPROCESS target_process = ( PEPROCESS )OperationInformation->Object;
 	LONG target_process_id = PsGetProcessId( target_process );
 	LONG process_creator_id = PsGetProcessId( process_creator );
-	LONG protected_process_id;
-	LONG parent_process_id;
+	LONG protected_process_id = NULL;
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
 
 	GetProtectedProcessId( &protected_process_id );
-	GetProtectedProcessParentId( &parent_process_id );
 
 	process_creator_name = PsGetProcessImageFileName( process_creator );
 	target_process_name = PsGetProcessImageFileName( target_process );
@@ -155,12 +153,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 		{
 			DEBUG_LOG( "handles made by NOTEPAD r okay :)" );
 			/* handles created by the game (notepad) are okay */
-		}
-		/* NOTE: try allowing only 1 handle from the proc creator */
-		else if ( parent_process_id == process_creator_id )
-		{
-			/* Allow handles created by the protected process' creator i.e explorer, cmd etc. */
-			DEBUG_LOG( "Process creator: %s handles are fine for now...", process_creator_name );
 		}
 		else
 		{
@@ -189,51 +181,51 @@ end:
 	return OB_PREOP_SUCCESS;
 }
 
-VOID ProcessCreateNotifyRoutine(
-	_In_ HANDLE ParentId,
-	_In_ HANDLE ProcessId,
-	_In_ BOOLEAN Create
-)
-{
-	NTSTATUS status;
-	PEPROCESS parent_process;
-	PEPROCESS target_process;
-	LONG parent_process_id;
-	LONG target_process_id;
-	LPCSTR target_process_name = NULL;
-	LPCSTR parent_process_name = NULL;
-
-	status = PsLookupProcessByProcessId( ParentId, &parent_process );
-
-	if ( !NT_SUCCESS( status ) )
-		return;
-
-	status = PsLookupProcessByProcessId( ProcessId, &target_process );
-
-	if ( !NT_SUCCESS( status ) )
-		return;
-
-	parent_process_name = PsGetProcessImageFileName( parent_process );
-
-	if ( !parent_process_name )
-		return;
-
-	target_process_name = PsGetProcessImageFileName( target_process );
-
-	if ( !target_process_name )
-		return;
-
-	if ( !strcmp( target_process_name, "notepad.exe") )
-	{
-		parent_process_id = PsGetProcessId( parent_process );
-		UpdateProtectedProcessParentId( parent_process_id );
-
-		target_process_id = PsGetProcessId( target_process );
-		UpdateProtectedProcessId( target_process_id );
-
-		DEBUG_LOG( "Protected process parent proc id: %lx", parent_process_id );
-	}
-}
+//VOID ProcessCreateNotifyRoutine(
+//	_In_ HANDLE ParentId,
+//	_In_ HANDLE ProcessId,
+//	_In_ BOOLEAN Create
+//)
+//{
+//	NTSTATUS status;
+//	PEPROCESS parent_process;
+//	PEPROCESS target_process;
+//	LONG parent_process_id;
+//	LONG target_process_id;
+//	LPCSTR target_process_name = NULL;
+//	LPCSTR parent_process_name = NULL;
+//
+//	status = PsLookupProcessByProcessId( ParentId, &parent_process );
+//
+//	if ( !NT_SUCCESS( status ) )
+//		return;
+//
+//	status = PsLookupProcessByProcessId( ProcessId, &target_process );
+//
+//	if ( !NT_SUCCESS( status ) )
+//		return;
+//
+//	parent_process_name = PsGetProcessImageFileName( parent_process );
+//
+//	if ( !parent_process_name )
+//		return;
+//
+//	target_process_name = PsGetProcessImageFileName( target_process );
+//
+//	if ( !target_process_name )
+//		return;
+//
+//	if ( !strcmp( target_process_name, "notepad.exe") )
+//	{
+//		parent_process_id = PsGetProcessId( parent_process );
+//		UpdateProtectedProcessParentId( parent_process_id );
+//
+//		target_process_id = PsGetProcessId( target_process );
+//		UpdateProtectedProcessId( target_process_id );
+//
+//		DEBUG_LOG( "Protected process parent proc id: %lx", parent_process_id );
+//	}
+//}
 
 /* stolen from ReactOS xD */
 VOID NTAPI ExUnlockHandleTableEntry(
@@ -262,10 +254,10 @@ BOOLEAN EnumHandleCallback(
 	PVOID object_header;
 	POBJECT_TYPE object_type;
 	PEPROCESS process;
-	PEPROCESS protected_process;
+	PEPROCESS protected_process = NULL;
 	LPCSTR process_name;
 	LPCSTR protected_process_name;
-	LONG protected_process_id;
+	LONG protected_process_id = NULL;
 	ACCESS_MASK handle_access_mask;
 
 	object_header = GET_OBJECT_HEADER_FROM_HANDLE( Entry->ObjectPointerBits );
@@ -282,7 +274,7 @@ BOOLEAN EnumHandleCallback(
 		process_name = PsGetProcessImageFileName( process );
 
 		GetProtectedProcessId( &protected_process_id );
-		PsLookupProcessByProcessId( protected_process_id, &protected_process );
+		GetProtectedProcessEProcess( &protected_process );
 
 		protected_process_name = PsGetProcessImageFileName( protected_process );
 
