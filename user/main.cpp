@@ -31,7 +31,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     //kmanager.MonitorCallbackReports();
     //kmanager.RunNmiCallbacks();
     //kmanager.VerifySystemModules();
-    kmanager.RequestModuleExecutableRegionsForIntegrityCheck();
+    //kmanager.RequestModuleExecutableRegionsForIntegrityCheck();
     //kmanager.MonitorCallbackReports();
 
     //umanager.ValidateProcessModules();

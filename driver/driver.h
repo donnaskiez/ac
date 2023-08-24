@@ -19,12 +19,16 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 );
 
 VOID GetProtectedProcessEProcess(
-	_In_ PEPROCESS Process
+	_Out_ PEPROCESS Process
 );
 
 
 VOID GetProtectedProcessId(
-	_In_ PLONG ProcessId
+	_Out_ PLONG ProcessId
+);
+
+VOID ReadInitialisedConfigFlag(
+	_Out_ PBOOLEAN Flag
 );
 
 

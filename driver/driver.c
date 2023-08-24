@@ -13,8 +13,17 @@ DRIVER_CONFIG config = { 0 };
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
 UNICODE_STRING DEVICE_SYMBOLIC_LINK = RTL_CONSTANT_STRING( L"\\??\\DonnaAC" );
 
+VOID ReadInitialisedConfigFlag(
+	_Out_ PBOOLEAN Flag
+)
+{
+	KeAcquireGuardedMutex( &config.lock );
+	*Flag = config.initialised;
+	KeReleaseGuardedMutex( &config.lock );
+}
+
 VOID GetProtectedProcessEProcess( 
-	_In_ PEPROCESS Process 
+	_Out_ PEPROCESS Process 
 )
 {
 	KeAcquireGuardedMutex( &config.lock );
@@ -23,7 +32,7 @@ VOID GetProtectedProcessEProcess(
 }
 
 VOID GetProtectedProcessId( 
-	_In_ PLONG ProcessId 
+	_Out_ PLONG ProcessId 
 )
 {
 	KeAcquireGuardedMutex( &config.lock );
@@ -33,6 +42,7 @@ VOID GetProtectedProcessId(
 
 VOID ClearDriverConfigOnProcessTermination()
 {
+	DEBUG_LOG( "Process closed, clearing driver configuration" );
 	KeAcquireGuardedMutex( &config.lock );
 	config.protected_process_id = NULL;
 	config.protected_process_eprocess = NULL;
@@ -55,9 +65,17 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 	if ( !NT_SUCCESS( status ) )
 		return status;
 
+	/*
+	* acquire the mutex here to prevent a race condition if an unknown party trys 
+	* to fuzz our IOCTL codes whilst the target process launches.
+	*/
+	KeAcquireGuardedMutex( &config.lock );
+
 	config.protected_process_eprocess = eprocess;
 	config.protected_process_id = information->protected_process_id;
 	config.initialised = TRUE;
+
+	KeReleaseGuardedMutex( &config.lock );
 
 	Irp->IoStatus.Status = status;
 
@@ -85,6 +103,10 @@ NTSTATUS DriverEntry(
 	NTSTATUS status;
 
 	KeInitializeGuardedMutex( &config.lock );
+
+	config.initialised = FALSE;
+	config.protected_process_eprocess = NULL;
+	config.protected_process_id = NULL;
 
 	status = IoCreateDevice(
 		DriverObject,

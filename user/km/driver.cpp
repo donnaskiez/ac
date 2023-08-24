@@ -24,6 +24,11 @@ kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> 
 	this->NotifyDriverOnProcessLaunch();
 }
 
+kernelmode::Driver::~Driver()
+{
+	this->NotifyDriverOnProcessTermination();
+}
+
 VOID kernelmode::Driver::RunNmiCallbacks()
 {
 	BOOLEAN status;
@@ -354,6 +359,25 @@ ULONG kernelmode::Driver::RequestTotalModuleSize()
 		LOG_ERROR( "CheckHandleTableEntries failed with status %x", status );
 
 	return module_size;
+}
+
+VOID kernelmode::Driver::NotifyDriverOnProcessTermination()
+{
+	BOOLEAN status;
+	
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "NotifyDriverOnProcessTermination failed with status %x", status );
 }
 
 VOID kernelmode::Driver::ValidateKPRCBThreads()

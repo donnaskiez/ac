@@ -43,6 +43,8 @@ NTSTATUS GetDriverImageSize(
 * analyse the executable sections from there. Until I find a better way to enumerate
 * kernel memory without having to walk the pages tables to check the EDB bit this 
 * is how I will be doing it. c:
+* 
+* TODO: We will hash this based on timestamp sent from the server.
 */
 NTSTATUS CopyDriverExecutableRegions(
 	_In_ PIRP Irp

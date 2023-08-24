@@ -21,6 +21,17 @@ NTSTATUS DeviceControl(
 	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation( Irp );
 	HANDLE handle;
 	PKTHREAD thread;
+	BOOLEAN security_flag = FALSE;
+
+	/*
+	* The purpose of this is to prevent programs from opening a handle to our driver
+	* and trying to fuzz the IOCTL access or codes. This definitely isnt a perfect 
+	* solution though... xD
+	*/
+	ReadInitialisedConfigFlag( &security_flag );
+
+	if ( security_flag == FALSE )
+		goto end;
 
 	switch ( stack_location->Parameters.DeviceIoControl.IoControlCode )
 	{
@@ -190,7 +201,7 @@ NTSTATUS DeviceControl(
 
 		break;
 
-	case IOCTL_CLEAR_CONFIG_ON_PROCESS_CLOSE:
+	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION:
 
 		ClearDriverConfigOnProcessTermination();
 		UnregisterCallbacksOnProcessTermination();

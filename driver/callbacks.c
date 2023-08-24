@@ -512,6 +512,7 @@ NTSTATUS InitiateDriverCallbacks()
 
 VOID UnregisterCallbacksOnProcessTermination()
 {
+	DEBUG_LOG( "Process closed, unregistering callbacks" );
 	KeAcquireGuardedMutex( &configuration.mutex );
 	ObUnRegisterCallbacks( configuration.registration_handle );
 	configuration.registration_handle = NULL;
