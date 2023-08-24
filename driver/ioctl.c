@@ -192,7 +192,8 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_CLEAR_CONFIG_ON_PROCESS_CLOSE:
 
-		ClearDriverConfigOnProcessTermination( Irp );
+		ClearDriverConfigOnProcessTermination();
+		UnregisterCallbacksOnProcessTermination();
 
 		break;
 

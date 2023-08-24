@@ -28,10 +28,5 @@ VOID GetProtectedProcessId(
 );
 
 
-VOID ClearDriverConfigOnProcessTermination(
-	_In_ PIRP Irp
-);
-
-NTSTATUS InitiateDriverCallbacks();
-
+VOID ClearDriverConfigOnProcessTermination();
 #endif

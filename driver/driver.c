@@ -8,9 +8,6 @@
 
 #include "integrity.h"
 
-
-PVOID callback_registration_handle;
-
 DRIVER_CONFIG config = { 0 };
 
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
@@ -34,9 +31,7 @@ VOID GetProtectedProcessId(
 	KeReleaseGuardedMutex( &config.lock );
 }
 
-VOID ClearDriverConfigOnProcessTermination(
-	_In_ PIRP Irp
-)
+VOID ClearDriverConfigOnProcessTermination()
 {
 	KeAcquireGuardedMutex( &config.lock );
 	config.protected_process_id = NULL;
@@ -74,49 +69,9 @@ VOID DriverUnload(
 )
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
-	ObUnRegisterCallbacks( callback_registration_handle );
 	FreeQueueObjectsAndCleanup();
 	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
 	IoDeleteDevice( DriverObject->DeviceObject );
-}
-
-NTSTATUS InitiateDriverCallbacks()
-{
-	NTSTATUS status;
-
-	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
-	OB_OPERATION_REGISTRATION operation_registration = { 0 };
-
-	operation_registration.ObjectType = PsProcessType;
-	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
-	operation_registration.PreOperation = ObPreOpCallbackRoutine;
-	operation_registration.PostOperation = ObPostOpCallbackRoutine;
-
-	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
-	callback_registration.OperationRegistration = &operation_registration;
-	callback_registration.OperationRegistrationCount = 1;
-	callback_registration.RegistrationContext = NULL;
-
-	status = ObRegisterCallbacks(
-		&callback_registration,
-		&callback_registration_handle
-	);
-
-	if ( !NT_SUCCESS( status ) )
-	{
-		DEBUG_ERROR( "failed to launch obregisters with status %x", status );
-		return status;
-	}
-
-	//status = PsSetCreateProcessNotifyRoutine(
-	//	ProcessCreateNotifyRoutine,
-	//	FALSE
-	//);
-
-	//if ( !NT_SUCCESS( status ) )
-	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
-
-	return status;
 }
 
 NTSTATUS DriverEntry(

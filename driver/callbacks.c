@@ -5,6 +5,7 @@
 
 #include "queue.h"
 
+CALLBACK_CONFIGURATION configuration;
 QUEUE_HEAD head = { 0 };
 
 /*
@@ -117,6 +118,8 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
 {
+	KeAcquireGuardedMutex( &configuration.mutex );
+
 	UNREFERENCED_PARAMETER( RegistrationContext );
 
 	/* access mask to completely strip permissions */
@@ -178,6 +181,7 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 
 end:
 
+	KeReleaseGuardedMutex( &configuration.mutex );
 	return OB_PREOP_SUCCESS;
 }
 
@@ -458,4 +462,58 @@ VOID EnumerateProcessListWithCallbackFunction(
 		current_process = ( PEPROCESS )( ( uintptr_t )list->Flink - EPROCESS_PLIST_ENTRY_OFFSET );
 
 	} while ( current_process != base_process || !current_process );
+}
+
+NTSTATUS InitiateDriverCallbacks()
+{
+	NTSTATUS status;
+
+	/*
+	* This mutex ensures we don't  unregister our ObRegisterCallbacks while
+	* the callback function is running since this might cause some funny stuff
+	* to happen. Better to be safe then sorry :)
+	*/
+	KeInitializeGuardedMutex( &configuration.mutex );
+
+	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
+	OB_OPERATION_REGISTRATION operation_registration = { 0 };
+
+	operation_registration.ObjectType = PsProcessType;
+	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
+	operation_registration.PreOperation = ObPreOpCallbackRoutine;
+	operation_registration.PostOperation = ObPostOpCallbackRoutine;
+
+	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
+	callback_registration.OperationRegistration = &operation_registration;
+	callback_registration.OperationRegistrationCount = 1;
+	callback_registration.RegistrationContext = NULL;
+
+	status = ObRegisterCallbacks(
+		&callback_registration,
+		&configuration.registration_handle
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "failed to launch obregisters with status %x", status );
+		return status;
+	}
+
+	//status = PsSetCreateProcessNotifyRoutine(
+	//	ProcessCreateNotifyRoutine,
+	//	FALSE
+	//);
+
+	//if ( !NT_SUCCESS( status ) )
+	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
+
+	return status;
+}
+
+VOID UnregisterCallbacksOnProcessTermination()
+{
+	KeAcquireGuardedMutex( &configuration.mutex );
+	ObUnRegisterCallbacks( configuration.registration_handle );
+	configuration.registration_handle = NULL;
+	KeReleaseGuardedMutex( &configuration.mutex );
 }

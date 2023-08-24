@@ -30,6 +30,13 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 
 }OPEN_HANDLE_FAILURE_REPORT, *POPEN_HANDLE_FAILURE_REPORT;
 
+typedef struct _CALLBACKS_CONFIGURATION
+{
+	PVOID registration_handle;
+	KGUARDED_MUTEX mutex;
+
+}CALLBACK_CONFIGURATION, *PCALLBACK_CONFIGURATION;
+
 //handle access masks
 //https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights
 #define PROCESS_CREATE_PROCESS 0x0080
@@ -86,5 +93,9 @@ VOID EnumerateProcessListWithCallbackFunction(
 NTSTATUS EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 );
+
+NTSTATUS InitiateDriverCallbacks();
+
+VOID UnregisterCallbacksOnProcessTermination();
 
 #endif
