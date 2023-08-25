@@ -44,7 +44,6 @@ namespace kernelmode
 		VOID ValidateKPRCBThreads();
 		VOID CheckHandleTableEntries();
 		VOID RequestModuleExecutableRegions();
-		/* todo: driver integrity check */
 	};
 
 	struct DRIVER_INITIATION_INFORMATION

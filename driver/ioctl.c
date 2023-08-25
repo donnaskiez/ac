@@ -30,7 +30,8 @@ NTSTATUS DeviceControl(
 	*/
 	ReadInitialisedConfigFlag( &security_flag );
 
-	if ( security_flag == FALSE )
+	if ( security_flag == FALSE && 
+		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH )
 		goto end;
 
 	switch ( stack_location->Parameters.DeviceIoControl.IoControlCode )
@@ -154,7 +155,7 @@ NTSTATUS DeviceControl(
 			NULL,
 			NULL,
 			NULL,
-			CopyDriverExecutableRegions,
+			New_CopyDriverExecutableRegions,
 			Irp
 		);
 

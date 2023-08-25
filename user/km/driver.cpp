@@ -308,6 +308,11 @@ VOID kernelmode::Driver::RequestModuleExecutableRegions()
 
 	LOG_INFO( "module size: %lx", module_size );
 
+	/*
+	* allocate a buffer big enough for the entire module not including section headers or
+	* packet headers, however it should be big enough since executable sections do not
+	* make up 100% of the image size. Bit hacky but it works.
+	*/
 	buffer = malloc( module_size );
 
 	if ( !buffer )
@@ -332,7 +337,7 @@ VOID kernelmode::Driver::RequestModuleExecutableRegions()
 
 	LOG_INFO( "bytes returned: %lx", bytes_returned );
 
-	this->report_interface->ServerSend( buffer, module_size, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+	this->report_interface->ServerSend( buffer, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
 
 end:
 	free( buffer );
