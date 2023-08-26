@@ -4,8 +4,6 @@
 
 #include <intrin.h>
 
-PPHYSICAL_MEMORY_RANGE physical_memory_ranges = NULL;
-
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
 	CONTEXT context = { 0 };
@@ -53,12 +51,12 @@ VOID ScanPageForProcessAllocations(
 	_In_ ULONG PageSize
 )
 {
-	if ( !PageBase || !PageSize )
-		return;
-
 	CHAR process[] = "\x50\x72\x6F\x63";
 	INT length = strlen( process );
 	BOOLEAN found = TRUE;
+
+	if ( !PageBase || !PageSize )
+		return;
 
 	for ( INT offset = 0; offset < PageSize; offset++ )
 	{
@@ -96,11 +94,12 @@ VOID ScanPageForProcessAllocations(
 	}
 }
 
-VOID GetPhysicalMemoryRanges()
-{
-	physical_memory_ranges = MmGetPhysicalMemoryRanges();
-}
-
+/*
+* Using MmGetPhysicalMemoryRangesEx2(), we can get a block of structures that
+* describe the physical memory layout. With each physical page base we are going
+* to enumerate, we want to make sure it lies within an appropriate region of 
+* physical memory, so this function is to check for exactly that.
+*/
 BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 	_In_ UINT64 PhysicalAddress,
 	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges
@@ -115,6 +114,8 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 
 		if ( PhysicalAddress >= start_address && PhysicalAddress <= end_address )
 			return TRUE;
+
+		page_index++;
 	}
 
 	return FALSE;
@@ -160,24 +161,15 @@ VOID WalkKernelPageTables()
 	UINT64 base_physical_page;
 	UINT64 base_virtual_page;
 	PHYSICAL_ADDRESS physical;
+	PPHYSICAL_MEMORY_RANGE physical_memory_ranges;
 
-	VOID GetPhysicalMemoryRanges();
+	physical_memory_ranges = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
 
-	//if ( physical_memory_ranges == NULL )
-	//{
-	//	DEBUG_ERROR( "Failed to get physical memory ranges" );
-	//	return;
-	//}
-
-	PPHYSICAL_MEMORY_RANGE test = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
-
-	if ( test == NULL )
+	if ( physical_memory_ranges == NULL )
 	{
 		DEBUG_ERROR( "LOL stupid cunt not working" );
 		return;
 	}
-
-	DEBUG_LOG( "Test: %llx", ( UINT64 )test );
 
 	cr3.BitAddress = __readcr3();
 
@@ -253,16 +245,18 @@ VOID WalkKernelPageTables()
 
 					physical.QuadPart = pt_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
+					/* if the page base isnt in a legit region, go next */
+					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, physical_memory_ranges ) == FALSE )
+						continue;
+
 					base_virtual_page = MmGetVirtualForPhysical( physical );
 
 					/* stupid fucking intellisense error GO AWAY! */
 					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
 						continue;
 
+					/* this probably isnt needed but whatevs */
 					if ( base_virtual_page < 0xfffff80000000000 && base_virtual_page > 0xffffffffffffffff )
-						continue;
-
-					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, test ) == FALSE )
 						continue;
 
 					ScanPageForProcessAllocations( base_virtual_page, PAGE_BASE_SIZE );
