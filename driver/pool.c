@@ -58,7 +58,7 @@ VOID ScanPageForProcessAllocations(
 	if ( !PageBase || !PageSize )
 		return;
 
-	for ( INT offset = 0; offset < PageSize; offset++ )
+	for ( INT offset = 0; offset <= PageSize - length; offset++ )
 	{
 		for ( INT sig_index = 0; sig_index < length; sig_index++ )
 		{
@@ -68,29 +68,36 @@ VOID ScanPageForProcessAllocations(
 				break;
 			}
 
-			//CHAR current_char = *( PCHAR )( PageBase + offset + sig_index );
-			//CHAR current_sig_byte = process[ sig_index ];
+			CHAR current_char = *( PCHAR )( PageBase + offset + sig_index );
+			CHAR current_sig_byte = process[ sig_index ];
 
-			//if ( current_char != current_sig_byte )
+			if ( current_char != current_sig_byte )
+			{
+				found = FALSE;
+				break;
+			}
+		}
+
+		if ( found )
+		{
+			PPOOL_HEADER pool_header = PageBase + offset - POOL_TAG_SIZE;
+
+			DEBUG_LOG( "Maybe found: %llx", ( UINT64 )pool_header );
+
+			ULONG test = ( ULONG )pool_header;
+
+			if ( test & POOL_FLAG_NON_PAGED )
+			{
+				DEBUG_LOG( "maybe found pool with non paged pool" );
+			}
+
+			//if ( pool_header->PoolType & POOL_FLAG_NON_PAGED &&
+			//	pool_header->PoolTag == 0x636f7250 )
 			//{
-			//	found = FALSE;
+			//	DEBUG_LOG( "FOUND POOL at: %llx", ( UINT64 )pool_header );
 			//	break;
 			//}
 		}
-
-		//if ( found )
-		//{
-		//	PPOOL_HEADER pool_header = PageBase + offset - POOL_TAG_SIZE;
-
-		//	DEBUG_LOG( "Maybe found: %llx", ( UINT64 )pool_header );
-
-		//	if ( pool_header->PoolType & POOL_FLAG_NON_PAGED &&
-		//		pool_header->PoolTag == 0x636f7250 )
-		//	{
-		//		DEBUG_LOG( "FOUND POOL at: %llx", ( UINT64 )pool_header );
-		//		break;
-		//	}
-		//}
 	}
 }
 
