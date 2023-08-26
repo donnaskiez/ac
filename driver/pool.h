@@ -6,6 +6,13 @@
 #define POOL_DUMP_BLOCK_TAG 'dump'
 #define POOL_DEBUGGER_DATA_TAG 'data'
 
+#define PML4_ENTRY_COUNT 512
+#define PDPT_ENTRY_COUNT 512
+#define PD_ENTRY_COUNT 512
+#define PT_ENTRY_COUNT 512
+
+#define PAGE_BASE_SIZE 0x1000
+
 /* creds: https://www.unknowncheats.me/forum/2602838-post2.html */
 
 typedef struct _DBGKD_DEBUG_DATA_HEADER64
