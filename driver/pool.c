@@ -4,6 +4,8 @@
 
 #include <intrin.h>
 
+PPHYSICAL_MEMORY_RANGE physical_memory_ranges = NULL;
+
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
 	CONTEXT context = { 0 };
@@ -54,19 +56,68 @@ VOID ScanPageForProcessAllocations(
 	if ( !PageBase || !PageSize )
 		return;
 
-	CHAR process[ 4 ] = { 'Proc' };
-
-	DEBUG_LOG( "1: %hhx, 2: %hhx, 3: %hhx, 5: %hhx", process[ 0 ], process[ 1 ], process[ 2 ], process[ 3 ] );
-
-	__debugbreak();
+	CHAR process[] = "\x50\x72\x6F\x63";
+	INT length = strlen( process );
+	BOOLEAN found = TRUE;
 
 	for ( INT offset = 0; offset < PageSize; offset++ )
 	{
-		if ( !MmIsAddressValid( PageBase + offset ) )
-			continue;
+		for ( INT sig_index = 0; sig_index < length; sig_index++ )
+		{
+			if ( !MmIsAddressValid( PageBase + offset + sig_index ) )
+			{
+				found = FALSE;
+				break;
+			}
 
-		CHAR current_char = *( PCHAR )( PageBase + offset );
+			//CHAR current_char = *( PCHAR )( PageBase + offset + sig_index );
+			//CHAR current_sig_byte = process[ sig_index ];
+
+			//if ( current_char != current_sig_byte )
+			//{
+			//	found = FALSE;
+			//	break;
+			//}
+		}
+
+		//if ( found )
+		//{
+		//	PPOOL_HEADER pool_header = PageBase + offset - POOL_TAG_SIZE;
+
+		//	DEBUG_LOG( "Maybe found: %llx", ( UINT64 )pool_header );
+
+		//	if ( pool_header->PoolType & POOL_FLAG_NON_PAGED &&
+		//		pool_header->PoolTag == 0x636f7250 )
+		//	{
+		//		DEBUG_LOG( "FOUND POOL at: %llx", ( UINT64 )pool_header );
+		//		break;
+		//	}
+		//}
 	}
+}
+
+VOID GetPhysicalMemoryRanges()
+{
+	physical_memory_ranges = MmGetPhysicalMemoryRanges();
+}
+
+BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
+	_In_ UINT64 PhysicalAddress,
+	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges
+)
+{
+	ULONG page_index = 0;
+
+	while ( PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart != NULL )
+	{
+		UINT64 start_address = PhysicalMemoryRanges[ page_index ].BaseAddress.QuadPart;
+		UINT64 end_address = start_address + PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart;
+
+		if ( PhysicalAddress >= start_address && PhysicalAddress <= end_address )
+			return TRUE;
+	}
+
+	return FALSE;
 }
 
 /*
@@ -109,6 +160,24 @@ VOID WalkKernelPageTables()
 	UINT64 base_physical_page;
 	UINT64 base_virtual_page;
 	PHYSICAL_ADDRESS physical;
+
+	VOID GetPhysicalMemoryRanges();
+
+	//if ( physical_memory_ranges == NULL )
+	//{
+	//	DEBUG_ERROR( "Failed to get physical memory ranges" );
+	//	return;
+	//}
+
+	PPHYSICAL_MEMORY_RANGE test = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
+
+	if ( test == NULL )
+	{
+		DEBUG_ERROR( "LOL stupid cunt not working" );
+		return;
+	}
+
+	DEBUG_LOG( "Test: %llx", ( UINT64 )test );
 
 	cr3.BitAddress = __readcr3();
 
@@ -185,6 +254,16 @@ VOID WalkKernelPageTables()
 					physical.QuadPart = pt_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
 					base_virtual_page = MmGetVirtualForPhysical( physical );
+
+					/* stupid fucking intellisense error GO AWAY! */
+					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
+						continue;
+
+					if ( base_virtual_page < 0xfffff80000000000 && base_virtual_page > 0xffffffffffffffff )
+						continue;
+
+					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, test ) == FALSE )
+						continue;
 
 					ScanPageForProcessAllocations( base_virtual_page, PAGE_BASE_SIZE );
 				}

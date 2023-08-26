@@ -12,6 +12,7 @@
 #define PT_ENTRY_COUNT 512
 
 #define PAGE_BASE_SIZE 0x1000
+#define POOL_TAG_SIZE 0x004
 
 /* creds: https://www.unknowncheats.me/forum/2602838-post2.html */
 
