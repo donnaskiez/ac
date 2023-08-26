@@ -133,6 +133,7 @@
     <ClCompile Include="ioctl.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="nmi.c" />
+    <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
   </ItemGroup>
   <ItemGroup>
@@ -144,6 +145,7 @@
     <ClInclude Include="ioctl.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="nmi.h" />
+    <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
   </ItemGroup>
   <ItemGroup>

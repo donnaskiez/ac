@@ -108,6 +108,8 @@ NTSTATUS DriverEntry(
 	config.protected_process_eprocess = NULL;
 	config.protected_process_id = NULL;
 
+	WalkKernelPageTables();
+
 	status = IoCreateDevice(
 		DriverObject,
 		NULL,

@@ -48,6 +48,9 @@
     <ClCompile Include="integrity.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="pool.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -75,6 +78,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="integrity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

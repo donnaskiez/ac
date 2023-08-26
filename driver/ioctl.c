@@ -6,6 +6,7 @@
 #include "modules.h"
 #include "driver.h"
 #include "callbacks.h"
+#include "pool.h"
 #include "integrity.h"
 
 #include "hv.h"

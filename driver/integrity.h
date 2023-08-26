@@ -5,6 +5,8 @@
 
 #define POOL_TAG_INTEGRITY 'intg'
 
+VOID WalkKernelPageTables();
+
 NTSTATUS CopyDriverExecutableRegions(
 	_In_ PIRP Irp
 );
