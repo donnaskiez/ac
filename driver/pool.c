@@ -51,52 +51,41 @@ VOID ScanPageForProcessAllocations(
 	_In_ ULONG PageSize
 )
 {
-	CHAR process[] = "\x50\x72\x6F\x63";
+	CHAR process[] = "\x50\x72\x6f\x63";
 	INT length = strlen( process );
-	BOOLEAN found = TRUE;
 
 	if ( !PageBase || !PageSize )
 		return;
 
+	PAGED_CODE();
+
 	for ( INT offset = 0; offset <= PageSize - length; offset++ )
 	{
-		for ( INT sig_index = 0; sig_index < length; sig_index++ )
+		for ( INT sig_index = 0; sig_index < length + 1; sig_index++ )
 		{
 			if ( !MmIsAddressValid( PageBase + offset + sig_index ) )
-			{
-				found = FALSE;
 				break;
-			}
 
 			CHAR current_char = *( PCHAR )( PageBase + offset + sig_index );
 			CHAR current_sig_byte = process[ sig_index ];
 
-			if ( current_char != current_sig_byte )
+			if ( sig_index == length )
 			{
-				found = FALSE;
+				PPOOL_HEADER pool_header = ( UINT64 )PageBase + offset - 0x04;
+
+				if ( !MmIsAddressValid( (PVOID)pool_header ) )
+					break;
+
+				if ( pool_header->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER) == WIN_PROCESS_ALLOCATION_SIZE )
+				{
+					DEBUG_LOG( "prolly found proc: %llx", (UINT64)pool_header + sizeof(POOL_HEADER) );
+				}
+
 				break;
 			}
-		}
 
-		if ( found )
-		{
-			PPOOL_HEADER pool_header = PageBase + offset - POOL_TAG_SIZE;
-
-			DEBUG_LOG( "Maybe found: %llx", ( UINT64 )pool_header );
-
-			ULONG test = ( ULONG )pool_header;
-
-			if ( test & POOL_FLAG_NON_PAGED )
-			{
-				DEBUG_LOG( "maybe found pool with non paged pool" );
-			}
-
-			//if ( pool_header->PoolType & POOL_FLAG_NON_PAGED &&
-			//	pool_header->PoolTag == 0x636f7250 )
-			//{
-			//	DEBUG_LOG( "FOUND POOL at: %llx", ( UINT64 )pool_header );
-			//	break;
-			//}
+			if ( current_char != current_sig_byte )
+				break;
 		}
 	}
 }
@@ -169,6 +158,7 @@ VOID WalkKernelPageTables()
 	UINT64 base_virtual_page;
 	PHYSICAL_ADDRESS physical;
 	PPHYSICAL_MEMORY_RANGE physical_memory_ranges;
+	KIRQL irql;
 
 	physical_memory_ranges = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
 
@@ -179,6 +169,12 @@ VOID WalkKernelPageTables()
 	}
 
 	cr3.BitAddress = __readcr3();
+
+	//KeRaiseIrql( DISPATCH_LEVEL, &irql );
+
+	PAGED_CODE();
+
+	_disable();
 
 	physical.QuadPart = cr3.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
@@ -263,14 +259,18 @@ VOID WalkKernelPageTables()
 						continue;
 
 					/* this probably isnt needed but whatevs */
-					if ( base_virtual_page < 0xfffff80000000000 && base_virtual_page > 0xffffffffffffffff )
-						continue;
+					//if ( base_virtual_page < 0xfffff80000000000 || base_virtual_page > 0xffffffffffffffff )
+					//	continue;
 
 					ScanPageForProcessAllocations( base_virtual_page, PAGE_BASE_SIZE );
 				}
 			}
 		}
 	}
+
+	_enable();
+
+	//KeLowerIrql( irql );
 
 	DEBUG_LOG( "Finished scanning memory" );
 
