@@ -4,6 +4,17 @@
 
 #include <intrin.h>
 
+#define POOL_TAG_LENGTH 4
+
+CHAR PROCESS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x50\x72\x6f\x63";
+CHAR THREAD_POOL_TAG[ POOL_TAG_LENGTH ] = "\x54\x68\x72\x64";
+CHAR DESKTOP_POOL_TAG[ POOL_TAG_LENGTH ] = "\x44\x65\x73\x6B";
+CHAR WINDOW_STATIONS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x57\x69\x6E\x64";
+CHAR MUTANTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4D\x75\x74\x65";
+CHAR FILE_OBJECTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x46\x69\x6C\x65";
+CHAR DRIVERS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x44\x72\x69\x76";
+CHAR SYMBOLIC_LINKS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4C\x69\x6E\x6B";
+
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
 	CONTEXT context = { 0 };
@@ -46,39 +57,73 @@ end:
 	return debugger_data;
 }
 
-VOID ScanPageForProcessAllocations(
+VOID ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
-	_In_ ULONG PageSize
+	_In_ ULONG PageSize,
+	_In_ LPCSTR ObjectTag
 )
 {
-	CHAR process[] = "\x50\x72\x6f\x63";
-	INT length = strlen( process );
+	INT length = 0;
+	CHAR current_char;
+	CHAR current_sig_byte;
+	PPOOL_HEADER pool_header;
+	PEPROCESS process;
+	LPCSTR process_name;
 
-	if ( !PageBase || !PageSize )
+	if ( !PageBase || !PageSize || !ObjectTag)
 		return;
 
 	PAGED_CODE();
 
-	for ( INT offset = 0; offset <= PageSize - length; offset++ )
+	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH; offset++ )
 	{
-		for ( INT sig_index = 0; sig_index < length + 1; sig_index++ )
+		for ( INT sig_index = 0; sig_index < POOL_TAG_LENGTH + 1; sig_index++ )
 		{
 			if ( !MmIsAddressValid( PageBase + offset + sig_index ) )
 				break;
 
-			CHAR current_char = *( PCHAR )( PageBase + offset + sig_index );
-			CHAR current_sig_byte = process[ sig_index ];
+			current_char = *( PCHAR )( PageBase + offset + sig_index );
+			current_sig_byte = ObjectTag[ sig_index ];
 
-			if ( sig_index == length )
+			if ( sig_index == POOL_TAG_LENGTH )
 			{
-				PPOOL_HEADER pool_header = ( UINT64 )PageBase + offset - 0x04;
+				pool_header = ( UINT64 )PageBase + offset - 0x04;
 
 				if ( !MmIsAddressValid( (PVOID)pool_header ) )
 					break;
 
+				/*
+				* This is some hard coded trash, need to figure out how we can differentiate different
+				* types of objects since they would each have a varying number of headers, object sizes etc.
+				*/
 				if ( pool_header->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER) == WIN_PROCESS_ALLOCATION_SIZE )
 				{
-					DEBUG_LOG( "prolly found proc: %llx", (UINT64)pool_header + sizeof(POOL_HEADER) );
+					/*
+					* For an EPROCESS structure:
+					* 
+					* Pool base + 0x00 = ?? (not sure what structure lies here)
+					* Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
+					* Pool base + 0x30 = OBJECT_HEADER_HANDLE_INFO
+					* Pool base + 0x40 = OBJECT_HEADER
+					* Pool base + 0x70 = EPROCESS
+					* 
+					* OBJECT_HEADER->InfoMask is a bit mask that tells us which optional 
+					* headers the object has. The bits are as follows:
+					* 
+					* 0x1 = OBJECT_HEADER_CREATOR_INFO
+					* 0x2 = OBJECT_HEADER_NAME_INFO
+					* 0x4 = OBJECT_HEADER_HANDLE_INFO
+					* 0x8 = OBJECT_HEADER_QUOTA_INFO
+					* 0x10 = OBJECT_HEADER_PROCESS_INFO
+					* 0x20 = OBJECT_HEADER_AUDIT_INFO
+					* 0x40 = OBJECT_HEADER_HANDLE_REVOCATION_INFO
+					*/
+
+					process = (PEPROCESS)( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x70 );
+
+					process_name = PsGetProcessImageFileName( process );
+
+					DEBUG_LOG( "Found process: %s", process_name );
 				}
 
 				break;
@@ -102,11 +147,16 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 )
 {
 	ULONG page_index = 0;
+	UINT64 start_address = 0;
+	UINT64 end_address = 0;
+
+	if ( !PhysicalAddress || !PhysicalMemoryRanges )
+		return FALSE;
 
 	while ( PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart != NULL )
 	{
-		UINT64 start_address = PhysicalMemoryRanges[ page_index ].BaseAddress.QuadPart;
-		UINT64 end_address = start_address + PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart;
+		start_address = PhysicalMemoryRanges[ page_index ].BaseAddress.QuadPart;
+		end_address = start_address + PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart;
 
 		if ( PhysicalAddress >= start_address && PhysicalAddress <= end_address )
 			return TRUE;
@@ -146,13 +196,13 @@ VOID WalkKernelPageTables()
 	CR3 cr3;
 	PML4E pml4_base;
 	PML4E pml4_entry;
-	PDPTE pdpt_base;
+	UINT64 pdpt_base;
+	UINT64 pd_base;
+	UINT64 pt_base;
 	PDPTE pdpt_entry;
 	PDPTE_LARGE pdpt_large_entry;
-	PDE pd_base;
 	PDE pd_entry;
 	PDE_LARGE pd_large_entry;
-	PTE pt_base;
 	PTE pt_entry;
 	UINT64 base_physical_page;
 	UINT64 base_virtual_page;
@@ -192,14 +242,14 @@ VOID WalkKernelPageTables()
 
 		physical.QuadPart = pml4_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-		pdpt_base.BitAddress = MmGetVirtualForPhysical( physical );
+		pdpt_base = MmGetVirtualForPhysical( physical );
 
-		if ( !pdpt_base.BitAddress || !MmIsAddressValid( pdpt_base.BitAddress ) )
+		if ( !pdpt_base || !MmIsAddressValid( pdpt_base ) )
 			continue;
 
 		for ( INT pdpt_index = 0; pdpt_index < PDPT_ENTRY_COUNT; pdpt_index++ )
 		{
-			pdpt_entry.BitAddress = *( UINT64* )( pdpt_base.BitAddress + pdpt_index * sizeof( UINT64 ) );
+			pdpt_entry.BitAddress = *( UINT64* )( pdpt_base + pdpt_index * sizeof( UINT64 ) );
 
 			if ( pdpt_entry.Bits.Present == NULL )
 				continue;
@@ -213,14 +263,14 @@ VOID WalkKernelPageTables()
 
 			physical.QuadPart = pdpt_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-			pd_base.BitAddress = MmGetVirtualForPhysical( physical );
+			pd_base = MmGetVirtualForPhysical( physical );
 
-			if ( !pd_base.BitAddress || !MmIsAddressValid( pd_base.BitAddress ) )
+			if ( !pd_base || !MmIsAddressValid( pd_base ) )
 				continue;
 
 			for ( INT pd_index = 0; pd_index < PD_ENTRY_COUNT; pd_index++ )
 			{
-				pd_entry.BitAddress = *( UINT64* )( pd_base.BitAddress + pd_index * sizeof( UINT64 ) );
+				pd_entry.BitAddress = *( UINT64* )( pd_base + pd_index * sizeof( UINT64 ) );
 
 				if ( pd_entry.Bits.Present == NULL )
 					continue;
@@ -234,14 +284,14 @@ VOID WalkKernelPageTables()
 
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-				pt_base.BitAddress = MmGetVirtualForPhysical( physical );
+				pt_base = MmGetVirtualForPhysical( physical );
 
-				if ( !pt_base.BitAddress || !MmIsAddressValid( pt_base.BitAddress ) )
+				if ( !pt_base || !MmIsAddressValid( pt_base ) )
 					continue;
 
 				for ( INT pt_index = 0; pt_index < PT_ENTRY_COUNT; pt_index++ )
 				{
-					pt_entry.BitAddress = *( UINT64* )( pt_base.BitAddress + pt_index * sizeof( UINT64 ) );
+					pt_entry.BitAddress = *( UINT64* )( pt_base + pt_index * sizeof( UINT64 ) );
 
 					if ( pt_entry.Bits.Present == NULL )
 						continue;
@@ -258,7 +308,7 @@ VOID WalkKernelPageTables()
 					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
 						continue;
 
-					ScanPageForProcessAllocations( base_virtual_page, PAGE_BASE_SIZE );
+					ScanPageForKernelObjectAllocation( base_virtual_page, PAGE_BASE_SIZE, (LPCSTR)PROCESS_POOL_TAG );
 				}
 			}
 		}
@@ -269,7 +319,6 @@ VOID WalkKernelPageTables()
 	KeLowerIrql( irql );
 
 	DEBUG_LOG( "Finished scanning memory" );
-
 }
 
 VOID ScanNonPagedPoolForProcessTags()
