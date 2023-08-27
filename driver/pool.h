@@ -428,6 +428,9 @@ typedef union _PD_ENTRY_LARGE
  *  or not a page table entry is present or may forward to a
  *  large page of data, rather than another page table (applies
  *  only to PDPTEs and PDEs)
+ * 
+ * Some nice macros courtesy of: 
+ * https://www.unknowncheats.me/forum/general-programming-and-reversing/523359-introduction-physical-memory.html
  */
 #define IS_LARGE_PAGE(x)    ( (BOOLEAN)((x >> 7) & 1) )
 #define IS_PAGE_PRESENT(x)  ( (BOOLEAN)(x & 1) )

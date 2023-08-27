@@ -99,7 +99,7 @@ VOID ScanPageForKernelObjectAllocation(
 				if ( pool_header->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER) == WIN_PROCESS_ALLOCATION_SIZE )
 				{
 					/*
-					* For an EPROCESS structure:
+					* For ~70% of EPROCESS structures the header layout is as follows:
 					* 
 					* Pool base + 0x00 = ?? (not sure what structure lies here)
 					* Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
@@ -123,6 +123,16 @@ VOID ScanPageForKernelObjectAllocation(
 
 					process_name = PsGetProcessImageFileName( process );
 
+					/*
+					* Idea: since we don't know the number of headers or the exact memory layout of the object
+					* header section for these proc allocations, we can form an estimate address of base + 0x70
+					* and then iterate the loaded process list and if theres an address within say 0x50 of it we 
+					* can assume that the process is legitmate. Then to find an unlinked process, it wouldn't
+					* exist in the loaded module list, check that it hasnt been deallocated and then focus on
+					* scanning it for name etc. Maybe scan for .exe extension?
+					* 
+					* Also use the full name so we get the file extension and path not the 15 char long one
+					*/
 					DEBUG_LOG( "Found process: %s", process_name );
 				}
 
