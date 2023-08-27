@@ -168,13 +168,13 @@ VOID WalkKernelPageTables()
 		return;
 	}
 
-	cr3.BitAddress = __readcr3();
+	/* raise our irql to ensure we arent preempted by NOOB threads */
+	KeRaiseIrql( DISPATCH_LEVEL, &irql );
 
-	//KeRaiseIrql( DISPATCH_LEVEL, &irql );
-
-	PAGED_CODE();
-
+	/* disable interrupts to prevent any funny business occuring */
 	_disable();
+
+	cr3.BitAddress = __readcr3();
 
 	physical.QuadPart = cr3.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
@@ -258,10 +258,6 @@ VOID WalkKernelPageTables()
 					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
 						continue;
 
-					/* this probably isnt needed but whatevs */
-					//if ( base_virtual_page < 0xfffff80000000000 || base_virtual_page > 0xffffffffffffffff )
-					//	continue;
-
 					ScanPageForProcessAllocations( base_virtual_page, PAGE_BASE_SIZE );
 				}
 			}
@@ -270,7 +266,7 @@ VOID WalkKernelPageTables()
 
 	_enable();
 
-	//KeLowerIrql( irql );
+	KeLowerIrql( irql );
 
 	DEBUG_LOG( "Finished scanning memory" );
 
