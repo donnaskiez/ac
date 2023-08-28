@@ -7,15 +7,28 @@
 #include <intrin.h>
 
 #define POOL_TAG_LENGTH 4
+#define EXECUTIVE_OBJECT_COUNT 8
 
-CHAR PROCESS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x50\x72\x6f\x63";
-CHAR THREAD_POOL_TAG[ POOL_TAG_LENGTH ] = "\x54\x68\x72\x64";
-CHAR DESKTOP_POOL_TAG[ POOL_TAG_LENGTH ] = "\x44\x65\x73\x6B";
-CHAR WINDOW_STATIONS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x57\x69\x6E\x64";
-CHAR MUTANTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4D\x75\x74\x65";
-CHAR FILE_OBJECTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x46\x69\x6C\x65";
-CHAR DRIVERS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x44\x72\x69\x76";
-CHAR SYMBOLIC_LINKS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4C\x69\x6E\x6B";
+#define INDEX_PROCESS_POOL_TAG 0
+#define INDEX_THREAD_POOL_TAG 1
+#define INDEX_DESKTOP_POOL_TAG 2
+#define INDEX_WINDOW_STATIONS_POOL_TAG 3
+#define INDEX_MUTANTS_POOL_TAG 4
+#define INDEX_FILE_OBJECTS_POOL_TAG 5
+#define INDEX_DRIVERS_POOL_TAG 6
+#define INDEX_SYMBOLIC_LINKS_POOL_TAG7
+
+CHAR EXECUTIVE_OBJECT_POOL_TAGS[ EXECUTIVE_OBJECT_COUNT ][ POOL_TAG_LENGTH ] =
+{
+	"\x50\x72\x6f\x63",
+	"\x54\x68\x72\x64",
+	"\x44\x65\x73\x6B",
+	"\x57\x69\x6E\x64",
+	"\x4D\x75\x74\x65",
+	"\x46\x69\x6C\x65",
+	"\x44\x72\x69\x76",
+	"\x4C\x69\x6E\x6B"
+};
 
 PVOID process_buffer = NULL;
 ULONG process_count = NULL;
@@ -97,7 +110,7 @@ end:
 VOID ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
-	_In_ LPCSTR ObjectTag,
+	_In_ ULONG ObjectIndex,
 	_In_ PVOID AddressBuffer
 )
 {
@@ -110,7 +123,7 @@ VOID ScanPageForKernelObjectAllocation(
 	PUINT64 address_list;
 	ULONG allocation_size;
 
-	if ( !PageBase || !PageSize || !ObjectTag)
+	if ( !PageBase || !PageSize)
 		return;
 
 	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH; offset++ )
@@ -121,7 +134,7 @@ VOID ScanPageForKernelObjectAllocation(
 				break;
 
 			current_char = *( PCHAR )( PageBase + offset + sig_index );
-			current_sig_byte = ObjectTag[ sig_index ];
+			current_sig_byte = EXECUTIVE_OBJECT_POOL_TAGS[ ObjectIndex ][ sig_index ];
 
 			if ( sig_index == POOL_TAG_LENGTH )
 			{
@@ -349,7 +362,7 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 					ScanPageForKernelObjectAllocation(
 						base_virtual_page,
 						PAGE_BASE_SIZE,
-						( LPCSTR )PROCESS_POOL_TAG,
+						INDEX_PROCESS_POOL_TAG,
 						AddressBuffer
 					);
 				}
