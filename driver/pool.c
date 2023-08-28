@@ -63,7 +63,7 @@ end:
 }
 
 /*
-* For ~70% of EPROCESS structures the header layout is as follows:
+* For ~90% of EPROCESS structures the header layout is as follows:
 *
 * Pool base + 0x00 = ?? (not sure what structure lies here)
 * Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
@@ -424,26 +424,25 @@ NTSTATUS FindUnlinkedProcesses()
 
 	allocation_address = ( PUINT64 )process_buffer;
 
-	DEBUG_LOG( "Allocation addr: %p", allocation_address );
-
 	for ( INT i = 0; i < process_count; i++ )
 	{
 		if ( allocation_address[ i ] == NULL )
 			continue;
 
 		/* process has been deallocated yet the pool header hasnt been updated? */
-		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_VIRTUAL_SIZE_OFFSET ) == 0x0 )
+		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_VIRTUAL_SIZE_OFFSET ) == 0x00 )
 			continue;
 
+		/* report / do some further analysis */
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
 	}
 
-	DEBUG_LOG( "Finished scaning xd" );
-
-	__debugbreak();
+	DEBUG_LOG( "Finished pool memory xd" );
 
 	ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
+
 	process_count = NULL;
+	process_buffer = NULL;
 
 	return STATUS_SUCCESS;
 }
