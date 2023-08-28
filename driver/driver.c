@@ -5,6 +5,7 @@
 #include "callbacks.h"
 
 #include "hv.h"
+#include "pool.h"
 
 #include "integrity.h"
 
@@ -115,7 +116,7 @@ NTSTATUS DriverEntry(
 		NULL,
 		NULL,
 		NULL,
-		WalkKernelPageTables,
+		FindUnlinkedProcesses,
 		NULL
 	);
 

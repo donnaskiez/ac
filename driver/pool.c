@@ -2,6 +2,8 @@
 
 #include "common.h"
 
+#include "callbacks.h"
+
 #include <intrin.h>
 
 #define POOL_TAG_LENGTH 4
@@ -14,6 +16,9 @@ CHAR MUTANTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4D\x75\x74\x65";
 CHAR FILE_OBJECTS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x46\x69\x6C\x65";
 CHAR DRIVERS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x44\x72\x69\x76";
 CHAR SYMBOLIC_LINKS_POOL_TAG[ POOL_TAG_LENGTH ] = "\x4C\x69\x6E\x6B";
+
+PVOID process_buffer = NULL;
+ULONG process_count = NULL;
 
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
@@ -57,23 +62,56 @@ end:
 	return debugger_data;
 }
 
+/*
+* For ~70% of EPROCESS structures the header layout is as follows:
+*
+* Pool base + 0x00 = ?? (not sure what structure lies here)
+* Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
+* Pool base + 0x30 = OBJECT_HEADER_HANDLE_INFO
+* Pool base + 0x40 = OBJECT_HEADER
+* Pool base + 0x70 = EPROCESS
+*
+* OBJECT_HEADER->InfoMask is a bit mask that tells us which optional
+* headers the object has. The bits are as follows:
+*
+* 0x1 = OBJECT_HEADER_CREATOR_INFO
+* 0x2 = OBJECT_HEADER_NAME_INFO
+* 0x4 = OBJECT_HEADER_HANDLE_INFO
+* 0x8 = OBJECT_HEADER_QUOTA_INFO
+* 0x10 = OBJECT_HEADER_PROCESS_INFO
+* 0x20 = OBJECT_HEADER_AUDIT_INFO
+* 0x40 = OBJECT_HEADER_HANDLE_REVOCATION_INFO
+*/
+
+/*
+* Idea: since we don't know the number of headers or the exact memory layout of the object
+* header section for these proc allocations, we can form an estimate address of base + 0x70
+* and then iterate the loaded process list and if theres an address within say 0x50 of it we
+* can assume that the process is legitmate. Then to find an unlinked process, it wouldn't
+* exist in the loaded module list, check that it hasnt been deallocated and then focus on
+* scanning it for name etc. Maybe scan for .exe extension?
+*
+* Also use the full name so we get the file extension and path not the 15 char long one
+*/
+
 VOID ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
-	_In_ LPCSTR ObjectTag
+	_In_ LPCSTR ObjectTag,
+	_In_ PVOID AddressBuffer
 )
 {
 	INT length = 0;
 	CHAR current_char;
 	CHAR current_sig_byte;
 	PPOOL_HEADER pool_header;
-	PEPROCESS process;
+	PEPROCESS process = NULL;
 	LPCSTR process_name;
+	PUINT64 address_list;
+	ULONG allocation_size;
 
 	if ( !PageBase || !PageSize || !ObjectTag)
 		return;
-
-	PAGED_CODE();
 
 	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH; offset++ )
 	{
@@ -95,45 +133,41 @@ VOID ScanPageForKernelObjectAllocation(
 				/*
 				* This is some hard coded trash, need to figure out how we can differentiate different
 				* types of objects since they would each have a varying number of headers, object sizes etc.
+				* 
+				* For now we check 2 sizes, one of which is 0x10 smaller then the other (the unknown header?) 
+				* and make sure the pool is still allocated by checking the PoolType != 0.
+				* 
+				* more: https://www.imf-conference.org/imf2006/23_Schuster-PoolAllocations.pdf
 				*/
-				if ( pool_header->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER) == WIN_PROCESS_ALLOCATION_SIZE )
+
+				allocation_size = pool_header->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER ); 
+
+				if ( ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE ||
+					allocation_size  == WIN_PROCESS_ALLOCATION_SIZE_2 ) &&
+					pool_header->PoolType != NULL )
 				{
-					/*
-					* For ~70% of EPROCESS structures the header layout is as follows:
-					* 
-					* Pool base + 0x00 = ?? (not sure what structure lies here)
-					* Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
-					* Pool base + 0x30 = OBJECT_HEADER_HANDLE_INFO
-					* Pool base + 0x40 = OBJECT_HEADER
-					* Pool base + 0x70 = EPROCESS
-					* 
-					* OBJECT_HEADER->InfoMask is a bit mask that tells us which optional 
-					* headers the object has. The bits are as follows:
-					* 
-					* 0x1 = OBJECT_HEADER_CREATOR_INFO
-					* 0x2 = OBJECT_HEADER_NAME_INFO
-					* 0x4 = OBJECT_HEADER_HANDLE_INFO
-					* 0x8 = OBJECT_HEADER_QUOTA_INFO
-					* 0x10 = OBJECT_HEADER_PROCESS_INFO
-					* 0x20 = OBJECT_HEADER_AUDIT_INFO
-					* 0x40 = OBJECT_HEADER_HANDLE_REVOCATION_INFO
-					*/
+					if ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE )
+						process = process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x70 );
 
-					process = (PEPROCESS)( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x70 );
+					if ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE_2 )
+						process = process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x80 );
 
-					process_name = PsGetProcessImageFileName( process );
+					if ( process == NULL )
+					{
+						DEBUG_LOG( "Process size is different to expected cos we hardcoded dis trash" );
+						break;
+					}
 
-					/*
-					* Idea: since we don't know the number of headers or the exact memory layout of the object
-					* header section for these proc allocations, we can form an estimate address of base + 0x70
-					* and then iterate the loaded process list and if theres an address within say 0x50 of it we 
-					* can assume that the process is legitmate. Then to find an unlinked process, it wouldn't
-					* exist in the loaded module list, check that it hasnt been deallocated and then focus on
-					* scanning it for name etc. Maybe scan for .exe extension?
-					* 
-					* Also use the full name so we get the file extension and path not the 15 char long one
-					*/
-					DEBUG_LOG( "Found process: %s", process_name );
+					address_list = ( PUINT64 )AddressBuffer;
+
+					for ( INT i = 0; i < process_count; i++ )
+					{
+						if ( address_list[ i ] == NULL )
+						{
+							address_list[ i ] = ( UINT64 )process;
+							break;
+						}
+					}
 				}
 
 				break;
@@ -201,7 +235,7 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 * and extract the physical address from the value at each virtual address page entry.
 */
 
-VOID WalkKernelPageTables()
+VOID WalkKernelPageTables(PVOID AddressBuffer)
 {
 	CR3 cr3;
 	PML4E pml4_base;
@@ -227,12 +261,6 @@ VOID WalkKernelPageTables()
 		DEBUG_ERROR( "LOL stupid cunt not working" );
 		return;
 	}
-
-	/* raise our irql to ensure we arent preempted by NOOB threads */
-	KeRaiseIrql( DISPATCH_LEVEL, &irql );
-
-	/* disable interrupts to prevent any funny business occuring */
-	_disable();
 
 	cr3.BitAddress = __readcr3();
 
@@ -310,55 +338,112 @@ VOID WalkKernelPageTables()
 
 					/* if the page base isnt in a legit region, go next */
 					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, physical_memory_ranges ) == FALSE )
-						continue;
+					continue;
 
 					base_virtual_page = MmGetVirtualForPhysical( physical );
 
 					/* stupid fucking intellisense error GO AWAY! */
 					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
-						continue;
+					continue;
 
-					ScanPageForKernelObjectAllocation( base_virtual_page, PAGE_BASE_SIZE, (LPCSTR)PROCESS_POOL_TAG );
+					ScanPageForKernelObjectAllocation(
+						base_virtual_page,
+						PAGE_BASE_SIZE,
+						( LPCSTR )PROCESS_POOL_TAG,
+						AddressBuffer
+					);
 				}
 			}
 		}
 	}
 
-	_enable();
-
-	KeLowerIrql( irql );
-
 	DEBUG_LOG( "Finished scanning memory" );
 }
 
-VOID ScanNonPagedPoolForProcessTags()
+VOID IncrementProcessCounter()
+{
+	process_count++;
+}
+
+VOID CheckIfProcessAllocationIsInProcessList(
+	_In_ PEPROCESS Process
+)
+{
+	PUINT64 allocation_address;
+
+	for ( INT i = 0; i < process_count; i++ )
+	{
+		allocation_address = ( PUINT64 )process_buffer;
+
+		if ( ( UINT64 )Process >= allocation_address[ i ] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
+			( UINT64 )Process <= allocation_address[ i ] + PROCESS_OBJECT_ALLOCATION_MARGIN )
+		{
+			RtlZeroMemory( ( UINT64 )process_buffer + i * sizeof( UINT64 ), sizeof( UINT64 ) );
+		}
+	}
+}
+
+/*
+* Plan:
+* 1. Find number of running procs and allocate a pool equal to size 1.5 * num_procs.
+* 2. Walk the pages tables and store all found process allocation base addresses in this pool
+* 3. Enumerate the process allocation list and make sure that each allocation is within
+*    0x50 bytes of the EPROCESS base of one of the running processes.
+* 4. If there exists a process allocation that doesn't have a matching running process,
+*    make sure it hasnt been deallocated
+* 5. If it hasn't been deallocated, search for the .exe via the long string file name
+*    and report. Maybe do some further analysis can figure this out once we get there.
+*/
+NTSTATUS FindUnlinkedProcesses()
 {
 	NTSTATUS status;
-	PKDDEBUGGER_DATA64 debugger_data = NULL;
-	UINT64 non_paged_pool_start = NULL;
-	UINT64 non_paged_pool_end = NULL;
+	PUINT64 allocation_address;
 
-	/* must free this */
-	debugger_data = GetGlobalDebuggerData();
+	EnumerateProcessListWithCallbackFunction(
+		IncrementProcessCounter
+	);
 
-	if ( debugger_data == NULL )
+	if ( process_count == NULL )
 	{
-		DEBUG_ERROR( "Debugger data is null" );
+		DEBUG_ERROR( "Faield to get process count " );
 		return STATUS_ABANDONED;
 	}
 
-	non_paged_pool_start = debugger_data->MmNonPagedPoolStart;
-	non_paged_pool_end = debugger_data->MmNonPagedPoolEnd;
+	DEBUG_LOG( "Proc count: %lx", process_count );
 
-	DEBUG_LOG( "NonPagedPool start: %llx, end %llx", non_paged_pool_start, non_paged_pool_end );
+	process_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
 
-	WalkKernelPageTables();
+	if ( !process_buffer )
+		return STATUS_ABANDONED;
 
-/*	for ( ; non_paged_pool_start <= non_paged_pool_end; non_paged_pool_start++ )
+	WalkKernelPageTables( process_buffer );
+
+	EnumerateProcessListWithCallbackFunction(
+		CheckIfProcessAllocationIsInProcessList
+	);
+
+	allocation_address = ( PUINT64 )process_buffer;
+
+	DEBUG_LOG( "Allocation addr: %p", allocation_address );
+
+	for ( INT i = 0; i < process_count; i++ )
 	{
-		CHAR current_byte = *( CHAR* )non_paged_pool_start;
-		DEBUG_LOG( "Current byte: %c", current_byte );
-	*/
+		if ( allocation_address[ i ] == NULL )
+			continue;
 
-	ExFreePoolWithTag( debugger_data, POOL_DEBUGGER_DATA_TAG );
+		/* process has been deallocated yet the pool header hasnt been updated? */
+		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_VIRTUAL_SIZE_OFFSET ) == 0x0 )
+			continue;
+
+		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
+	}
+
+	DEBUG_LOG( "Finished scaning xd" );
+
+	__debugbreak();
+
+	ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
+	process_count = NULL;
+
+	return STATUS_SUCCESS;
 }

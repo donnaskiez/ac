@@ -5,6 +5,7 @@
 
 #define POOL_DUMP_BLOCK_TAG 'dump'
 #define POOL_DEBUGGER_DATA_TAG 'data'
+#define PROCESS_ADDRESS_LIST_TAG 'addr'
 
 #define PML4_ENTRY_COUNT 512
 #define PDPT_ENTRY_COUNT 512
@@ -14,9 +15,17 @@
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE 0x004
 
+#define PROCESS_OBJECT_ALLOCATION_MARGIN 0x90
+
+#define EPROCESS_VIRTUAL_SIZE_OFFSET 0x498
+
+/* SIZE_2 = first alloc + 0x10 */
 #define WIN_PROCESS_ALLOCATION_SIZE 0xcf0
+#define WIN_PROCESS_ALLOCATION_SIZE_2 0xd00
 
 #define CHUNK_SIZE 16
+
+NTSTATUS FindUnlinkedProcesses();
 
 /* creds: https://www.unknowncheats.me/forum/2602838-post2.html */
 
