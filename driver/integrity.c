@@ -44,7 +44,7 @@ NTSTATUS GetDriverImageSize(
 	return status;
 }
 
-NTSTATUS New_CopyDriverExecutableRegions(
+NTSTATUS CopyDriverExecutableRegions(
 	_In_ PIRP Irp
 )
 {
@@ -181,4 +181,20 @@ end:
 		ExFreePoolWithTag( buffer, POOL_TAG_INTEGRITY );
 
 	return status;
+}
+
+/*
+* 1. map driver to memory 
+* 2. store executable sections in buffer
+* 3. do the same with the in-memory module
+* 4. hash both buffers with the current time or something 
+* 5. compare 
+*/
+NTSTATUS PerformInMemoryIntegrityCheckVsDiskImage(
+	_In_ PIRP Irp
+)
+{
+	NTSTATUS status;
+
+
 }

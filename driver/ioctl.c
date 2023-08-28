@@ -2,7 +2,6 @@
 
 #include "common.h"
 
-#include "nmi.h"
 #include "modules.h"
 #include "driver.h"
 #include "callbacks.h"
@@ -156,7 +155,7 @@ NTSTATUS DeviceControl(
 			NULL,
 			NULL,
 			NULL,
-			New_CopyDriverExecutableRegions,
+			CopyDriverExecutableRegions,
 			Irp
 		);
 
@@ -207,6 +206,15 @@ NTSTATUS DeviceControl(
 
 		ClearDriverConfigOnProcessTermination();
 		UnregisterCallbacksOnProcessTermination();
+
+		break;
+
+	case IOCTL_SCAN_FOR_UNLINKED_PROCESS:
+
+		status = FindUnlinkedProcesses( Irp );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "FindUNlinekdProcesses failed with status %x", status );
 
 		break;
 

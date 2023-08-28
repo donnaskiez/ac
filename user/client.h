@@ -7,7 +7,7 @@
 #include "pipe.h"
 #include <TlHelp32.h>
 
-#define REPORT_BUFFER_SIZE 1024
+#define REPORT_BUFFER_SIZE 8192
 #define SEND_BUFFER_SIZE 8192
 
 #define MAX_SIGNATURE_SIZE 256
@@ -21,6 +21,7 @@
 #define REPORT_NMI_CALLBACK_FAILURE 50
 #define REPORT_MODULE_VALIDATION_FAILURE 60
 #define REPORT_ILLEGAL_HANDLE_OPERATION 70
+#define REPORT_INVALID_PROCESS_ALLOCATION 80
 
 enum REPORT_CODES
 {
@@ -145,6 +146,12 @@ namespace global
 			LONG thread_id;
 			LONG desired_access;
 			CHAR process_name[ 64 ];
+		};
+
+		struct INVALID_PROCESS_ALLOCATION_REPORT
+		{
+			INT report_code;
+			CHAR process[ 4096 ];
 		};
 	}
 }

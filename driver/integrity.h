@@ -5,18 +5,12 @@
 
 #define POOL_TAG_INTEGRITY 'intg'
 
-VOID WalkKernelPageTables();
-
 NTSTATUS CopyDriverExecutableRegions(
 	_In_ PIRP Irp
 );
 
 NTSTATUS GetDriverImageSize(
 	_In_ PIRP Irp
-);
-
-NTSTATUS New_CopyDriverExecutableRegions(
-    _In_ PIRP Irp
 );
 
 #define IMAGE_SCN_MEM_EXECUTE 0x20000000

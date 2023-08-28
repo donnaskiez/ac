@@ -3,9 +3,14 @@
 
 #include <ntifs.h>
 
+#define REPORT_INVALID_PROCESS_ALLOCATION 80
+#define REPORT_INVALID_PROCESS_BUFFER_SIZE 4096
+
 #define POOL_DUMP_BLOCK_TAG 'dump'
 #define POOL_DEBUGGER_DATA_TAG 'data'
 #define PROCESS_ADDRESS_LIST_TAG 'addr'
+#define ANALYSE_PROCESS_TAG 'anls'
+#define INVALID_PROCESS_REPORT_TAG 'invd'
 
 #define PML4_ENTRY_COUNT 512
 #define PDPT_ENTRY_COUNT 512
@@ -18,6 +23,7 @@
 #define PROCESS_OBJECT_ALLOCATION_MARGIN 0x90
 
 #define EPROCESS_VIRTUAL_SIZE_OFFSET 0x498
+#define EPROCESS_IMAGE_NAME_OFFSET 0x5a8
 
 /* SIZE_2 = first alloc + 0x10 */
 #define WIN_PROCESS_ALLOCATION_SIZE 0xcf0
@@ -25,7 +31,16 @@
 
 #define CHUNK_SIZE 16
 
-NTSTATUS FindUnlinkedProcesses();
+typedef struct _INVALID_PROCESS_ALLOCATION_REPORT
+{
+	INT report_code;
+	CHAR process[ REPORT_INVALID_PROCESS_BUFFER_SIZE ];
+
+}INVALID_PROCESS_ALLOCATION_REPORT, *PINVALID_PROCESS_ALLOCATION_REPORT;
+
+NTSTATUS FindUnlinkedProcesses(
+	_In_ PIRP Irp
+);
 
 /* creds: https://www.unknowncheats.me/forum/2602838-post2.html */
 

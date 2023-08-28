@@ -16,18 +16,18 @@
 #define INDEX_MUTANTS_POOL_TAG 4
 #define INDEX_FILE_OBJECTS_POOL_TAG 5
 #define INDEX_DRIVERS_POOL_TAG 6
-#define INDEX_SYMBOLIC_LINKS_POOL_TAG7
+#define INDEX_SYMBOLIC_LINKS_POOL_TAG 7
 
 CHAR EXECUTIVE_OBJECT_POOL_TAGS[ EXECUTIVE_OBJECT_COUNT ][ POOL_TAG_LENGTH ] =
 {
-	"\x50\x72\x6f\x63",
-	"\x54\x68\x72\x64",
-	"\x44\x65\x73\x6B",
-	"\x57\x69\x6E\x64",
-	"\x4D\x75\x74\x65",
-	"\x46\x69\x6C\x65",
-	"\x44\x72\x69\x76",
-	"\x4C\x69\x6E\x6B"
+	"\x50\x72\x6f\x63",		/* Process */
+	"\x54\x68\x72\x64",		/* Thread */
+	"\x44\x65\x73\x6B",		/* Desktop */
+	"\x57\x69\x6E\x64",		/* Windows Station */
+	"\x4D\x75\x74\x65",		/* Mutants i.e mutex etc. */
+	"\x46\x69\x6C\x65",		/* File objects */
+	"\x44\x72\x69\x76",		/* Drivers */
+	"\x4C\x69\x6E\x6B"		/* Symbolic links */
 };
 
 PVOID process_buffer = NULL;
@@ -123,7 +123,7 @@ VOID ScanPageForKernelObjectAllocation(
 	PUINT64 address_list;
 	ULONG allocation_size;
 
-	if ( !PageBase || !PageSize)
+	if ( !PageBase || !PageSize )
 		return;
 
 	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH; offset++ )
@@ -152,7 +152,6 @@ VOID ScanPageForKernelObjectAllocation(
 				* 
 				* more: https://www.imf-conference.org/imf2006/23_Schuster-PoolAllocations.pdf
 				*/
-
 				allocation_size = pool_header->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER ); 
 
 				if ( ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE ||
@@ -206,9 +205,6 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 	ULONG page_index = 0;
 	UINT64 start_address = 0;
 	UINT64 end_address = 0;
-
-	if ( !PhysicalAddress || !PhysicalMemoryRanges )
-		return FALSE;
 
 	while ( PhysicalMemoryRanges[ page_index ].NumberOfBytes.QuadPart != NULL )
 	{
@@ -407,10 +403,12 @@ VOID CheckIfProcessAllocationIsInProcessList(
 * 5. If it hasn't been deallocated, search for the .exe via the long string file name
 *    and report. Maybe do some further analysis can figure this out once we get there.
 */
-NTSTATUS FindUnlinkedProcesses()
+NTSTATUS FindUnlinkedProcesses(
+	_In_ PIRP Irp
+)
 {
-	NTSTATUS status;
 	PUINT64 allocation_address;
+	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;
 
 	EnumerateProcessListWithCallbackFunction(
 		IncrementProcessCounter
@@ -421,8 +419,6 @@ NTSTATUS FindUnlinkedProcesses()
 		DEBUG_ERROR( "Faield to get process count " );
 		return STATUS_ABANDONED;
 	}
-
-	DEBUG_LOG( "Proc count: %lx", process_count );
 
 	process_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
 
@@ -448,11 +444,34 @@ NTSTATUS FindUnlinkedProcesses()
 
 		/* report / do some further analysis */
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
+
+		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
+
+		if ( !report_buffer )
+			goto end;
+
+		report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
+
+		RtlCopyMemory( 
+			report_buffer->process,
+			allocation_address[i],
+			REPORT_INVALID_PROCESS_BUFFER_SIZE );
+
+		Irp->IoStatus.Information = sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
+
+		RtlCopyMemory( 
+			Irp->AssociatedIrp.SystemBuffer, 
+			report_buffer, 
+			sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) );
 	}
 
-	DEBUG_LOG( "Finished pool memory xd" );
+end:
 
-	ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
+	if (report_buffer )
+		ExFreePoolWithTag( report_buffer, INVALID_PROCESS_REPORT_TAG );
+
+	if (process_buffer )
+		ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
 
 	process_count = NULL;
 	process_buffer = NULL;

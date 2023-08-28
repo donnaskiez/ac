@@ -343,6 +343,32 @@ end:
 	free( buffer );
 }
 
+VOID kernelmode::Driver::ScanForUnlinkedProcess()
+{
+	BOOLEAN status;
+	DWORD bytes_returned;
+	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT report;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_SCAN_FOR_UNLINKED_PROCESS,
+		NULL,
+		NULL,
+		&report,
+		sizeof(report),
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL || bytes_returned == NULL)
+	{
+		LOG_ERROR( "failed to scan for unlinked processes %x", GetLastError() );
+		return;
+	}
+
+	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+}
+
 ULONG kernelmode::Driver::RequestTotalModuleSize()
 {
 	BOOLEAN status;

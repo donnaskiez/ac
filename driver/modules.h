@@ -13,6 +13,55 @@
 #define REASON_NO_BACKING_MODULE 1
 #define REASON_INVALID_IOCTL_DISPATCH 2
 
+#define REPORT_NMI_CALLBACK_FAILURE 50
+
+NTSTATUS HandleNmiIOCTL(
+	_In_ PIRP Irp
+);
+
+typedef struct _WHITELISTED_REGIONS
+{
+	UINT64 base;
+	UINT64 end;
+
+}WHITELISTED_REGIONS, * PWHITELISTED_REGIONS;
+
+typedef struct _NMI_POOLS
+{
+	PVOID thread_data_pool;
+	PVOID stack_frames;
+	PVOID nmi_context;
+
+}NMI_POOLS, * PNMI_POOLS;
+
+typedef struct NMI_CALLBACK_FAILURE
+{
+	INT report_code;
+	INT were_nmis_disabled;
+	UINT64 kthread_address;
+	UINT64 invalid_rip;
+
+}NMI_CALLBACK_FAILURE, * PNMI_CALLBACK_FAILURE;
+
+typedef struct _NMI_CONTEXT
+{
+	INT nmi_callbacks_run;
+
+}NMI_CONTEXT, * PNMI_CONTEXT;
+
+typedef struct _NMI_CALLBACK_DATA
+{
+	UINT64		kthread_address;
+	UINT64		kprocess_address;
+	UINT64		start_address;
+	UINT64		stack_limit;
+	UINT64		stack_base;
+	uintptr_t	stack_frames_offset;
+	INT			num_frames_captured;
+	UINT64		cr3;
+
+}NMI_CALLBACK_DATA, * PNMI_CALLBACK_DATA;
+
 typedef struct _MODULE_VALIDATION_FAILURE_HEADER
 {
 	INT module_count;

@@ -30,9 +30,6 @@
     <ClCompile Include="ioctl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="nmi.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="modules.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -60,9 +57,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ioctl.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="nmi.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="modules.h">
