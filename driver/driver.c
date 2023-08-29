@@ -6,7 +6,7 @@
 
 #include "hv.h"
 #include "pool.h"
-
+#include "thread.h"
 #include "integrity.h"
 
 DRIVER_CONFIG config = { 0 };
@@ -116,7 +116,7 @@ NTSTATUS DriverEntry(
 		NULL,
 		NULL,
 		NULL,
-		FindUnlinkedProcesses,
+		ValidateKPCRBThreads,
 		NULL
 	);
 

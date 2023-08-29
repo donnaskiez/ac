@@ -4,6 +4,7 @@
 #include <ntifs.h>
 #include <wdftypes.h>
 #include <wdf.h>
+#include "common.h"
 
 #define REPORT_ILLEGAL_HANDLE_OPERATION 70
 
@@ -59,6 +60,14 @@ static const uintptr_t EPROCESS_IMAGE_FILE_NAME_OFFSET = 0x5a8;
 static const uintptr_t EPROCESS_HANDLE_TABLE_OFFSET = 0x570;
 static const uintptr_t OBJECT_HEADER_SIZE = 0x30;
 static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
+
+static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING( L"Process" );
+static UNICODE_STRING OBJECT_TYPE_THREAD = RTL_CONSTANT_STRING( L"Thread" );
+
+VOID NTAPI ExUnlockHandleTableEntry(
+	IN PHANDLE_TABLE HandleTable,
+	IN PHANDLE_TABLE_ENTRY HandleTableEntry
+);
 
 VOID ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,

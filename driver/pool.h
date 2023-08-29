@@ -468,4 +468,6 @@ typedef union _PD_ENTRY_LARGE
 #define PAGE_4KB_SHIFT      12
 #define PAGE_4KB_OFFSET(x)  ( x & (~(MAXUINT64 << PAGE_4KB_SHIFT)) )
 
+PKDDEBUGGER_DATA64 GetGlobalDebuggerData();
+
 #endif

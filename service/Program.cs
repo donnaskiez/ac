@@ -6,9 +6,10 @@ namespace service
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            CreateHostBuilder(args).Build().Run();
+            //CreateHostBuilder(args).Build().Run();
+            await Client.SendToServer();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>

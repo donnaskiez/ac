@@ -1,6 +1,5 @@
 #include "callbacks.h"
 
-#include "common.h"
 #include "driver.h"
 
 #include "queue.h"
@@ -17,8 +16,6 @@ QUEUE_HEAD head = { 0 };
 * of the spinlock. 
 */
 KGUARDED_MUTEX mutex;
-
-UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING( L"Process" );
 
 VOID InitCallbackReportQueue(
 	_In_ PBOOLEAN Status 
@@ -118,8 +115,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
 {
-	KeAcquireGuardedMutex( &configuration.mutex );
-
 	UNREFERENCED_PARAMETER( RegistrationContext );
 
 	/* access mask to completely strip permissions */
@@ -139,6 +134,8 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	LONG protected_process_id = NULL;
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
+
+	KeAcquireGuardedMutex( &configuration.mutex );
 
 	GetProtectedProcessId( &protected_process_id );
 
@@ -469,7 +466,7 @@ NTSTATUS InitiateDriverCallbacks()
 	NTSTATUS status;
 
 	/*
-	* This mutex ensures we don't  unregister our ObRegisterCallbacks while
+	* This mutex ensures we don't unregister our ObRegisterCallbacks while
 	* the callback function is running since this might cause some funny stuff
 	* to happen. Better to be safe then sorry :)
 	*/

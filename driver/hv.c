@@ -16,7 +16,7 @@
 * for the FYL2XP1 instruction it is a dead giveaway we are running on a 
 * virtualized system.
 * 
-* source: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
+* reference: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
 */
 
 INT APERFMsrTimingCheck()
