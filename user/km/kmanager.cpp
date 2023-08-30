@@ -35,3 +35,8 @@ void kernelmode::KManager::RequestModuleExecutableRegionsForIntegrityCheck()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RequestModuleExecutableRegions(); } );
 }
+
+VOID kernelmode::KManager::ScanPoolsForUnlinkedProcesses()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->ScanForUnlinkedProcess(); } );
+}

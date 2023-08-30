@@ -23,6 +23,7 @@ namespace kernelmode
 		VOID DetectSystemVirtualization();
 		VOID EnumerateHandleTables();
 		VOID RequestModuleExecutableRegionsForIntegrityCheck();
+		VOID ScanPoolsForUnlinkedProcesses();
 	};
 }
 
