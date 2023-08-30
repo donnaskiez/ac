@@ -454,8 +454,6 @@ VOID EnumerateProcessListWithCallbackFunction(
 	if ( !active_process_head )
 		return;
 
-	DEBUG_LOG( "ActiveProcessHead: %llx", active_process_head );
-
 	process_list_head = (PLIST_ENTRY)( active_process_head );
 	process_list_entry = process_list_head;
 

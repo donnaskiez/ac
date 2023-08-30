@@ -242,6 +242,10 @@ NTSTATUS DeviceClose(
 )
 {
 	DEBUG_LOG( "Handle closed to DonnaAC" );
+
+	FreeQueueObjectsAndCleanup();
+	ClearDriverConfigOnProcessTermination();
+
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return Irp->IoStatus.Status;
 }

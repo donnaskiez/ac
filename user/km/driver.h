@@ -28,7 +28,6 @@ namespace kernelmode
 		LPCWSTR driver_name;
 		std::shared_ptr<global::Client> report_interface;
 
-		VOID QueryReportQueue();
 		ULONG RequestTotalModuleSize();
 		VOID NotifyDriverOnProcessLaunch();
 		VOID CheckDriverHeartbeat();
@@ -43,6 +42,7 @@ namespace kernelmode
 		VOID VerifySystemModules();
 		VOID RunCallbackReportQueue();
 		VOID DetectSystemVirtualization();
+		VOID QueryReportQueue();
 		VOID ValidateKPRCBThreads();
 		VOID CheckHandleTableEntries();
 		VOID RequestModuleExecutableRegions();

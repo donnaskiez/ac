@@ -24,11 +24,11 @@ VOID ReadInitialisedConfigFlag(
 }
 
 VOID GetProtectedProcessEProcess( 
-	_Out_ PEPROCESS Process 
+	_Out_ PEPROCESS* Process 
 )
 {
 	KeAcquireGuardedMutex( &config.lock );
-	Process = config.protected_process_eprocess;
+	*Process = config.protected_process_eprocess;
 	KeReleaseGuardedMutex( &config.lock );
 }
 
@@ -88,7 +88,6 @@ VOID DriverUnload(
 )
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
-	FreeQueueObjectsAndCleanup();
 	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
@@ -109,18 +108,18 @@ NTSTATUS DriverEntry(
 	config.protected_process_eprocess = NULL;
 	config.protected_process_id = NULL;
 
-	HANDLE handle;
-	PsCreateSystemThread(
-		&handle,
-		PROCESS_ALL_ACCESS,
-		NULL,
-		NULL,
-		NULL,
-		ValidateKPCRBThreads,
-		NULL
-	);
+	//HANDLE handle;
+	//PsCreateSystemThread(
+	//	&handle,
+	//	PROCESS_ALL_ACCESS,
+	//	NULL,
+	//	NULL,
+	//	NULL,
+	//	ValidateKPCRBThreads,
+	//	NULL
+	//);
 
-	ZwClose( handle );
+	//ZwClose( handle );
 
 	status = IoCreateDevice(
 		DriverObject,

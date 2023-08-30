@@ -96,15 +96,33 @@ NTSTATUS CopyDriverExecutableRegions(
 	/*
 	* Verifier doesn't like it when we map system pages xD (sometimes ?)
 	*/
-	mapped_address = MmMapIoSpace(
-		physical_address,
+	//mapped_address = MmMapIoSpace(
+	//	physical_address,
+	//	driver_info->ImageSize,
+	//	MmNonCached
+	//);
+
+	//if ( !mapped_address )
+	//{
+	//	DEBUG_ERROR( "Failed to MmMapIoSpace " );
+	//	goto end;
+	//}
+
+	MM_COPY_ADDRESS copy_address;
+	copy_address.PhysicalAddress.QuadPart = physical_address.QuadPart;
+	ULONG bytes_returned;
+
+	status = MmCopyMemory(
+		buffer,
+		copy_address,
 		driver_info->ImageSize,
-		MmNonCached
+		NULL,
+		&bytes_returned
 	);
 
-	if ( !mapped_address )
+	if ( !NT_SUCCESS( status ) )
 	{
-		DEBUG_ERROR( "Failed to MmMapIoSpace " );
+		DEBUG_ERROR( "MmCopyMemmory failed with status %x", status );
 		goto end;
 	}
 
@@ -140,7 +158,7 @@ NTSTATUS CopyDriverExecutableRegions(
 
 			RtlCopyMemory(
 				( UINT64 )buffer_base + sizeof( IMAGE_SECTION_HEADER ),
-				( UINT64 )mapped_address + section->PointerToRawData,
+				( UINT64 )buffer + section->PointerToRawData,
 				section->SizeOfRawData
 			);
 

@@ -341,6 +341,13 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 					continue;
 				}
 
+				/*
+				* There always seems to be a page fault every so often when using 
+				* MmGetVirtualForPhysical on the pd_entry physical address...
+				*/
+				if ( !MmIsAddressValid( pd_entry.BitAddress ) )
+					continue;
+
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
 				pt_base = MmGetVirtualForPhysical( physical );

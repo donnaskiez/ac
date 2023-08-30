@@ -19,7 +19,10 @@ kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> 
 	);
 
 	if ( this->driver_handle == INVALID_HANDLE_VALUE )
+	{
 		LOG_ERROR( "Failed to open handle to driver with status 0x%x", GetLastError() );
+		return;
+	}
 
 	this->NotifyDriverOnProcessLaunch();
 }
@@ -209,11 +212,7 @@ end:
 VOID kernelmode::Driver::RunCallbackReportQueue()
 {
 	/*TODO have some volatile flag instead */
-	while ( true )
-	{
-		this->QueryReportQueue();
-		std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
-	}
+	this->QueryReportQueue();
 }
 
 VOID kernelmode::Driver::NotifyDriverOnProcessLaunch()

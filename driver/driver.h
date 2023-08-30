@@ -19,7 +19,7 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 );
 
 VOID GetProtectedProcessEProcess(
-	_Out_ PEPROCESS Process
+	_Out_ PEPROCESS* Process
 );
 
 

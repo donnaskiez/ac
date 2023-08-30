@@ -7,7 +7,7 @@ PVOID nmi_callback_handle = NULL;
 /* Global structure to hold pointers to required memory for the NMI's */
 NMI_POOLS nmi_pools = { 0 };
 
-#define NMI_DELAY 100 * 10000
+#define NMI_DELAY 500 * 10000
 
 #define WHITELISTED_MODULE_COUNT 3
 #define MODULE_MAX_STRING_SIZE 256
