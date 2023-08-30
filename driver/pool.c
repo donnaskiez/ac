@@ -75,6 +75,18 @@ end:
 	return debugger_data;
 }
 
+VOID GetPsActiveProcessHead(
+	_In_ PUINT64 Address
+)
+{
+	/* TODO: have a global debugger pool here since shit aint really change */
+	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
+
+	*Address = *(UINT64*)( debugger_data->PsActiveProcessHead );
+
+	ExFreePoolWithTag( debugger_data, POOL_DEBUGGER_DATA_TAG );
+}
+
 /*
 * For ~90% of EPROCESS structures the header layout is as follows:
 *

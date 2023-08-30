@@ -42,6 +42,10 @@ NTSTATUS FindUnlinkedProcesses(
 	_In_ PIRP Irp
 );
 
+VOID GetPsActiveProcessHead(
+	_In_ PUINT64 Address
+);
+
 /* creds: https://www.unknowncheats.me/forum/2602838-post2.html */
 
 typedef struct _DBGKD_DEBUG_DATA_HEADER64

@@ -3,6 +3,8 @@
 #include "pool.h"
 #include "callbacks.h"
 
+#include <intrin.h>
+
 /*
 * How this will work:
 * 
@@ -31,22 +33,47 @@
 * IDEA: we can run a thread on each core to maximise the search, so it would be 3 * num procs
 */
 
-BOOLEAN HasThreadBeenRemovedFromPspCidTable(
-	_In_ PETHREAD Thread
+UINT8 thread_found_in_pspcidtable = FALSE;
+UINT8 thread_found_in_kthreadlist = FALSE;
+BOOLEAN finished = FALSE;
+
+UINT64 current_kpcrb_thread = NULL;
+
+VOID ProcessEnumerationCallback(
+	_In_ PEPROCESS Process
 )
 {
-	BOOLEAN result = TRUE;
+	NTSTATUS status;
+	PLIST_ENTRY thread_list_head;
+	PLIST_ENTRY thread_list_entry;
+	PETHREAD current_thread;
+	UINT32 thread_id;
 
-	return result;
-}
+	if ( finished == TRUE )
+		return;
 
-BOOLEAN HasThreadBeenRemovedFromEThreadList(
-	_In_ PETHREAD Thread
-)
-{
-	BOOLEAN result = TRUE;
+	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
+	thread_list_entry = thread_list_head->Flink;
 
-	return result;
+	while ( thread_list_entry != thread_list_head )
+	{
+		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
+
+		if ( current_thread == current_kpcrb_thread )
+		{
+			thread_found_in_kthreadlist = TRUE;
+
+			thread_id = PsGetThreadId( current_thread );
+
+			if ( thread_id != NULL )
+			{
+				thread_found_in_pspcidtable = TRUE;
+				finished = TRUE;
+			}
+		}
+
+		thread_list_entry = thread_list_entry->Flink;
+	}
 }
 
 NTSTATUS ValidateKPCRBThreads(
@@ -54,4 +81,37 @@ NTSTATUS ValidateKPCRBThreads(
 )
 {
 	NTSTATUS status;
+	UINT64 kpcr;
+	UINT64 kprcb;
+	KAFFINITY old_affinity = { 0 };
+
+	for ( LONG processor_index = 0; processor_index < KeQueryActiveProcessorCount( 0 ); processor_index++ )
+	{
+		old_affinity = KeSetSystemAffinityThreadEx( ( KAFFINITY )( 1 << processor_index ) );
+
+		kpcr = __readmsr( IA32_GS_BASE );
+		kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
+		current_kpcrb_thread = *( UINT64* )( kprcb + KPCRB_CURRENT_THREAD );
+
+		DEBUG_LOG( "Current processor: %lx, current kprcb: %llx, current thread: %llx", KeGetCurrentProcessorNumber(), kprcb, current_kpcrb_thread );
+
+		EnumerateProcessListWithCallbackFunction(
+			ProcessEnumerationCallback
+		);
+
+		DEBUG_LOG( "Thread in psp: %i, thread in list: %i", thread_found_in_pspcidtable, thread_found_in_kthreadlist );
+
+		if ( thread_found_in_kthreadlist == FALSE || thread_found_in_pspcidtable == FALSE )
+		{
+
+		}
+
+		current_kpcrb_thread = NULL;
+		thread_found_in_pspcidtable = FALSE;
+		thread_found_in_kthreadlist = FALSE;
+		finished = FALSE;
+
+		KeRevertToUserAffinityThreadEx( old_affinity );
+	}
+
 }

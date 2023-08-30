@@ -3,6 +3,7 @@
 #include "driver.h"
 
 #include "queue.h"
+#include "pool.h"
 
 CALLBACK_CONFIGURATION configuration;
 QUEUE_HEAD head = { 0 };
@@ -440,25 +441,34 @@ VOID EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function
 )
 {
+	UINT64 current_process;
+	UINT64 active_process_head = NULL;
+	PLIST_ENTRY process_list_head = NULL;
+	PLIST_ENTRY process_list_entry = NULL;
+
 	if ( !Function )
 		return;
 
-	PEPROCESS base_process = PsInitialSystemProcess;
+	GetPsActiveProcessHead( &active_process_head );
 
-	if ( !base_process )
+	if ( !active_process_head )
 		return;
 
-	PEPROCESS current_process = base_process;
+	DEBUG_LOG( "ActiveProcessHead: %llx", active_process_head );
+
+	process_list_head = (PLIST_ENTRY)( active_process_head );
+	process_list_entry = process_list_head;
 
 	do
 	{
+		current_process = ( PEPROCESS )( ( UINT64 )process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET );
+
 		VOID( *callback_function_ptr )( PEPROCESS ) = Function;
 		( *callback_function_ptr )( current_process );
 
-		PLIST_ENTRY list = ( PLIST_ENTRY )( ( uintptr_t )current_process + EPROCESS_PLIST_ENTRY_OFFSET );
-		current_process = ( PEPROCESS )( ( uintptr_t )list->Flink - EPROCESS_PLIST_ENTRY_OFFSET );
+		process_list_entry = process_list_entry->Flink;
 
-	} while ( current_process != base_process || !current_process );
+	} while ( process_list_entry != process_list_head->Blink );
 }
 
 NTSTATUS InitiateDriverCallbacks()
