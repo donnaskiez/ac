@@ -22,6 +22,7 @@
 #define REPORT_MODULE_VALIDATION_FAILURE 60
 #define REPORT_ILLEGAL_HANDLE_OPERATION 70
 #define REPORT_INVALID_PROCESS_ALLOCATION 80
+#define REPORT_HIDDEN_SYSTEM_THREAD 90
 
 enum REPORT_CODES
 {
@@ -152,6 +153,20 @@ namespace global
 		{
 			INT report_code;
 			CHAR process[ 4096 ];
+		};
+
+		/*
+		* No point copying data from the start address here
+		* since people can easily change it.
+		*/
+		struct HIDDEN_SYSTEM_THREAD_REPORT
+		{
+			INT report_code;
+			INT found_in_kthreadlist;
+			INT found_in_pspcidtable;
+			UINT64 thread_address;
+			LONG thread_id;
+			CHAR thread[ 4096 ];
 		};
 	}
 }

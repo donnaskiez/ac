@@ -413,7 +413,31 @@ VOID kernelmode::Driver::NotifyDriverOnProcessTermination()
 
 VOID kernelmode::Driver::ValidateKPRCBThreads()
 {
+	BOOLEAN status;
+	DWORD bytes_returned;
+	global::report_structures::HIDDEN_SYSTEM_THREAD_REPORT report;
 
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_VALIDATE_KPRCB_CURRENT_THREAD,
+		NULL,
+		NULL,
+		&report,
+		sizeof( report ),
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL)
+	{
+		LOG_ERROR( "failed to validate kpcrb threads with status %x", GetLastError() );
+		return;
+	}
+
+	if ( bytes_returned == NULL )
+		return;
+
+	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
 }
 
 VOID kernelmode::Driver::CheckDriverHeartbeat()

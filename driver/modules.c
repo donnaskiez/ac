@@ -716,16 +716,16 @@ NTSTATUS LaunchNonMaskableInterrupt(
 	if ( !NumCores )
 		return STATUS_INVALID_PARAMETER;
 
-	PKAFFINITY_EX ProcAffinityPool = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KAFFINITY_EX ), PROC_AFFINITY_POOL );
+	PKAFFINITY_EX proc_affinity = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KAFFINITY_EX ), PROC_AFFINITY_POOL );
 
-	if ( !ProcAffinityPool )
+	if ( !proc_affinity )
 		return STATUS_ABANDONED;
 
 	nmi_pools.stack_frames = ExAllocatePool2( POOL_FLAG_NON_PAGED, NumCores * STACK_FRAME_POOL_SIZE, STACK_FRAMES_POOL );
 
 	if ( !nmi_pools.stack_frames )
 	{
-		ExFreePoolWithTag( ProcAffinityPool, PROC_AFFINITY_POOL );
+		ExFreePoolWithTag( proc_affinity, PROC_AFFINITY_POOL );
 		return STATUS_ABANDONED;
 	}
 
@@ -734,7 +734,7 @@ NTSTATUS LaunchNonMaskableInterrupt(
 	if ( !nmi_pools.thread_data_pool )
 	{
 		ExFreePoolWithTag( nmi_pools.stack_frames, STACK_FRAMES_POOL );
-		ExFreePoolWithTag( ProcAffinityPool, PROC_AFFINITY_POOL );
+		ExFreePoolWithTag( proc_affinity, PROC_AFFINITY_POOL );
 		return STATUS_ABANDONED;
 	}
 
@@ -743,11 +743,11 @@ NTSTATUS LaunchNonMaskableInterrupt(
 
 	for ( ULONG core = 0; core < NumCores; core++ )
 	{
-		KeInitializeAffinityEx( ProcAffinityPool );
-		KeAddProcessorAffinityEx( ProcAffinityPool, core );
+		KeInitializeAffinityEx( proc_affinity );
+		KeAddProcessorAffinityEx( proc_affinity, core );
 
 		DEBUG_LOG( "Sending NMI" );
-		HalSendNMI( ProcAffinityPool );
+		HalSendNMI( proc_affinity );
 
 		/*
 		* Only a single NMI can be active at any given time, so arbitrarily
@@ -756,7 +756,7 @@ NTSTATUS LaunchNonMaskableInterrupt(
 		KeDelayExecutionThread( KernelMode, FALSE, &delay );
 	}
 
-	ExFreePoolWithTag( ProcAffinityPool, PROC_AFFINITY_POOL );
+	ExFreePoolWithTag( proc_affinity, PROC_AFFINITY_POOL );
 
 	return STATUS_SUCCESS;
 }

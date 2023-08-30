@@ -120,6 +120,8 @@ NTSTATUS DriverEntry(
 		NULL
 	);
 
+	ZwClose( handle );
+
 	status = IoCreateDevice(
 		DriverObject,
 		NULL,
@@ -158,10 +160,10 @@ NTSTATUS DriverEntry(
 		IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
-	}
+	} 
 
-	DEBUG_LOG( "DonnaAC Driver Entry Complete. type: %lx", DriverObject->DeviceObject->DeviceType );
+	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 
-	return status;
+	return STATUS_SUCCESS;
 }
 

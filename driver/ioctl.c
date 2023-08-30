@@ -7,6 +7,7 @@
 #include "callbacks.h"
 #include "pool.h"
 #include "integrity.h"
+#include "thread.h"
 
 #include "hv.h"
 
@@ -215,6 +216,12 @@ NTSTATUS DeviceControl(
 
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "FindUNlinekdProcesses failed with status %x", status );
+
+		break;
+
+	case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD:
+
+		ValidateKPCRBThreads( Irp );
 
 		break;
 
