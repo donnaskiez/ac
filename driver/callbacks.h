@@ -14,6 +14,8 @@
 
 #define MAX_HANDLE_REPORTS_PER_IRP 10
 
+VOID UnregisterCallbacksOnProcessTermination();
+
 typedef struct _OPEN_HANDLE_FAILURE_REPORT_HEADER
 {
 	INT count;

@@ -352,6 +352,9 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
+				if ( !MmIsAddressValid( pd_entry.BitAddress ) )
+					continue;
+
 				pt_base = MmGetVirtualForPhysical( physical );
 
 				if ( !pt_base || !MmIsAddressValid( pt_base ) )

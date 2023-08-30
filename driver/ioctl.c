@@ -245,6 +245,7 @@ NTSTATUS DeviceClose(
 
 	FreeQueueObjectsAndCleanup();
 	ClearDriverConfigOnProcessTermination();
+	UnregisterCallbacksOnProcessTermination();
 
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return Irp->IoStatus.Status;

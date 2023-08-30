@@ -45,13 +45,13 @@ VOID FreeQueueObjectsAndCleanup()
 {
 	KeAcquireGuardedMutex( &mutex );
 
-	PVOID report = QueuePop(&head );
-
-	if ( report == NULL )
-		goto end;
+	PVOID report = QueuePop( &head );
 
 	while ( report != NULL )
+	{
+		ExFreePoolWithTag( report, REPORT_POOL_TAG );
 		report = QueuePop( &head );
+	}
 
 end:
 	KeReleaseGuardedMutex( &mutex );
@@ -88,6 +88,8 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 			report,
 			sizeof( OPEN_HANDLE_FAILURE_REPORT )
 		);
+
+		ExFreePoolWithTag( report, REPORT_POOL_TAG );
 
 		report = QueuePop( &head );
 		count += 1;
@@ -129,21 +131,25 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	* is requesting to open said handle
 	*/
 	PEPROCESS process_creator = PsGetCurrentProcess();
+	PEPROCESS protected_process;
 	PEPROCESS target_process = ( PEPROCESS )OperationInformation->Object;
 	LONG target_process_id = PsGetProcessId( target_process );
 	LONG process_creator_id = PsGetProcessId( process_creator );
 	LONG protected_process_id = NULL;
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
+	LPCSTR protected_process_name;
 
 	KeAcquireGuardedMutex( &configuration.mutex );
 
 	GetProtectedProcessId( &protected_process_id );
+	GetProtectedProcessEProcess( &protected_process );
 
 	process_creator_name = PsGetProcessImageFileName( process_creator );
 	target_process_name = PsGetProcessImageFileName( target_process );
+	protected_process_name = PsGetProcessImageFileName( protected_process );
 
-	if ( !strcmp( "notepad.exe", target_process_name) )
+	if ( !strcmp( protected_process_name, target_process_name) )
 	{
 		if ( !strcmp( process_creator_name, "lsass.exe" ) || !strcmp( process_creator_name, "csrss.exe" ) )
 		{

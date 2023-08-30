@@ -7,7 +7,9 @@ PVOID nmi_callback_handle = NULL;
 /* Global structure to hold pointers to required memory for the NMI's */
 NMI_POOLS nmi_pools = { 0 };
 
-#define NMI_DELAY 500 * 10000
+volatile LONG lock;
+
+#define NMI_DELAY 200 * 10000
 
 #define WHITELISTED_MODULE_COUNT 3
 #define MODULE_MAX_STRING_SIZE 256
@@ -706,6 +708,8 @@ BOOLEAN NmiCallback(
 	context->nmi_callbacks_run += 1;
 	DEBUG_LOG( "num nmis called: %i from addr: %llx", context->nmi_callbacks_run, ( uintptr_t )context );
 
+	InterlockedDecrement( &lock );
+
 	return TRUE;
 }
 
@@ -741,10 +745,22 @@ NTSTATUS LaunchNonMaskableInterrupt(
 	LARGE_INTEGER delay = { 0 };
 	delay.QuadPart -= NMI_DELAY;
 
+	LONG ready = 0;
+
 	for ( ULONG core = 0; core < NumCores; core++ )
 	{
 		KeInitializeAffinityEx( proc_affinity );
 		KeAddProcessorAffinityEx( proc_affinity, core );
+
+		InterlockedExchange( &ready, lock );
+
+		if ( ready > 0 )
+		{
+			while ( ready > 0 )
+				InterlockedExchange( &ready, lock );
+		}
+
+		InterlockedIncrement( &lock );
 
 		DEBUG_LOG( "Sending NMI" );
 		HalSendNMI( proc_affinity );
@@ -772,6 +788,8 @@ NTSTATUS HandleNmiIOCTL(
 	/* Fix annoying visual studio linting error */
 	RtlZeroMemory( &system_modules, sizeof( SYSTEM_MODULES ) );
 	RtlZeroMemory( &nmi_pools, sizeof( NMI_POOLS ) );
+
+	KeInitializeSpinLock( &lock );
 
 	nmi_pools.nmi_context = ExAllocatePool2( POOL_FLAG_NON_PAGED, num_cores * sizeof( NMI_CONTEXT ), NMI_CONTEXT_POOL );
 

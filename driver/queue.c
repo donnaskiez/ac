@@ -1,5 +1,7 @@
 #include "queue.h"
 
+#include "common.h"
+
 //PQUEUE_HEAD QueueCreate()
 //{
 //	PQUEUE_HEAD head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( QUEUE_HEAD ), QUEUE_POOL_TAG );
