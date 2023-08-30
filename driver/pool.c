@@ -294,6 +294,9 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 	for ( INT pml4_index = 0; pml4_index < PML4_ENTRY_COUNT; pml4_index++ )
 	{
+		if ( !MmIsAddressValid( pml4_base.BitAddress + pml4_index * sizeof( UINT64 ) ) )
+			continue;
+
 		pml4_entry.BitAddress = *(UINT64*)( pml4_base.BitAddress + pml4_index * sizeof( UINT64 ) );
 
 		if ( pml4_entry.Bits.Present == NULL )
@@ -308,6 +311,9 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 		for ( INT pdpt_index = 0; pdpt_index < PDPT_ENTRY_COUNT; pdpt_index++ )
 		{
+			if ( !MmIsAddressValid( pdpt_base + pdpt_index * sizeof( UINT64 ) ) )
+				continue;
+
 			pdpt_entry.BitAddress = *( UINT64* )( pdpt_base + pdpt_index * sizeof( UINT64 ) );
 
 			if ( pdpt_entry.Bits.Present == NULL )
@@ -329,6 +335,9 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 			for ( INT pd_index = 0; pd_index < PD_ENTRY_COUNT; pd_index++ )
 			{
+				if ( !MmIsAddressValid( pd_base + pd_index * sizeof( UINT64 ) ) )
+					continue;
+
 				pd_entry.BitAddress = *( UINT64* )( pd_base + pd_index * sizeof( UINT64 ) );
 
 				if ( pd_entry.Bits.Present == NULL )
@@ -341,13 +350,6 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 					continue;
 				}
 
-				/*
-				* There always seems to be a page fault every so often when using 
-				* MmGetVirtualForPhysical on the pd_entry physical address...
-				*/
-				if ( !MmIsAddressValid( pd_entry.BitAddress ) )
-					continue;
-
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
 				pt_base = MmGetVirtualForPhysical( physical );
@@ -357,6 +359,9 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 				for ( INT pt_index = 0; pt_index < PT_ENTRY_COUNT; pt_index++ )
 				{
+					if ( !MmIsAddressValid( pt_base + pt_index * sizeof( UINT64 ) ) )
+						continue;
+
 					pt_entry.BitAddress = *( UINT64* )( pt_base + pt_index * sizeof( UINT64 ) );
 
 					if ( pt_entry.Bits.Present == NULL )
