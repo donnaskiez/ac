@@ -13,8 +13,6 @@ NTSTATUS GetDriverImageSize(
 	_In_ PIRP Irp
 );
 
-NTSTATUS MapDiskImageIntoVirtualAddressSpace();
-
 #define IMAGE_SCN_MEM_EXECUTE 0x20000000
 
 #define IMAGE_SIZEOF_SHORT_NAME 8

@@ -191,37 +191,142 @@ end:
 	return status;
 }
 
-/*
-* 1. map driver to memory 
-* 2. store executable sections in buffer
-* 3. do the same with the in-memory module
-* 4. hash both buffers with the current time or something 
-* 5. compare 
-*/
-NTSTATUS MapDiskImageIntoVirtualAddressSpace()
+NTSTATUS StoreModuleExecutableRegionsInBuffer(
+	_In_ PVOID* Buffer,
+	_In_ PVOID ModuleBase,
+	_In_ SIZE_T ModuleSize
+)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PIMAGE_DOS_HEADER dos_header;
+	PLOCAL_NT_HEADER nt_header;
+	PIMAGE_SECTION_HEADER section;
+	ULONG total_packet_size = 0;
+	ULONG num_sections = 0;
+	ULONG num_executable_sections = 0;
+	UINT64 buffer_base;
+	ULONG bytes_returned;
+	MM_COPY_ADDRESS address;
+
+	/*
+	* The reason we allocate a buffer to temporarily hold the section data is that
+	* we don't know the total size until after we iterate over the sections meaning
+	* we cant set Irp->IoStatus.Information to the size of our reponse until we
+	* enumerate and count all executable sections for the file.
+	*/
+	*Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ModuleSize + sizeof( INTEGRITY_CHECK_HEADER ), POOL_TAG_INTEGRITY );
+
+	if ( !*Buffer )
+		return STATUS_ABANDONED;
+
+	/*
+	* Note: Verifier doesn't like it when we map the module :c
+	*/
+
+	dos_header = ( PIMAGE_DOS_HEADER )ModuleBase;
+
+	/*
+	* The IMAGE_DOS_HEADER.e_lfanew stores the offset of the IMAGE_NT_HEADER from the base
+	* of the image.
+	*/
+	nt_header = ( struct _IMAGE_NT_HEADERS64* )( ( UINT64 )ModuleBase + dos_header->e_lfanew );
+
+	num_sections = nt_header->FileHeader.NumberOfSections;
+
+	/*
+	* The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns the address of
+	* the first section of the PE file.
+	*/
+	section = IMAGE_FIRST_SECTION( nt_header );
+
+	buffer_base = ( UINT64 )*Buffer + sizeof( INTEGRITY_CHECK_HEADER );
+
+	for ( ULONG index = 0; index < num_sections; index++ )
+	{
+		if ( section->Characteristics & IMAGE_SCN_MEM_EXECUTE )
+		{
+			DEBUG_LOG( "Found executable section with name: %s", section->Name );
+
+			/*
+			* Note: MmCopyMemory will fail on discardable sections.
+			*/
+
+			address.VirtualAddress = section;
+
+			status = MmCopyMemory(
+				( UINT64 )buffer_base + total_packet_size,
+				address,
+				sizeof( IMAGE_SECTION_HEADER ),
+				MM_COPY_MEMORY_VIRTUAL,
+				&bytes_returned
+			);
+
+			if ( !NT_SUCCESS( status ) )
+			{
+				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
+				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
+				return status;
+			}
+
+			address.VirtualAddress = ( UINT64 )ModuleBase + section->PointerToRawData;
+
+			status = MmCopyMemory(
+				( UINT64 )buffer_base + total_packet_size + sizeof( IMAGE_SECTION_HEADER ),
+				address,
+				section->SizeOfRawData,
+				MM_COPY_MEMORY_VIRTUAL,
+				&bytes_returned
+			);
+
+			if ( !NT_SUCCESS( status ) )
+			{
+				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
+				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
+				return status;
+			}
+
+			total_packet_size += section->SizeOfRawData + sizeof( IMAGE_SECTION_HEADER );
+			num_executable_sections += 1;
+		}
+
+		section++;
+	}
+
+	INTEGRITY_CHECK_HEADER header = { 0 };
+	header.executable_section_count = num_executable_sections;
+	header.total_packet_size = total_packet_size + sizeof( INTEGRITY_CHECK_HEADER );
+
+	RtlCopyMemory(
+		*Buffer,
+		&header,
+		sizeof( INTEGRITY_CHECK_HEADER )
+	);
+
+	return status;
+}
+
+NTSTATUS MapDiskImageIntoVirtualAddressSpace(
+	_In_ PHANDLE SectionHandle,
+	_In_ PHANDLE FileHandle,
+	_In_ PVOID* Section,
+	_In_ PUNICODE_STRING Path,
+	_In_ PSIZE_T Size
+)
 {
 	NTSTATUS status;
-	HANDLE section_handle;
-	HANDLE file_handle;
 	OBJECT_ATTRIBUTES object_attributes;
 	PIO_STATUS_BLOCK pio_block;
-	PVOID section = NULL;
-	SIZE_T size = 0;
-	UNICODE_STRING path;
-
-	/* TODO add this to global config */
-	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
 
 	InitializeObjectAttributes(
 		&object_attributes,
-		&path,
+		Path,
 		OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
 		NULL,
 		NULL
 	);
 
 	status = ZwOpenFile(
-		&file_handle,
+		FileHandle,
 		FILE_GENERIC_READ | SYNCHRONIZE,
 		&object_attributes,
 		&pio_block,
@@ -238,34 +343,34 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace()
 	object_attributes.ObjectName = NULL;
 
 	/*
-	* Its important that we set the SEC_IMAGE_NO_EXECUTE flag with the PAGE_READONLY
+	* Its important that we set the SEC_IMAGE flag with the PAGE_READONLY
 	* flag as we are mapping an executable image.
 	*/
 	status = ZwCreateSection(
-		&section_handle,
+		SectionHandle,
 		SECTION_ALL_ACCESS,
 		&object_attributes,
 		NULL,
 		PAGE_READONLY,
 		SEC_IMAGE,
-		file_handle
+		*FileHandle
 	);
 
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ZwCreateSection failed with status %x", status );
-		ZwClose( file_handle );
+		ZwClose( FileHandle );
 		return status;
 	}
 
 	status = ZwMapViewOfSection(
-		section_handle,
+		*SectionHandle,
 		NtCurrentProcess(),
-		&section,
+		Section,
 		NULL,
 		NULL,
 		NULL,
-		&size,
+		Size,
 		ViewUnmap,
 		MEM_TOP_DOWN,
 		PAGE_READONLY
@@ -274,16 +379,82 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace()
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ZwMapViewOfSection failed with status %x", status );
-		ZwClose( file_handle );
-		ZwClose( section_handle );
+		ZwClose( *FileHandle );
+		ZwClose( *SectionHandle );
 		return status;
 	}
 
 	DEBUG_LOG( "mapped LOL!" );
+}
+
+/*
+* 1. map driver to memory
+* 2. store executable sections in buffer
+* 3. do the same with the in-memory module
+* 4. hash both buffers with the current time or something
+* 5. compare
+*/
+NTSTATUS VerifyInMemoryImageVsDiskImage(
+	//_In_ PIRP Irp
+)
+{
+	NTSTATUS status;
+	UNICODE_STRING path;
+	HANDLE section_handle = NULL;
+	HANDLE file_handle = NULL;
+	PVOID section = NULL;
+	SIZE_T section_size = NULL;
+	PVOID disk_buffer = NULL;
+	PVOID in_memory_buffer = NULL;
+
+	/*
+	* Map the disk image into memory and parse it.
+	*/
+
+	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
+
+	status = MapDiskImageIntoVirtualAddressSpace(
+		&section_handle,
+		&file_handle,
+		&section,
+		&path,
+		&section_size
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
+		return status;
+	}
+
+	status = StoreModuleExecutableRegionsInBuffer(
+		&disk_buffer,
+		section,
+		section_size
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffer failed with status %x", status );
+		goto end;
+	}
+
+	/*
+	* Parse the in-memory module
+	*/
 
 
+
+end:
 
 	ZwUnmapViewOfSection( NtCurrentProcess(), section );
-	ZwClose( file_handle );
-	ZwClose( section_handle );
+
+	if (file_handle != NULL )
+		ZwClose( file_handle );
+
+	if (section_handle != NULL )
+		ZwClose( section_handle );
+
+	if (disk_buffer )
+		ExFreePoolWithTag( disk_buffer, POOL_TAG_INTEGRITY );
 }
