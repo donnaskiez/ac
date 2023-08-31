@@ -121,3 +121,4 @@ VOID ValidateKPCRBThreads(
 		KeRevertToUserAffinityThreadEx( old_affinity );
 	}
 }
+

@@ -85,7 +85,8 @@ NTSTATUS GetModuleInformationByName(
 NTSTATUS StoreModuleExecutableRegionsInBuffer(
 	_In_ PVOID* Buffer,
 	_In_ PVOID ModuleBase,
-	_In_ SIZE_T ModuleSize
+	_In_ SIZE_T ModuleSize,
+	_In_ PSIZE_T BytesWritten
 )
 {
 	NTSTATUS status = STATUS_SUCCESS;
@@ -198,19 +199,9 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 		sizeof( INTEGRITY_CHECK_HEADER )
 	);
 
-	return status;
-}
+	*BytesWritten = total_packet_size + sizeof( INTEGRITY_CHECK_HEADER );
 
-/*
-* We want to perform the relocations using the base address of the in memory
-* module to ensure all offsets are equal across both images.
-*/
-NTSTATUS PerformPeHeaderRelocations(
-	_In_ PVOID ImageBase,
-	_In_ PVOID RelocationBase
-)
-{
-	NTSTATUS status;
+	return status;
 }
 
 NTSTATUS MapDiskImageIntoVirtualAddressSpace(
@@ -324,6 +315,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	HANDLE section_handle = NULL;
 	PVOID section = NULL;
 	SIZE_T section_size = NULL;
+	SIZE_T bytes_written = NULL;
 	PVOID disk_buffer = NULL;
 	PVOID in_memory_buffer = NULL;
 	RTL_MODULE_EXTENDED_INFO module_info = { 0 };
@@ -353,7 +345,8 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	status = StoreModuleExecutableRegionsInBuffer(
 		&disk_buffer,
 		section,
-		section_size
+		section_size,
+		&bytes_written
 	);
 
 	if ( !NT_SUCCESS( status ) )
@@ -380,7 +373,8 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	status = StoreModuleExecutableRegionsInBuffer(
 		&in_memory_buffer,
 		module_info.ImageBase,
-		module_info.ImageSize
+		module_info.ImageSize,
+		&bytes_written
 	);
 
 	if ( !NT_SUCCESS( status ) )
@@ -425,4 +419,51 @@ end:
 
 	if ( in_memory_buffer )
 		ExFreePoolWithTag( in_memory_buffer, POOL_TAG_INTEGRITY );
+}
+
+NTSTATUS RetrieveInMemoryModuleExecutableSections(
+	_In_ PIRP Irp
+)
+{
+	NTSTATUS status;
+	SIZE_T bytes_written = NULL;
+	PVOID buffer = NULL;
+	RTL_MODULE_EXTENDED_INFO module_info = { 0 };
+
+	status = GetModuleInformationByName(
+		&module_info,
+		"driver.sys"
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "GetModuleInformationByName failed with status %x", status );
+		return status;
+	}
+
+	status = StoreModuleExecutableRegionsInBuffer(
+		&buffer,
+		module_info.ImageBase,
+		module_info.ImageSize,
+		&bytes_written
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffe failed with status %x", status );
+		return status;
+	}
+
+	Irp->IoStatus.Information = bytes_written;
+
+	RtlCopyMemory(
+		Irp->AssociatedIrp.SystemBuffer,
+		buffer,
+		bytes_written
+	);
+
+	if ( buffer )
+		ExFreePoolWithTag( buffer, POOL_TAG_INTEGRITY );
+
+	return status;
 }

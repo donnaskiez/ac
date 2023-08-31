@@ -51,6 +51,9 @@
     <ClCompile Include="thread.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hw.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -81,6 +84,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="thread.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hw.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
