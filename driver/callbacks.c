@@ -89,6 +89,7 @@ NTSTATUS HandlePeriodicCallbackReportQueue(
 			sizeof( OPEN_HANDLE_FAILURE_REPORT )
 		);
 
+		/* QueuePop frees the node, but we still need to free the returned data */
 		ExFreePoolWithTag( report, REPORT_POOL_TAG );
 
 		report = QueuePop( &head );

@@ -7,6 +7,7 @@
 #include "hv.h"
 #include "pool.h"
 #include "thread.h"
+#include "modules.h"
 #include "integrity.h"
 
 DRIVER_CONFIG config = { 0 };
@@ -162,6 +163,19 @@ NTSTATUS DriverEntry(
 	} 
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
+
+	HANDLE handle;
+	PsCreateSystemThread(
+		&handle,
+		PROCESS_ALL_ACCESS,
+		NULL,
+		NULL,
+		NULL,
+		MapDiskImageIntoVirtualAddressSpace,
+		NULL
+	);
+
+	ZwClose( handle );
 
 	return STATUS_SUCCESS;
 }

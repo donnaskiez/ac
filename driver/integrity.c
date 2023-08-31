@@ -62,6 +62,8 @@ NTSTATUS CopyDriverExecutableRegions(
 	ULONG num_sections = 0;
 	ULONG num_executable_sections = 0;
 	UINT64 buffer_base;
+	ULONG bytes_returned;
+	MM_COPY_ADDRESS address;
 
 	status = GetSystemModuleInformation( &modules );
 
@@ -88,43 +90,8 @@ NTSTATUS CopyDriverExecutableRegions(
 		goto end;
 
 	/*
-	* Map the drivers physical memory into our IO space, then copy it into
-	* our IRP buffer.
+	* Note: Verifier doesn't like it when we map the module :c
 	*/
-	physical_address.QuadPart = MmGetPhysicalAddress( driver_info->ImageBase ).QuadPart;
-
-	/*
-	* Verifier doesn't like it when we map system pages xD (sometimes ?)
-	*/
-	//mapped_address = MmMapIoSpace(
-	//	physical_address,
-	//	driver_info->ImageSize,
-	//	MmNonCached
-	//);
-
-	//if ( !mapped_address )
-	//{
-	//	DEBUG_ERROR( "Failed to MmMapIoSpace " );
-	//	goto end;
-	//}
-
-	MM_COPY_ADDRESS copy_address;
-	copy_address.PhysicalAddress.QuadPart = physical_address.QuadPart;
-	ULONG bytes_returned;
-
-	status = MmCopyMemory(
-		buffer,
-		copy_address,
-		driver_info->ImageSize,
-		NULL,
-		&bytes_returned
-	);
-
-	if ( !NT_SUCCESS( status ) )
-	{
-		DEBUG_ERROR( "MmCopyMemmory failed with status %x", status );
-		goto end;
-	}
 
 	dos_header = ( PIMAGE_DOS_HEADER )driver_info->ImageBase;
 
@@ -150,21 +117,44 @@ NTSTATUS CopyDriverExecutableRegions(
 		{
 			DEBUG_LOG( "Found executable section with name: %s", section->Name );
 
-			RtlCopyMemory(
-				( UINT64 )buffer_base + previous_section_size,
-				section,
-				sizeof( IMAGE_SECTION_HEADER )
+			/*
+			* Note: MmCopyMemory will fail on discardable sections.
+			*/
+
+			address.VirtualAddress = section;
+
+			status = MmCopyMemory(
+				( UINT64 )buffer_base + total_packet_size,
+				address,
+				sizeof( IMAGE_SECTION_HEADER ),
+				MM_COPY_MEMORY_VIRTUAL,
+				&bytes_returned
 			);
 
-			RtlCopyMemory(
-				( UINT64 )buffer_base + sizeof( IMAGE_SECTION_HEADER ),
-				( UINT64 )buffer + section->PointerToRawData,
-				section->SizeOfRawData
+			if ( !NT_SUCCESS( status ) )
+			{
+				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
+				goto end;
+			}
+
+			address.VirtualAddress = ( UINT64 )driver_info->ImageBase + section->PointerToRawData;
+
+			status = MmCopyMemory(
+				( UINT64 )buffer_base + total_packet_size + sizeof( IMAGE_SECTION_HEADER ),
+				address,
+				section->SizeOfRawData,
+				MM_COPY_MEMORY_VIRTUAL,
+				&bytes_returned
 			);
+
+			if ( !NT_SUCCESS( status ) )
+			{
+				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
+				goto end;
+			}
 
 			total_packet_size += section->SizeOfRawData + sizeof( IMAGE_SECTION_HEADER );
 			num_executable_sections += 1;
-			previous_section_size = sizeof( IMAGE_SECTION_HEADER ) + section->SizeOfRawData;
 		}
 
 		section++;
@@ -180,17 +170,17 @@ NTSTATUS CopyDriverExecutableRegions(
 		sizeof( INTEGRITY_CHECK_HEADER ) 
 	);
 
-	Irp->IoStatus.Information = total_packet_size;
+	//Irp->IoStatus.Information = total_packet_size;
 
-	RtlCopyMemory(
-		Irp->AssociatedIrp.SystemBuffer,
-		buffer,
-		total_packet_size
-	);
+	//RtlCopyMemory(
+	//	Irp->AssociatedIrp.SystemBuffer,
+	//	buffer,
+	//	total_packet_size
+	//);
 
 end:
 
-	Irp->IoStatus.Status = status;
+	//Irp->IoStatus.Status = status;
 
 	if ( modules.address )
 		ExFreePoolWithTag( modules.address, SYSTEM_MODULES_POOL );
@@ -208,11 +198,92 @@ end:
 * 4. hash both buffers with the current time or something 
 * 5. compare 
 */
-NTSTATUS PerformInMemoryIntegrityCheckVsDiskImage(
-	_In_ PIRP Irp
-)
+NTSTATUS MapDiskImageIntoVirtualAddressSpace()
 {
 	NTSTATUS status;
+	HANDLE section_handle;
+	HANDLE file_handle;
+	OBJECT_ATTRIBUTES object_attributes;
+	PIO_STATUS_BLOCK pio_block;
+	PVOID section = NULL;
+	SIZE_T size = 0;
+	UNICODE_STRING path;
+
+	/* TODO add this to global config */
+	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
+
+	InitializeObjectAttributes(
+		&object_attributes,
+		&path,
+		OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+		NULL,
+		NULL
+	);
+
+	status = ZwOpenFile(
+		&file_handle,
+		FILE_GENERIC_READ | SYNCHRONIZE,
+		&object_attributes,
+		&pio_block,
+		FILE_SHARE_READ,
+		FILE_SYNCHRONOUS_IO_NONALERT
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwOpenFile failed with statsu %x", status );
+		return status;
+	}
+
+	object_attributes.ObjectName = NULL;
+
+	/*
+	* Its important that we set the SEC_IMAGE_NO_EXECUTE flag with the PAGE_READONLY
+	* flag as we are mapping an executable image.
+	*/
+	status = ZwCreateSection(
+		&section_handle,
+		SECTION_ALL_ACCESS,
+		&object_attributes,
+		NULL,
+		PAGE_READONLY,
+		SEC_IMAGE,
+		file_handle
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwCreateSection failed with status %x", status );
+		ZwClose( file_handle );
+		return status;
+	}
+
+	status = ZwMapViewOfSection(
+		section_handle,
+		NtCurrentProcess(),
+		&section,
+		NULL,
+		NULL,
+		NULL,
+		&size,
+		ViewUnmap,
+		MEM_TOP_DOWN,
+		PAGE_READONLY
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwMapViewOfSection failed with status %x", status );
+		ZwClose( file_handle );
+		ZwClose( section_handle );
+		return status;
+	}
+
+	DEBUG_LOG( "mapped LOL!" );
 
 
+
+	ZwUnmapViewOfSection( NtCurrentProcess(), section );
+	ZwClose( file_handle );
+	ZwClose( section_handle );
 }
