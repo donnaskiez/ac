@@ -171,7 +171,7 @@ NTSTATUS DriverEntry(
 		NULL,
 		NULL,
 		NULL,
-		MapDiskImageIntoVirtualAddressSpace,
+		VerifyInMemoryImageVsDiskImage,
 		NULL
 	);
 

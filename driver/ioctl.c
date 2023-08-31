@@ -150,47 +150,47 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS:
 
-		status = PsCreateSystemThread(
-			&handle,
-			PROCESS_ALL_ACCESS,
-			NULL,
-			NULL,
-			NULL,
-			CopyDriverExecutableRegions,
-			Irp
-		);
+		//status = PsCreateSystemThread(
+		//	&handle,
+		//	PROCESS_ALL_ACCESS,
+		//	NULL,
+		//	NULL,
+		//	NULL,
+		//	CopyDriverExecutableRegions,
+		//	Irp
+		//);
 
-		if ( !NT_SUCCESS( status ) )
-		{
-			DEBUG_ERROR( "Failed to start system thread to get executable regions" );
-			goto end;
-		}
+		//if ( !NT_SUCCESS( status ) )
+		//{
+		//	DEBUG_ERROR( "Failed to start system thread to get executable regions" );
+		//	goto end;
+		//}
 
-		status = ObReferenceObjectByHandle(
-			handle,
-			THREAD_ALL_ACCESS,
-			*PsThreadType,
-			KernelMode,
-			&thread,
-			NULL
-		);
+		//status = ObReferenceObjectByHandle(
+		//	handle,
+		//	THREAD_ALL_ACCESS,
+		//	*PsThreadType,
+		//	KernelMode,
+		//	&thread,
+		//	NULL
+		//);
 
-		if ( !NT_SUCCESS( status ) )
-		{
-			DEBUG_ERROR( "ObReferenceObjectbyhandle failed with status %lx", status );
-			ZwClose( handle );
-			goto end;
-		}
+		//if ( !NT_SUCCESS( status ) )
+		//{
+		//	DEBUG_ERROR( "ObReferenceObjectbyhandle failed with status %lx", status );
+		//	ZwClose( handle );
+		//	goto end;
+		//}
 
-		PAGED_CODE();
+		//PAGED_CODE();
 
-		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );;
+		//KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );;
 
-		ZwClose( handle );
-		ObDereferenceObject( thread );
+		//ZwClose( handle );
+		//ObDereferenceObject( thread );
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "Failed to retrieve executable regions" );
+		//if ( !NT_SUCCESS( status ) )
+		//	DEBUG_ERROR( "Failed to retrieve executable regions" );
 
 		break;
 

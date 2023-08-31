@@ -25,6 +25,9 @@ CHAR WHITELISTED_MODULES[ WHITELISTED_MODULE_COUNT ][ MODULE_MAX_STRING_SIZE ] =
 	"Wdf01000.sys",
 };
 
+/*
+* TODO: this needs to be refactored to just return the entry not the whole fukin thing
+*/
 PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
 	_In_ PSYSTEM_MODULES SystemModules

@@ -13,6 +13,17 @@ NTSTATUS GetDriverImageSize(
 	_In_ PIRP Irp
 );
 
+NTSTATUS VerifyInMemoryImageVsDiskImage();
+
+NTSTATUS
+NTAPI
+NtSetInformationProcess(
+    _In_ HANDLE ProcessHandle,
+    _In_ PROCESSINFOCLASS ProcessInformationClass,
+    _In_ PVOID ProcessInformation,
+    _In_ ULONG ProcessInformationLength
+);
+
 #define IMAGE_SCN_MEM_EXECUTE 0x20000000
 
 #define IMAGE_SIZEOF_SHORT_NAME 8
