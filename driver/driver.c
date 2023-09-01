@@ -10,56 +10,103 @@
 #include "modules.h"
 #include "integrity.h"
 
-DRIVER_CONFIG config = { 0 };
 
-UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
-UNICODE_STRING DEVICE_SYMBOLIC_LINK = RTL_CONSTANT_STRING( L"\\??\\DonnaAC" );
+DRIVER_CONFIG driver_config = { 0 };
+PROCESS_CONFIG process_config = { 0 };
 
-VOID GetDriverName( 
-	_In_ LPCSTR* DriverName 
-)
-{
-	KeAcquireGuardedMutex( &config.lock );
-	*DriverName = config.driver_name;
-	KeReleaseGuardedMutex( &config.lock );
-}
-
-VOID ReadInitialisedConfigFlag(
+VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
 {
-	KeAcquireGuardedMutex( &config.lock );
-	*Flag = config.initialised;
-	KeReleaseGuardedMutex( &config.lock );
+	KeAcquireGuardedMutex( &process_config.lock );
+	*Flag = process_config.initialised;
+	KeReleaseGuardedMutex( &process_config.lock );
 }
 
 VOID GetProtectedProcessEProcess( 
 	_Out_ PEPROCESS* Process 
 )
 {
-	KeAcquireGuardedMutex( &config.lock );
-	*Process = config.protected_process_eprocess;
-	KeReleaseGuardedMutex( &config.lock );
+	KeAcquireGuardedMutex( &process_config.lock );
+	*Process = process_config.protected_process_eprocess;
+	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID GetProtectedProcessId( 
-	_Out_ PLONG ProcessId 
+VOID GetProtectedProcessId(
+	_Out_ PLONG ProcessId
 )
 {
-	KeAcquireGuardedMutex( &config.lock );
-	*ProcessId = config.protected_process_id;
-	KeReleaseGuardedMutex( &config.lock );
+	KeAcquireGuardedMutex( &process_config.lock );
+	*ProcessId = process_config.protected_process_id;
+	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID ClearDriverConfigOnProcessTermination()
+VOID ClearProcessConfigOnProcessTermination()
 {
-	DEBUG_LOG( "Process closed, clearing driver configuration" );
-	KeAcquireGuardedMutex( &config.lock );
-	config.protected_process_id = NULL;
-	config.protected_process_eprocess = NULL;
-	config.initialised = FALSE;
-	KeReleaseGuardedMutex( &config.lock );
+	DEBUG_LOG( "Process closed, clearing driver process_configuration" );
+	KeAcquireGuardedMutex( &process_config.lock );
+	process_config.protected_process_id = NULL;
+	process_config.protected_process_eprocess = NULL;
+	process_config.initialised = FALSE;
+	KeReleaseGuardedMutex( &process_config.lock );
 }
+
+VOID GetDriverName(
+	_In_ LPCSTR* DriverName
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	*DriverName = driver_config.driver_name;
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID GetDriverPath(
+	_In_ PUNICODE_STRING DriverPath
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlCopyUnicodeString( DriverPath, &driver_config.driver_path );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID GetDriverRegistryPath(
+	_In_ PUNICODE_STRING RegistryPath
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlCopyUnicodeString( RegistryPath, &driver_config.registry_path );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID GetDriverDeviceName(
+	_In_ PUNICODE_STRING DeviceName
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlCopyUnicodeString( DeviceName, &driver_config.device_name );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID GetDriverSymbolicLink(
+	_In_ PUNICODE_STRING DeviceSymbolicLink
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlCopyUnicodeString( DeviceSymbolicLink, &driver_config.device_symbolic_link );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID InitialiseDriverConfigOnDriverEntry(
+	_In_ PUNICODE_STRING RegistryPath
+)
+{
+	KeInitializeGuardedMutex( &driver_config.lock );
+	
+	RtlInitUnicodeString( &driver_config.device_name, L"\\Device\\DonnaAC" );
+	RtlInitUnicodeString( &driver_config.device_symbolic_link, L"\\??\\DonnaAC" );
+	RtlCopyUnicodeString( &driver_config.registry_path, RegistryPath );
+}
+
 
 VOID TerminateProtectedProcessOnViolation()
 {
@@ -104,17 +151,22 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 	* acquire the mutex here to prevent a race condition if an unknown party trys 
 	* to fuzz our IOCTL codes whilst the target process launches.
 	*/
-	KeAcquireGuardedMutex( &config.lock );
+	KeAcquireGuardedMutex( &process_config.lock );
 
-	config.protected_process_eprocess = eprocess;
-	config.protected_process_id = information->protected_process_id;
-	config.initialised = TRUE;
+	process_config.protected_process_eprocess = eprocess;
+	process_config.protected_process_id = information->protected_process_id;
+	process_config.initialised = TRUE;
 
-	KeReleaseGuardedMutex( &config.lock );
+	KeReleaseGuardedMutex( &process_config.lock );
 
 	Irp->IoStatus.Status = status;
 
 	return status;
+}
+
+VOID CleanupDriverConfigOnUnload()
+{
+	IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 }
 
 VOID DriverUnload(
@@ -122,7 +174,7 @@ VOID DriverUnload(
 )
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
-	IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
+	CleanupDriverConfigOnUnload();
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
 
@@ -136,29 +188,12 @@ NTSTATUS DriverEntry(
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
-	KeInitializeGuardedMutex( &config.lock );
-
-	config.initialised = FALSE;
-	config.protected_process_eprocess = NULL;
-	config.protected_process_id = NULL;
-
-	//HANDLE handle;
-	//PsCreateSystemThread(
-	//	&handle,
-	//	PROCESS_ALL_ACCESS,
-	//	NULL,
-	//	NULL,
-	//	NULL,
-	//	ValidateKPCRBThreads,
-	//	NULL
-	//);
-
-	//ZwClose( handle );
+	InitialiseDriverConfigOnDriverEntry( RegistryPath );
 
 	status = IoCreateDevice(
 		DriverObject,
 		NULL,
-		&DEVICE_NAME,
+		&driver_config.device_name,
 		FILE_DEVICE_UNKNOWN,
 		FILE_DEVICE_SECURE_OPEN,
 		FALSE,
@@ -169,8 +204,8 @@ NTSTATUS DriverEntry(
 		return STATUS_FAILED_DRIVER_ENTRY;
 
 	status = IoCreateSymbolicLink(
-		&DEVICE_SYMBOLIC_LINK,
-		&DEVICE_NAME
+		&driver_config.device_symbolic_link,
+		&driver_config.device_name
 	);
 
 	if ( !NT_SUCCESS( status ) )
@@ -190,7 +225,7 @@ NTSTATUS DriverEntry(
 	if ( !flag )
 	{
 		DEBUG_ERROR( "failed to init report queue" );
-		IoDeleteSymbolicLink( &DEVICE_SYMBOLIC_LINK );
+		IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
 	} 
