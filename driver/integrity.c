@@ -1,6 +1,7 @@
 #include "integrity.h"
 
 #include "common.h"
+#include "driver.h"
 #include "modules.h"
 
 #include <bcrypt.h>
@@ -60,6 +61,7 @@ NTSTATUS GetModuleInformationByName(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "GetSystemModuleInformation failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -151,7 +153,6 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 			/*
 			* Note: MmCopyMemory will fail on discardable sections.
 			*/
-
 			address.VirtualAddress = section;
 
 			status = MmCopyMemory(
@@ -166,6 +167,7 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 			{
 				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
 				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
+				TerminateProtectedProcessOnViolation();
 				return status;
 			}
 
@@ -183,6 +185,7 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 			{
 				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
 				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
+				TerminateProtectedProcessOnViolation();
 				return status;
 			}
 
@@ -243,6 +246,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ZwOpenFile failed with statsu %x", status );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -252,6 +256,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	{
 		DEBUG_ERROR( "NTSetInformationProcess failed with status %x", status );
 		ZwClose( file_handle );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -273,6 +278,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	{
 		DEBUG_ERROR( "ZwCreateSection failed with status %x", status );
 		ZwClose( file_handle );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -300,6 +306,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		DEBUG_ERROR( "ZwMapViewOfSection failed with status %x", status );
 		ZwClose( file_handle );
 		ZwClose( *SectionHandle );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -347,6 +354,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptOpenAlogrithmProvider failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -367,6 +375,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -388,6 +397,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -396,6 +406,9 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !resulting_hash )
 		goto end;
 
+	/*
+	* Here we create our hash object and store it in the hash_object buffer.
+	*/
 	status = BCryptCreateHash(
 		algo_handle,
 		&hash_handle,
@@ -409,6 +422,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptCreateHash failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -426,6 +440,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptHashData failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -443,6 +458,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptFinishHash failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -506,6 +522,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -519,13 +536,13 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffer failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
 	/*
 	* Parse the in-memory module
 	*/
-
 	status = GetModuleInformationByName(
 		&module_info,
 		"driver.sys"
@@ -534,6 +551,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "GetModuleInformationByName failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -547,6 +565,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffe failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -559,6 +578,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !disk_base || !memory_base || !disk_buffer || !in_memory_buffer )
 	{
 		DEBUG_ERROR( "buffers are null lmao" );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -566,6 +586,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	{
 		/* report or bug check etc. */
 		DEBUG_LOG( "Executable section size differs, LOL" );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -579,6 +600,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -592,21 +614,28 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
 	if ( memory_text_hash_size != disk_text_hash_size )
 	{
 		DEBUG_ERROR( "Error with the hash algorithm, hash sizes are different." );
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
-	result = RtlCompareMemory( memory_text_hash, disk_text_hash, memory_text_hash_size );
+	result = RtlCompareMemory( 
+		memory_text_hash, 
+		disk_text_hash, 
+		memory_text_hash_size 
+	);
 
 	if (result != memory_text_hash_size)
 	{
 		/* report etc. bug check etc. */
 		DEBUG_ERROR( "Text sections are different from each other!!");
+		TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 

@@ -10,6 +10,8 @@ typedef struct _DRIVER_CONFIG
 	BOOLEAN initialised;
 	LONG protected_process_id;
 	PEPROCESS protected_process_eprocess;
+	CHAR driver_name[ 128 ];
+	UNICODE_STRING driver_path;
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, *PDRIVER_CONFIG;
@@ -32,5 +34,8 @@ VOID ReadInitialisedConfigFlag(
 );
 
 
+VOID TerminateProtectedProcessOnViolation();
+
 VOID ClearDriverConfigOnProcessTermination();
+
 #endif

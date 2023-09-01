@@ -368,6 +368,25 @@ VOID kernelmode::Driver::ScanForUnlinkedProcess()
 	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
 }
 
+VOID kernelmode::Driver::PerformIntegrityCheck()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_PERFORM_INTEGRITY_CHECK,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "Failed to perform integrity check with status %x", status );
+}
+
 ULONG kernelmode::Driver::RequestTotalModuleSize()
 {
 	BOOLEAN status;

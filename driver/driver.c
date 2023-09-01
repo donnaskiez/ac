@@ -15,6 +15,15 @@ DRIVER_CONFIG config = { 0 };
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING( L"\\Device\\DonnaAC" );
 UNICODE_STRING DEVICE_SYMBOLIC_LINK = RTL_CONSTANT_STRING( L"\\??\\DonnaAC" );
 
+VOID GetDriverName( 
+	_In_ LPCSTR* DriverName 
+)
+{
+	KeAcquireGuardedMutex( &config.lock );
+	*DriverName = config.driver_name;
+	KeReleaseGuardedMutex( &config.lock );
+}
+
 VOID ReadInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
@@ -50,6 +59,30 @@ VOID ClearDriverConfigOnProcessTermination()
 	config.protected_process_eprocess = NULL;
 	config.initialised = FALSE;
 	KeReleaseGuardedMutex( &config.lock );
+}
+
+VOID TerminateProtectedProcessOnViolation()
+{
+	NTSTATUS status;
+	ULONG process_id;
+
+	GetProtectedProcessId( &process_id );
+
+	if ( !process_id )
+	{
+		DEBUG_ERROR( "Failed to terminate process as process id is null" );
+		return;
+	}
+
+	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwTerminateProcess failed with status %x", status );
+		return;
+	}
+
+	ClearDriverConfigOnProcessTermination();
 }
 
 NTSTATUS InitialiseDriverConfigOnProcessLaunch(

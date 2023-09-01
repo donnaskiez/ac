@@ -24,6 +24,7 @@ namespace kernelmode
 		VOID EnumerateHandleTables();
 		VOID RequestModuleExecutableRegionsForIntegrityCheck();
 		VOID ScanPoolsForUnlinkedProcesses();
+		VOID PerformIntegrityCheck();
 	};
 }
 

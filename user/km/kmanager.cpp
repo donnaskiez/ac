@@ -40,3 +40,8 @@ VOID kernelmode::KManager::ScanPoolsForUnlinkedProcesses()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->ScanForUnlinkedProcess(); } );
 }
+
+VOID kernelmode::KManager::PerformIntegrityCheck()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->PerformIntegrityCheck(); } );
+}

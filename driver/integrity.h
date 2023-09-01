@@ -14,7 +14,7 @@ NTSTATUS GetDriverImageSize(
 );
 
 NTSTATUS VerifyInMemoryImageVsDiskImage(
-
+    //_In_ PIRP Irp
 );
 
 NTSTATUS RetrieveInMemoryModuleExecutableSections(

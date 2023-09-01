@@ -225,6 +225,15 @@ NTSTATUS DeviceControl(
 
 		break;
 
+	case IOCTL_PERFORM_INTEGRITY_CHECK:
+
+		status = VerifyInMemoryImageVsDiskImage();
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "VerifyInMemoryImageVsDisk failed with status %x", status );
+
+		break;
+
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
 		break;
