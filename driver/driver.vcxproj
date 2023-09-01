@@ -95,6 +95,7 @@
     <Link />
     <Link>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>Cng.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -107,6 +108,7 @@
     <Link />
     <Link>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>Cng.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -129,7 +131,6 @@
     <ClCompile Include="callbacks.c" />
     <ClCompile Include="driver.c" />
     <ClCompile Include="hv.c" />
-    <ClCompile Include="hw.c" />
     <ClCompile Include="integrity.c" />
     <ClCompile Include="ioctl.c" />
     <ClCompile Include="modules.c" />
@@ -142,7 +143,6 @@
     <ClInclude Include="common.h" />
     <ClInclude Include="driver.h" />
     <ClInclude Include="hv.h" />
-    <ClInclude Include="hw.h" />
     <ClInclude Include="integrity.h" />
     <ClInclude Include="ioctl.h" />
     <ClInclude Include="modules.h" />

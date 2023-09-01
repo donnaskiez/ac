@@ -3,6 +3,8 @@
 #include "common.h"
 #include "modules.h"
 
+#include <bcrypt.h>
+
 typedef struct _INTEGRITY_CHECK_HEADER
 {
 	INT executable_section_count;
@@ -111,13 +113,15 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 	* we cant set Irp->IoStatus.Information to the size of our reponse until we
 	* enumerate and count all executable sections for the file.
 	*/
+
 	*Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ModuleSize + sizeof( INTEGRITY_CHECK_HEADER ), POOL_TAG_INTEGRITY );
 
 	if ( !*Buffer )
 		return STATUS_ABANDONED;
 
 	/*
-	* Note: Verifier doesn't like it when we map the module :c
+	* Note: Verifier doesn't like it when we map the module so rather then mapping it to our address
+	* space we will simply use MmCopyMemory on the module to avoid upsettings verifier :)
 	*/
 
 	dos_header = ( PIMAGE_DOS_HEADER )ModuleBase;
@@ -229,10 +233,10 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 
 	status = ZwOpenFile(
 		&file_handle,
-		FILE_GENERIC_EXECUTE | SYNCHRONIZE,
+		FILE_GENERIC_READ | SYNCHRONIZE,
 		&object_attributes,
 		&pio_block,
-		FILE_GENERIC_EXECUTE,
+		FILE_GENERIC_READ,
 		NULL
 	);
 
@@ -260,7 +264,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		SECTION_ALL_ACCESS,
 		&object_attributes,
 		NULL,
-		PAGE_EXECUTE_READWRITE,
+		PAGE_READONLY,
 		SEC_IMAGE,
 		file_handle
 	);
@@ -272,6 +276,12 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		return status;
 	}
 
+	/*
+	* Mapping a section with the flag SEC_IMAGE (see function above) tells the os we 
+	* are mapping an executable image. This then allows the OS to take care of parsing
+	* the PE header and dealing with all relocations for us, meaning the mapped image
+	* will be identical to the in memory image.
+	*/
 	status = ZwMapViewOfSection(
 		*SectionHandle,
 		ZwCurrentProcess(),
@@ -282,7 +292,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		Size,
 		ViewUnmap,
 		MEM_TOP_DOWN,
-		PAGE_READWRITE
+		PAGE_READONLY
 	);
 
 	if ( !NT_SUCCESS( status ) )
@@ -293,8 +303,162 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		return status;
 	}
 
-	DEBUG_LOG( "mapped LOL!" );
 	ZwClose( file_handle );
+	return status;
+}
+
+NTSTATUS ComputeHashOfBuffer(
+	_In_ PVOID Buffer,
+	_In_ ULONG BufferSize,
+	_In_ PVOID* HashResult,
+	_In_ PULONG HashResultSize
+)
+{
+	/*
+	* Since the windows documentation for the BCrypt functions contain the worst variable naming scheme 
+	* in existence, I will try to explain what they do. (for my sake and any readers who also aren't smart 
+	* enough to understand their otherworldy naming convention)
+	* 
+	* algo_handle: handle to our BCrypt algorithm
+	* hash_handle: handle to our BCrypt hash
+	* bytes_copied: number of bytes that were copied to the output buffer when using BCryptGetProperty
+	* resulting_hash_size: this is the size of the final buffer hash, it should be equal to 32 (sizeof SHA256 hash)
+	* hash_object_size: the size of the buffer that will temporarily store our hash object
+	* hash_object: pointer to the buffer storing our hash object which is used to hash our buffer
+	* resulting_hash: pointer to the buffer that stores the resulting hash of our buffer, this is what we care about
+	*/
+
+	NTSTATUS status;
+	BCRYPT_ALG_HANDLE algo_handle = NULL;
+	BCRYPT_HASH_HANDLE hash_handle = NULL;
+	ULONG bytes_copied = 0;
+	ULONG resulting_hash_size = 0;
+	ULONG hash_object_size = 0;
+	PCHAR hash_object = NULL;
+	PCHAR resulting_hash = NULL;
+
+	status = BCryptOpenAlgorithmProvider(
+		&algo_handle,
+		BCRYPT_SHA256_ALGORITHM,
+		NULL,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptOpenAlogrithmProvider failed with status %x", status );
+		goto end;
+	}
+
+	/*
+	* Request the size of the hash object buffer, this is different then the buffer that
+	* will store the resulting hash, instead this will be used to store the hash object
+	* used to create the hash.
+	*/
+	status = BCryptGetProperty(
+		algo_handle,
+		BCRYPT_OBJECT_LENGTH,
+		( PCHAR )&hash_object_size,
+		sizeof( ULONG ),
+		&bytes_copied,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
+		goto end;
+	}
+
+	hash_object = ExAllocatePool2( POOL_FLAG_NON_PAGED, hash_object_size, POOL_TAG_INTEGRITY );
+
+	/*
+	* This call gets the size of the resulting hash, which we will use to allocate the
+	* resulting hash buffer.
+	*/
+	status = BCryptGetProperty(
+		algo_handle,
+		BCRYPT_HASH_LENGTH,
+		( PCHAR )&resulting_hash_size,
+		sizeof( ULONG ),
+		&bytes_copied,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
+		goto end;
+	}
+
+	resulting_hash = ExAllocatePool2( POOL_FLAG_NON_PAGED, resulting_hash_size, POOL_TAG_INTEGRITY );
+
+	if ( !resulting_hash )
+		goto end;
+
+	status = BCryptCreateHash(
+		algo_handle,
+		&hash_handle,
+		hash_object,
+		hash_object_size,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptCreateHash failed with status %x", status );
+		goto end;
+	}
+
+	/*
+	* This function hashes the buffer, but does NOT store it in our resulting buffer yet, 
+	* we need to call BCryptFinishHash to retrieve the final hash.
+	*/
+	status = BCryptHashData(
+		hash_handle,
+		Buffer,
+		BufferSize,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptHashData failed with status %x", status );
+		goto end;
+	}
+
+	/*
+	* As said in the previous comment, this is where we retrieve the final hash and store
+	* it in our output buffer.
+	*/
+	status = BCryptFinishHash(
+		hash_handle,
+		resulting_hash,
+		resulting_hash_size,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "BCryptFinishHash failed with status %x", status );
+		return status;
+	}
+
+	*HashResult = resulting_hash;
+	*HashResultSize = resulting_hash_size;
+
+end:
+
+	if ( algo_handle )
+		BCryptCloseAlgorithmProvider( algo_handle, 0 );
+
+	if ( hash_handle )
+		BCryptDestroyHash( hash_handle );
+
+	if ( hash_object )
+		ExFreePoolWithTag( hash_object, POOL_TAG_INTEGRITY );
 
 	return status;
 }
@@ -303,7 +467,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 * 1. map driver to memory
 * 2. store executable sections in buffer
 * 3. do the same with the in-memory module
-* 4. hash both buffers with the current time or something
+* 4. hash both buffers 
 * 5. compare
 */
 NTSTATUS VerifyInMemoryImageVsDiskImage(
@@ -319,14 +483,17 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	PVOID disk_buffer = NULL;
 	PVOID in_memory_buffer = NULL;
 	RTL_MODULE_EXTENDED_INFO module_info = { 0 };
+	UINT64 disk_base = NULL;
+	UINT64 memory_base = NULL;
+	PIMAGE_SECTION_HEADER disk_text_header = NULL;
+	PIMAGE_SECTION_HEADER memory_text_header = NULL;
+	PVOID disk_text_hash = NULL;
+	PVOID memory_text_hash = NULL;
+	ULONG disk_text_hash_size = NULL;
+	ULONG memory_text_hash_size = NULL;
+	SIZE_T result = NULL;
 
-
-	/*
-	* Map the disk image into memory and parse it. Note that we still need to parse the PE
-	* file since the on-disk version is different to the in memory module before we
-	* compare the executable sections.
-	*/
-
+	/* TODO: ad this into global config */
 	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
 
 	status = MapDiskImageIntoVirtualAddressSpace(
@@ -383,13 +550,11 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 		goto end;
 	}
 
-	/*
-	* The in memory text section seems to be around 1k bytes larger then on disk section
-	*/
-	UINT64 disk_base = ( UINT64 )( ( UINT64 )disk_buffer + sizeof( INTEGRITY_CHECK_HEADER ) + sizeof( IMAGE_SECTION_HEADER ) );
-	UINT64 memory_base = ( UINT64 )( ( UINT64 )in_memory_buffer + sizeof( INTEGRITY_CHECK_HEADER ) + sizeof( IMAGE_SECTION_HEADER ) );
+	disk_base = ( UINT64 )( ( UINT64 )disk_buffer + sizeof( INTEGRITY_CHECK_HEADER ) + sizeof( IMAGE_SECTION_HEADER ) );
+	memory_base = ( UINT64 )( ( UINT64 )in_memory_buffer + sizeof( INTEGRITY_CHECK_HEADER ) + sizeof( IMAGE_SECTION_HEADER ) );
 
-	PIMAGE_SECTION_HEADER disk_text_header = ( PIMAGE_SECTION_HEADER )( ( UINT64 )disk_buffer + sizeof( INTEGRITY_CHECK_HEADER ) );
+	disk_text_header = ( PIMAGE_SECTION_HEADER )( ( UINT64 )disk_buffer + sizeof( INTEGRITY_CHECK_HEADER ) );
+	memory_text_header = ( PIMAGE_SECTION_HEADER )( ( UINT64 )in_memory_buffer + sizeof( INTEGRITY_CHECK_HEADER ) );
 
 	if ( !disk_base || !memory_base || !disk_buffer || !in_memory_buffer )
 	{
@@ -397,28 +562,76 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 		goto end;
 	}
 
-	DEBUG_LOG( "Disk base: %llx, memory base: %llx, disk_text header: %llx", disk_base, memory_base, ( UINT64 )disk_text_header );
+	if ( disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData )
+	{
+		/* report or bug check etc. */
+		DEBUG_LOG( "Executable section size differs, LOL" );
+		goto end;
+	}
 
-	DEBUG_LOG( "Disk text header size of data: %lx", disk_text_header->SizeOfRawData );
+	status = ComputeHashOfBuffer(
+		disk_base,
+		disk_text_header->SizeOfRawData,
+		&disk_text_hash,
+		&disk_text_hash_size
+	);
 
-	int result = RtlCompareMemory( (PVOID)disk_base, (PVOID)memory_base, disk_text_header->SizeOfRawData - 8000 );
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
+		goto end;
+	}
 
-	DEBUG_LOG( "Result: %lx", result );
+	status = ComputeHashOfBuffer(
+		memory_base,
+		memory_text_header->SizeOfRawData,
+		&memory_text_hash,
+		&memory_text_hash_size
+	);
 
-	__debugbreak();
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
+		goto end;
+	}
+
+	if ( memory_text_hash_size != disk_text_hash_size )
+	{
+		DEBUG_ERROR( "Error with the hash algorithm, hash sizes are different." );
+		goto end;
+	}
+
+	result = RtlCompareMemory( memory_text_hash, disk_text_hash, memory_text_hash_size );
+
+	if (result != memory_text_hash_size)
+	{
+		/* report etc. bug check etc. */
+		DEBUG_ERROR( "Text sections are different from each other!!");
+		goto end;
+	}
+
+	DEBUG_LOG( "Text sections are fine, integrity check complete." );
 
 end:
 
-	ZwUnmapViewOfSection( NtCurrentProcess(), section );
-
 	if ( section_handle != NULL )
 		ZwClose( section_handle );
+
+	ZwUnmapViewOfSection( ZwCurrentProcess(), section );
 
 	if ( disk_buffer )
 		ExFreePoolWithTag( disk_buffer, POOL_TAG_INTEGRITY );
 
 	if ( in_memory_buffer )
 		ExFreePoolWithTag( in_memory_buffer, POOL_TAG_INTEGRITY );
+
+	if ( memory_text_hash )
+		ExFreePoolWithTag( memory_text_hash, POOL_TAG_INTEGRITY );
+
+	if ( disk_text_hash )
+		ExFreePoolWithTag( disk_text_hash, POOL_TAG_INTEGRITY );
+
+	return status;
 }
 
 NTSTATUS RetrieveInMemoryModuleExecutableSections(
