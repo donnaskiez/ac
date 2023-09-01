@@ -29,7 +29,7 @@ NTSTATUS DeviceControl(
 	* and trying to fuzz the IOCTL access or codes. This definitely isnt a perfect 
 	* solution though... xD
 	*/
-	ReadInitialisedConfigFlag( &security_flag );
+	ReadProcessInitialisedConfigFlag( &security_flag );
 
 	if ( security_flag == FALSE && 
 		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH )
@@ -205,7 +205,7 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION:
 
-		ClearDriverConfigOnProcessTermination();
+		ClearProcessConfigOnProcessTermination();
 		UnregisterCallbacksOnProcessTermination();
 
 		break;
@@ -253,7 +253,7 @@ NTSTATUS DeviceClose(
 	DEBUG_LOG( "Handle closed to DonnaAC" );
 
 	FreeQueueObjectsAndCleanup();
-	ClearDriverConfigOnProcessTermination();
+	ClearProcessConfigOnProcessTermination();
 	UnregisterCallbacksOnProcessTermination();
 
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );

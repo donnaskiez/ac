@@ -222,9 +222,9 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	HANDLE file_handle;
 	OBJECT_ATTRIBUTES object_attributes;
 	PIO_STATUS_BLOCK pio_block;
-	UNICODE_STRING path;
+	UNICODE_STRING path = { 0 };
 
-	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
+	GetDriverPath( &path );
 
 	InitializeObjectAttributes(
 		&object_attributes,
@@ -491,7 +491,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 )
 {
 	NTSTATUS status;
-	UNICODE_STRING path;
+	UNICODE_STRING path = { 0 };
 	HANDLE section_handle = NULL;
 	PVOID section = NULL;
 	SIZE_T section_size = NULL;
@@ -509,8 +509,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	ULONG memory_text_hash_size = NULL;
 	SIZE_T result = NULL;
 
-	/* TODO: ad this into global config */
-	RtlInitUnicodeString( &path, L"\\SystemRoot\\System32\\Drivers\\driver.sys" );
+	GetDriverPath( &path );
 
 	status = MapDiskImageIntoVirtualAddressSpace(
 		&section_handle,

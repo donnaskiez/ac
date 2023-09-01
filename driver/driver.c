@@ -56,7 +56,7 @@ VOID GetDriverName(
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
-	*DriverName = driver_config.driver_name;
+	*DriverName = driver_config.ansi_driver_name.Buffer;
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
@@ -96,41 +96,130 @@ VOID GetDriverSymbolicLink(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID InitialiseDriverConfigOnDriverEntry(
+NTSTATUS RegistryPathQueryCallbackRoutine(
+	IN PWSTR ValueName,
+	IN ULONG ValueType,
+	IN PVOID ValueData,
+	IN ULONG ValueLength,
+	IN PVOID Context,
+	IN PVOID EntryContext
+)
+{
+	UNICODE_STRING value_name;
+	BOOLEAN result;
+	RtlInitUnicodeString( &value_name, ValueName );
+
+	UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
+	UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
+
+	if ( RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE )
+	{
+		DEBUG_LOG( "Value type image path given" );
+		driver_config.driver_path.Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, DRIVER_PATH_POOL_TAG );
+		driver_config.driver_path.Length = ValueLength;
+		driver_config.driver_path.MaximumLength = ValueLength;
+
+		if ( !driver_config.driver_path.Buffer )
+			return STATUS_ABANDONED;
+
+		RtlCopyMemory( 
+			driver_config.driver_path.Buffer, 
+			ValueData, 
+			ValueLength 
+		);
+	}
+
+	if ( RtlCompareUnicodeString( &value_name, &display_name, FALSE ) == FALSE )
+	{
+		DEBUG_LOG( "Value type image path given" );
+		driver_config.unicode_driver_name.Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, DRIVER_PATH_POOL_TAG );
+		driver_config.unicode_driver_name.Length = ValueLength;
+		driver_config.unicode_driver_name.MaximumLength = ValueLength;
+
+		if ( !driver_config.unicode_driver_name.Buffer )
+			return STATUS_ABANDONED;
+
+		RtlCopyMemory(
+			driver_config.unicode_driver_name.Buffer,
+			ValueData,
+			ValueLength
+		);
+	}
+
+	return STATUS_SUCCESS;
+}
+
+VOID FreeDriverConfigurationStringBuffers()
+{
+	if ( driver_config.unicode_driver_name.Buffer )
+		ExFreePoolWithTag( driver_config.unicode_driver_name.Buffer, DRIVER_PATH_POOL_TAG );
+
+	if ( driver_config.driver_path.Buffer )
+		ExFreePoolWithTag( driver_config.driver_path.Buffer, DRIVER_PATH_POOL_TAG );
+
+	if (driver_config.ansi_driver_name.Buffer )
+		RtlFreeAnsiString( &driver_config.ansi_driver_name );
+}
+
+NTSTATUS InitialiseDriverConfigOnDriverEntry(
 	_In_ PUNICODE_STRING RegistryPath
 )
 {
+	NTSTATUS status;
+	RTL_QUERY_REGISTRY_TABLE query_table[ 2 ] = { 0 };
+
 	KeInitializeGuardedMutex( &driver_config.lock );
 	
 	RtlInitUnicodeString( &driver_config.device_name, L"\\Device\\DonnaAC" );
 	RtlInitUnicodeString( &driver_config.device_symbolic_link, L"\\??\\DonnaAC" );
 	RtlCopyUnicodeString( &driver_config.registry_path, RegistryPath );
-}
 
+	query_table[ 0 ].Flags = RTL_QUERY_REGISTRY_NOEXPAND;
+	query_table[ 0 ].Name = L"ImagePath";
+	query_table[ 0 ].DefaultType = REG_MULTI_SZ;
+	query_table[ 0 ].DefaultLength = 0;
+	query_table[ 0 ].DefaultData = NULL;
+	query_table[ 0 ].EntryContext = NULL;
+	query_table[ 0 ].QueryRoutine = RegistryPathQueryCallbackRoutine;
 
-VOID TerminateProtectedProcessOnViolation()
-{
-	NTSTATUS status;
-	ULONG process_id;
+	query_table[ 1 ].Flags = RTL_QUERY_REGISTRY_NOEXPAND;
+	query_table[ 1 ].Name = L"DisplayName";
+	query_table[ 1 ].DefaultType = REG_SZ;
+	query_table[ 1 ].DefaultLength = 0;
+	query_table[ 1 ].DefaultData = NULL;
+	query_table[ 1 ].EntryContext = NULL;
+	query_table[ 1 ].QueryRoutine = RegistryPathQueryCallbackRoutine;
 
-	GetProtectedProcessId( &process_id );
-
-	if ( !process_id )
-	{
-		DEBUG_ERROR( "Failed to terminate process as process id is null" );
-		return;
-	}
-
-	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
+	status = RtlxQueryRegistryValues(
+		RTL_REGISTRY_ABSOLUTE,
+		RegistryPath->Buffer,
+		&query_table,
+		NULL,
+		NULL
+	);
 
 	if ( !NT_SUCCESS( status ) )
 	{
-		DEBUG_ERROR( "ZwTerminateProcess failed with status %x", status );
-		return;
+		FreeDriverConfigurationStringBuffers();
+		return status;
 	}
 
-	ClearDriverConfigOnProcessTermination();
+	status = RtlUnicodeStringToAnsiString(
+		&driver_config.ansi_driver_name,
+		&driver_config.unicode_driver_name,
+		TRUE
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "Failed to convert unicode string to ansi string" );
+		FreeDriverConfigurationStringBuffers();
+		return status;
+	}
+
+	return status;
 }
+
 
 NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 	_In_ PIRP Irp
@@ -166,6 +255,7 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 
 VOID CleanupDriverConfigOnUnload()
 {
+	FreeDriverConfigurationStringBuffers();
 	IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 }
 
@@ -178,6 +268,27 @@ VOID DriverUnload(
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
 
+VOID TerminateProtectedProcessOnViolation()
+{
+	NTSTATUS status;
+	ULONG process_id;
+
+	GetProtectedProcessId( &process_id );
+
+	if ( !process_id )
+	{
+		DEBUG_ERROR( "Failed to terminate process as process id is null" );
+		return;
+	}
+
+	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
+
+	if ( !NT_SUCCESS( status ) )
+		DEBUG_ERROR( "ZwTerminateProcess failed with status %x", status );
+
+	ClearProcessConfigOnProcessTermination();
+}
+
 NTSTATUS DriverEntry(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PUNICODE_STRING RegistryPath
@@ -188,7 +299,11 @@ NTSTATUS DriverEntry(
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
-	InitialiseDriverConfigOnDriverEntry( RegistryPath );
+	status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
+
+	if ( !NT_SUCCESS( status ) )
+		return STATUS_ABANDONED;
+		
 
 	status = IoCreateDevice(
 		DriverObject,
@@ -201,7 +316,10 @@ NTSTATUS DriverEntry(
 	);
 
 	if ( !NT_SUCCESS( status ) )
+	{
+		FreeDriverConfigurationStringBuffers();
 		return STATUS_FAILED_DRIVER_ENTRY;
+	}
 
 	status = IoCreateSymbolicLink(
 		&driver_config.device_symbolic_link,
@@ -211,6 +329,7 @@ NTSTATUS DriverEntry(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "failed to create symbolic link" );
+		FreeDriverConfigurationStringBuffers();
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
@@ -225,6 +344,7 @@ NTSTATUS DriverEntry(
 	if ( !flag )
 	{
 		DEBUG_ERROR( "failed to init report queue" );
+		FreeDriverConfigurationStringBuffers();
 		IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
@@ -232,18 +352,18 @@ NTSTATUS DriverEntry(
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 
-	HANDLE handle;
-	PsCreateSystemThread(
-		&handle,
-		PROCESS_ALL_ACCESS,
-		NULL,
-		NULL,
-		NULL,
-		VerifyInMemoryImageVsDiskImage,
-		NULL
-	);
+	//HANDLE handle;
+	//PsCreateSystemThread(
+	//	&handle,
+	//	PROCESS_ALL_ACCESS,
+	//	NULL,
+	//	NULL,
+	//	NULL,
+	//	VerifyInMemoryImageVsDiskImage,
+	//	NULL
+	//);
 
-	ZwClose( handle );
+	//ZwClose( handle );
 
 	return STATUS_SUCCESS;
 }

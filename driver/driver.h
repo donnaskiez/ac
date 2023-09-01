@@ -5,6 +5,9 @@
 #include <wdftypes.h>
 #include <wdf.h>
 
+#define DRIVER_PATH_MAX_LENGTH 512
+#define DRIVER_PATH_POOL_TAG 'path'
+
 /*
 * This structure is strictly for driver related stuff
 * that should only be written at driver entry.
@@ -14,7 +17,8 @@
 */
 typedef struct _DRIVER_CONFIG
 {
-	CHAR driver_name[ 128 ];
+	UNICODE_STRING unicode_driver_name;
+	ANSI_STRING ansi_driver_name;
 	UNICODE_STRING device_name;
 	UNICODE_STRING device_symbolic_link;
 	UNICODE_STRING driver_path;
@@ -51,6 +55,10 @@ VOID GetProtectedProcessId(
 
 VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
+);
+
+VOID GetDriverPath(
+	_In_ PUNICODE_STRING DriverPath
 );
 
 
