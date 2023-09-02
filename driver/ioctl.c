@@ -235,6 +235,12 @@ NTSTATUS DeviceControl(
 
 		break;
 
+	case IOCTL_DETECT_ATTACHED_THREADS:
+
+		DetectThreadsAttachedToProtectedProcess();
+
+		break;
+
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
 		break;

@@ -6,12 +6,7 @@
 #include <wdf.h>
 #include "common.h"
 
-#define REPORT_ILLEGAL_HANDLE_OPERATION 70
-
 #define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
-
-
-VOID UnregisterCallbacksOnProcessTermination();
 
 typedef struct _OPEN_HANDLE_FAILURE_REPORT
 {
@@ -87,6 +82,8 @@ NTSTATUS EnumerateProcessHandles(
 );
 
 NTSTATUS InitiateDriverCallbacks();
+
+VOID UnregisterCallbacksOnProcessTermination();
 
 VOID UnregisterCallbacksOnProcessTermination();
 

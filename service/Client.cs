@@ -3,39 +3,30 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Serilog;
+using Microsoft.AspNetCore.Http;
 
 namespace service
 {
     public class Client
     {
-        public static async Task SendToServer()
+        private IPEndPoint _ipEndPoint;
+        private TcpClient _tcpClient;
+        private byte[] _buffer;
+        private int _bufferSize;
+
+        public Client(byte[] buffer, int bufferSize)
         {
-            var ipEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8888);
-
-            using TcpClient client = new();
-
-            await client.ConnectAsync(ipEndPoint);
-            await using NetworkStream stream = client.GetStream();
-
-            var testMessage = "Hello from client";
-
-            stream.BeginWrite(Encoding.UTF8.GetBytes(testMessage), 0, testMessage.Length, Callback, null);
-
-            byte[] buffer = new byte[1024];
-            int received = await stream.ReadAsync(buffer);
-
-            var message = Encoding.UTF8.GetString(buffer, 0, received);
-            Console.WriteLine($"Message received: \"{message}\"");
-
-            while (true)
-            {
-
-            }
+            _ipEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 8888);
+            _tcpClient = new TcpClient();
+            _buffer = buffer;
+            _bufferSize = bufferSize;
         }
 
-        private static void Callback(IAsyncResult ar)
+        public void SendMessageToServer()
         {
-            Log.Information("Sent message lolz");
+            _tcpClient.Connect(_ipEndPoint);
+            NetworkStream stream = _tcpClient.GetStream();
+            stream.BeginWrite(_buffer, 0, _bufferSize, null, null);
         }
 
     }

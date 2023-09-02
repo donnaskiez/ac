@@ -9,12 +9,6 @@
 #include "thread.h"
 #include "common.h"
 
-typedef struct _REPORT_HEADER
-{
-	INT report_id;
-
-}REPORT_HEADER, * PREPORT_HEADER;
-
 /*
 * This mutex is to prevent a new item being pushed to the queue
 * while the HandlePeriodicCallbackReportQueue is iterating through
@@ -23,7 +17,6 @@ typedef struct _REPORT_HEADER
 * can be pushed into the queue before the next iteration can take ownership
 * of the spinlock.
 */
-
 typedef struct _REPORT_QUEUE_CONFIGURATION
 {
 	QUEUE_HEAD head;
@@ -200,7 +193,6 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 			);
 
 			total_size += sizeof( OPEN_HANDLE_FAILURE_REPORT );
-
 			break;
 
 		case REPORT_ILLEGAL_ATTACH_PROCESS:
@@ -212,7 +204,6 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 			);
 
 			total_size += sizeof( ATTACH_PROCESS_REPORT );
-
 			break;
 		}
 

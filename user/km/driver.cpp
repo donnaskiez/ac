@@ -201,13 +201,10 @@ VOID kernelmode::Driver::QueryReportQueue()
 	if ( header->count == 0 )
 		goto end;
 
-	LOG_INFO( "report count: %i", header->count );
-
-	for ( int i = 0; i < header->count; i++ )
+	for ( INT i = 0; i < header->count; i++ )
 	{
-		report_header = (REPORT_ID*)( ( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
-
-		LOG_INFO( "REport id: %i", report_header->report_id );
+		report_header = (REPORT_ID*)( ( UINT64 )buffer + 
+			sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
 
 		switch ( report_header->report_id )
 		{
@@ -482,6 +479,25 @@ VOID kernelmode::Driver::ValidateKPRCBThreads()
 		return;
 
 	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+}
+
+VOID kernelmode::Driver::CheckForAttachedThreads()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_DETECT_ATTACHED_THREADS,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( status == NULL )
+		LOG_ERROR( "failed to check for attached threads %x", GetLastError() );
 }
 
 VOID kernelmode::Driver::CheckDriverHeartbeat()

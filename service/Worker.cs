@@ -2,8 +2,8 @@ using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using service.Types;
-using service.messages;
 using System;
+using System.Reflection.PortableExecutable;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 #pragma warning disable CS8600
@@ -57,24 +57,13 @@ namespace service
             { 
                 try
                 {
-                    if (_pipeServer.Read(_header, 0, _headerSize) > 0)
+                    if (_pipeServer.InBufferSize > 0)
                     {
-                        // for now the header is only an int... LOL
-                        int header = BitConverter.ToInt32(_header, 0);
+                        _logger.LogInformation("Message received at pipe server");
 
-                        _logger.LogInformation("Message received with id: {0}", header);
-
-                        switch (header)
-                        {
-                            case (int)MESSAGE_TYPE.MESSAGE_TYPE_REPORT:
-                                _logger.LogDebug("We are inside the message report case");
-                                Report report = new Report(_pipeServer, _headerSize);
-                                break;
-
-                            case (int)MESSAGE_TYPE.MESSAGE_TYPE_RECEIVE:
-                                Receive receive = new Receive(_pipeServer, _headerSize);
-                                break;
-                        }
+                        Message message = new Message(_pipeServer);
+                        await message.ReadPipeBuffer();
+                        message.SendMessageToServer();
                     }
                 }
                 catch (Exception ex)

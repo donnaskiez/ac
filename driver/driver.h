@@ -4,9 +4,9 @@
 #include <ntifs.h>
 #include <wdftypes.h>
 #include <wdf.h>
+#include "common.h"
 
 #define DRIVER_PATH_MAX_LENGTH 512
-#define DRIVER_PATH_POOL_TAG 'path'
 
 /*
 * This structure is strictly for driver related stuff

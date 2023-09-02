@@ -2,6 +2,8 @@
 
 #include "pool.h"
 #include "callbacks.h"
+#include "driver.h"
+#include "queue.h"
 
 #include <intrin.h>
 
@@ -131,8 +133,12 @@ VOID DetectAttachedThreadsProcessCallback(
 	PLIST_ENTRY thread_list_entry;
 	PETHREAD current_thread;
 	UINT32 thread_id;
+	PKAPC_STATE apc_state;
+	PEPROCESS protected_process = NULL;
 
-	if ( finished == TRUE )
+	GetProtectedProcessEProcess( &protected_process );
+
+	if ( protected_process == NULL )
 		return;
 
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
@@ -142,7 +148,23 @@ VOID DetectAttachedThreadsProcessCallback(
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
 
+		apc_state = ( PKAPC_STATE )( ( UINT64 )current_thread + KTHREAD_APC_STATE_OFFSET );
 
+		if ( apc_state->Process == protected_process )
+		{
+			DEBUG_LOG( "Program attached to notepad: %llx", ( UINT64 )current_thread );
+
+			PATTACH_PROCESS_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( ATTACH_PROCESS_REPORT ), REPORT_POOL_TAG );
+
+			if ( !report )
+				return;
+
+			report->report_code = REPORT_ILLEGAL_ATTACH_PROCESS;
+			report->thread_id = PsGetThreadId( current_thread );
+			report->thread_address = current_thread;
+
+			InsertReportToQueue( report );
+		}
 
 		thread_list_entry = thread_list_entry->Flink;
 	}
@@ -155,16 +177,16 @@ VOID DetectAttachedThreadsProcessCallback(
 * https://github.com/KANKOSHEV/Detect-KeAttachProcess/tree/main
 * https://doxygen.reactos.org/d0/dc9/procobj_8c.html#adec6dc539d4a5c0ee7d0f48e24ef0933
 * 
-* Then from here you can see that the _KAPC_STATE structure in the KTHREAD stores the 
-* APC state for the thread. The Process field in this structure is the offset referred to
-* in KANKOSHEV's proof of concept. This the field that is updated by KiAttachProcess when
-* calling KeStackAttachProcess. 
+* To expand on his writeup a little, the offset that he provides is equivalent to PKAPC_STATE->Process.
+* This is where KiAttachProcess writes the process that thread is attaching to when it's called.
+* The APC_STATE structure holds relevant information about the thread's APC state and is quite
+* important during context switch scenarios as it's how the thread determines if it has any APC's
+* queued. 
 */
-VOID DetectThreadsAttachedToProtectedProcess(
-	_In_ PIRP Irp
-)
+VOID DetectThreadsAttachedToProtectedProcess()
 {
 	EnumerateProcessListWithCallbackFunction(
 		DetectAttachedThreadsProcessCallback
 	);
 }
+ 

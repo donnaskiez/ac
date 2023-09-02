@@ -2,6 +2,7 @@
 #define HV_H
 
 #include <ntifs.h>
+#include "common.h"
 
 typedef struct _HYPERVISOR_DETECTION_REPORT
 {

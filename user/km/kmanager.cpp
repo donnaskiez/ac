@@ -45,3 +45,8 @@ VOID kernelmode::KManager::PerformIntegrityCheck()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->PerformIntegrityCheck(); } );
 }
+
+VOID kernelmode::KManager::CheckForAttachedThreads()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->CheckForAttachedThreads(); } );
+}

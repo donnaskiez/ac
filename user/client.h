@@ -174,6 +174,8 @@ namespace global
 		struct ATTACH_PROCESS_REPORT
 		{
 			INT report_code;
+			UINT32 thread_id;
+			UINT64 thread_address;
 		};
 	}
 }

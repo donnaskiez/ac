@@ -5,19 +5,10 @@
 #include <intrin.h>
 #include "common.h"
 
-#define REPORT_MODULE_VALIDATION_FAILURE 60
-#define MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT 20
-
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
 
 #define REASON_NO_BACKING_MODULE 1
 #define REASON_INVALID_IOCTL_DISPATCH 2
-
-#define REPORT_NMI_CALLBACK_FAILURE 50
-
-NTSTATUS HandleNmiIOCTL(
-	_In_ PIRP Irp
-);
 
 typedef struct _WHITELISTED_REGIONS
 {
@@ -113,6 +104,10 @@ NTSTATUS HandleValidateDriversIOCTL(
 PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
 	_In_ PSYSTEM_MODULES SystemModules
+);
+
+NTSTATUS HandleNmiIOCTL(
+	_In_ PIRP Irp
 );
 
 #endif

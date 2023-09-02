@@ -2,11 +2,7 @@
 #define QUEUE_H
 
 #include <ntifs.h>
-
-#define QUEUE_POOL_TAG 'qqqq'
-#define REPORT_QUEUE_TEMP_BUFFER_TAG 'temp'
-
-#define REPORT_POOL_TAG 'repo'
+#include "common.h"
 
 #define MAX_REPORTS_PER_IRP 20
 
@@ -31,6 +27,12 @@ typedef struct _GLOBAL_REPORT_QUEUE_HEADER
 	INT count;
 
 }GLOBAL_REPORT_QUEUE_HEADER, * PGLOBAL_REPORT_QUEUE_HEADER;
+
+typedef struct _REPORT_HEADER
+{
+	INT report_id;
+
+}REPORT_HEADER, * PREPORT_HEADER;
 
 VOID QueuePush(
 	_In_ PQUEUE_HEAD Head,

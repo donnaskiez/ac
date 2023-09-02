@@ -5,20 +5,6 @@
 
 #include  "common.h"
 
-#define IA32_GS_BASE 0xc0000101
-#define KPRCB_OFFSET_FROM_GS_BASE 0x180
-#define KPCRB_CURRENT_THREAD 0x8
-#define KPROCESS_THREADLIST_OFFSET 0x030
-#define KTHREAD_THREADLIST_OFFSET 0x2f8
-
-#define REPORT_HIDDEN_SYSTEM_THREAD 90
-
-#define REPORT_ILLEGAL_ATTACH_PROCESS 100
-
-VOID ValidateKPCRBThreads(
-	_In_ PIRP Irp
-);
-
 typedef struct _HIDDEN_SYSTEM_THREAD_REPORT
 {
 	INT report_code;
@@ -33,7 +19,15 @@ typedef struct _HIDDEN_SYSTEM_THREAD_REPORT
 typedef struct _ATTACH_PROCESS_REPORT
 {
 	INT report_code;
+    UINT32 thread_id;
+    UINT64 thread_address;
 
 }ATTACH_PROCESS_REPORT, *PATTACH_PROCESS_REPORT;
+
+VOID ValidateKPCRBThreads(
+	_In_ PIRP Irp
+);
+
+VOID DetectThreadsAttachedToProtectedProcess();
 
 #endif

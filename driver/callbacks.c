@@ -6,7 +6,7 @@
 #include "pool.h"
 #include "thread.h"
 
-CALLBACK_CONFIGURATION configuration;
+CALLBACK_CONFIGURATION configuration = { 0 };
 
 VOID ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
