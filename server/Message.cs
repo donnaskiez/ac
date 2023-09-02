@@ -70,9 +70,9 @@ namespace server
         {
             _logger.Information("Report id: {0}", reportId);
 
-            var openHandleFailure = Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer);
+            var openHandleFailure = Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(int));
 
-            _logger.Information("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
+            _logger.Information("Report code: {0}, Process Name: {4} ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,
                 openHandleFailure.ProcessId,
                 openHandleFailure.ThreadId,

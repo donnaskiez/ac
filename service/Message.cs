@@ -27,7 +27,7 @@ namespace service
 
         public T GetPacketHeader<T>(ref byte[] buffer)
         {
-            return Helper.BytesToStructure<T>(ref buffer);
+            return Helper.BytesToStructure<T>(ref buffer, 0);
         }
     }
 }

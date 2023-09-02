@@ -82,8 +82,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			report->thread_id = PsGetCurrentThreadId();
 			RtlCopyMemory( report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
-			DEBUG_LOG( "Process ID: %lx", report->process_id );
-
 			InsertReportToQueue( report );
 		}
 	}

@@ -12,14 +12,14 @@ namespace service
 {
     public class Helper
     {
-        unsafe public static T BytesToStructure<T>(ref byte[] buffer)
+        unsafe public static T BytesToStructure<T>(ref byte[] buffer, int offset)
         {
             int typeSize = Marshal.SizeOf(typeof(T));
             IntPtr ptr = Marshal.AllocHGlobal(typeSize);
 
             try
             {
-                Marshal.Copy(buffer, 0, ptr, typeSize);
+                Marshal.Copy(buffer, offset, ptr, typeSize);
                 return (T)Marshal.PtrToStructure(ptr, typeof(T));
             }
             finally
