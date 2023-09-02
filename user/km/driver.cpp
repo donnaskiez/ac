@@ -198,6 +198,8 @@ VOID kernelmode::Driver::QueryReportQueue()
 	if ( !header )
 		goto end;
 
+	LOG_INFO( "Report count: %d", header->count );
+
 	if ( header->count == 0 )
 		goto end;
 
@@ -206,25 +208,30 @@ VOID kernelmode::Driver::QueryReportQueue()
 		report_header = (REPORT_ID*)( ( UINT64 )buffer + 
 			sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
 
-		switch ( report_header->report_id )
-		{
-		case REPORT_ILLEGAL_ATTACH_PROCESS:
+		LOG_INFO( "Report id: %d", report_header->report_id );
 
-			attach_report = (global::report_structures::ATTACH_PROCESS_REPORT*)( 
+		if ( report_header->report_id == REPORT_ILLEGAL_ATTACH_PROCESS )
+		{
+			attach_report = ( global::report_structures::ATTACH_PROCESS_REPORT* )(
 				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
 
 			this->report_interface->ReportViolation( attach_report );
 
 			total_size += sizeof( global::report_structures::ATTACH_PROCESS_REPORT );
 
-		case REPORT_ILLEGAL_HANDLE_OPERATION:
-
+			continue;
+		}
+		
+		if ( report_header->report_id == REPORT_ILLEGAL_HANDLE_OPERATION )
+		{
 			handle_report = ( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
 				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
 
 			this->report_interface->ReportViolation( handle_report );
 
 			total_size += sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT );
+
+			continue;
 		}
 	}
 

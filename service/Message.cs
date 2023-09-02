@@ -11,19 +11,12 @@ namespace service
 {
     public class Message
     {
-        private NamedPipeServerStream _pipeServer;
         private byte[] _buffer;
         private int _bufferSize;
-        public Message(NamedPipeServerStream pipeServer)
+        public Message(byte[] buffer, int bufferSize)
         {
-            _pipeServer = pipeServer;
-            _bufferSize = _pipeServer.InBufferSize;
-            _buffer = new byte[_bufferSize];
-        }
-
-        public async Task ReadPipeBuffer()
-        {
-            await _pipeServer.ReadAsync(_buffer, 0, _bufferSize);
+            _bufferSize = bufferSize;
+            _buffer = buffer;
         }
 
         public void SendMessageToServer()

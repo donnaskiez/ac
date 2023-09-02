@@ -4,6 +4,9 @@ using System.Runtime.InteropServices;
 using service.Types;
 using System;
 using System.Reflection.PortableExecutable;
+using System.Net.Sockets;
+using System.Net;
+using System.Net.Http;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 #pragma warning disable CS8600
@@ -16,8 +19,10 @@ namespace service
         private readonly ILogger<Worker> _logger;
         private NamedPipeServerStream _pipeServer;
 
-        private byte[] _header;
-        private int _headerSize;
+        private byte[] _buffer;
+        private int _bufferSize;
+
+        private static int MAX_BUFFER_SIZE = 8192;
 
         private enum MESSAGE_TYPE
         {
@@ -35,13 +40,8 @@ namespace service
         {
             _logger = logger;
             _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1);
-
-            unsafe 
-            {
-                _headerSize = sizeof(PIPE_PACKET_HEADER); 
-            }
-
-            _header = new byte[_headerSize];
+            _bufferSize = MAX_BUFFER_SIZE;
+            _buffer = new byte[_bufferSize];
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -54,15 +54,16 @@ namespace service
             _logger.LogInformation("Client connected to the pipe server");
 
             while (!stoppingToken.IsCancellationRequested)
-            { 
+            {
                 try
                 {
-                    if (_pipeServer.InBufferSize > 0)
-                    {
-                        _logger.LogInformation("Message received at pipe server");
+                    int numBytesRead = _pipeServer.Read(_buffer, 0, _bufferSize);
 
-                        Message message = new Message(_pipeServer);
-                        await message.ReadPipeBuffer();
+                    if (numBytesRead > 0)
+                    {
+                        _logger.LogInformation("Message received at pipe server with size: {0}", numBytesRead);
+
+                        Message message = new Message(_buffer, numBytesRead);
                         message.SendMessageToServer();
                     }
                 }
@@ -71,7 +72,7 @@ namespace service
                     _logger.LogError("Reading buffer from pipe failed with message: {0}", ex.Message);
                 }
 
-                Array.Clear(_header, 0, _headerSize);
+                Array.Clear(_buffer, 0, _bufferSize);
             }
         }
 
