@@ -11,7 +11,7 @@ BOOLEAN finished = FALSE;
 
 UINT64 current_kpcrb_thread = NULL;
 
-VOID ProcessEnumerationCallback(
+VOID KPRCBThreadValidationProcessCallback(
 	_In_ PEPROCESS Process
 )
 {
@@ -88,7 +88,7 @@ VOID ValidateKPCRBThreads(
 		current_kpcrb_thread = *( UINT64* )( kprcb + KPCRB_CURRENT_THREAD );
 
 		EnumerateProcessListWithCallbackFunction(
-			ProcessEnumerationCallback
+			KPRCBThreadValidationProcessCallback
 		);
 
 		if ( thread_found_in_kthreadlist == FALSE || thread_found_in_pspcidtable == FALSE )
@@ -122,3 +122,49 @@ VOID ValidateKPCRBThreads(
 	}
 }
 
+VOID DetectAttachedThreadsProcessCallback(
+	_In_ PEPROCESS Process
+)
+{
+	NTSTATUS status;
+	PLIST_ENTRY thread_list_head;
+	PLIST_ENTRY thread_list_entry;
+	PETHREAD current_thread;
+	UINT32 thread_id;
+
+	if ( finished == TRUE )
+		return;
+
+	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
+	thread_list_entry = thread_list_head->Flink;
+
+	while ( thread_list_entry != thread_list_head )
+	{
+		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
+
+
+
+		thread_list_entry = thread_list_entry->Flink;
+	}
+}
+
+/*
+* I did not reverse this myself and previously had no idea how you would go about
+* detecting KiAttachProcess so credits to KANKOSHEV for the explanation:
+* 
+* https://github.com/KANKOSHEV/Detect-KeAttachProcess/tree/main
+* https://doxygen.reactos.org/d0/dc9/procobj_8c.html#adec6dc539d4a5c0ee7d0f48e24ef0933
+* 
+* Then from here you can see that the _KAPC_STATE structure in the KTHREAD stores the 
+* APC state for the thread. The Process field in this structure is the offset referred to
+* in KANKOSHEV's proof of concept. This the field that is updated by KiAttachProcess when
+* calling KeStackAttachProcess. 
+*/
+VOID DetectThreadsAttachedToProtectedProcess(
+	_In_ PIRP Irp
+)
+{
+	EnumerateProcessListWithCallbackFunction(
+		DetectAttachedThreadsProcessCallback
+	);
+}

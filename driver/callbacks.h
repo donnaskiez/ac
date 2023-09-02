@@ -10,17 +10,8 @@
 
 #define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
 
-#define REPORT_POOL_TAG 'repo'
-
-#define MAX_HANDLE_REPORTS_PER_IRP 10
 
 VOID UnregisterCallbacksOnProcessTermination();
-
-typedef struct _OPEN_HANDLE_FAILURE_REPORT_HEADER
-{
-	INT count;
-
-}OPEN_HANDLE_FAILURE_REPORT_HEADER, *POPEN_HANDLE_FAILURE_REPORT_HEADER;
 
 typedef struct _OPEN_HANDLE_FAILURE_REPORT
 {
@@ -81,21 +72,11 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 );
 
-VOID InitCallbackReportQueue(
-	_In_ PBOOLEAN Status
-);
-
-NTSTATUS HandlePeriodicCallbackReportQueue(
-	_In_ PIRP Irp
-);
-
-VOID ProcessCreateNotifyRoutine(
-	_In_ HANDLE ParentId,
-	_In_ HANDLE ProcessId,
-	_In_ BOOLEAN Create
-);
-
-VOID FreeQueueObjectsAndCleanup();
+//VOID ProcessCreateNotifyRoutine(
+//	_In_ HANDLE ParentId,
+//	_In_ HANDLE ProcessId,
+//	_In_ BOOLEAN Create
+//);
 
 VOID EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function

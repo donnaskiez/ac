@@ -23,6 +23,7 @@
 #define REPORT_ILLEGAL_HANDLE_OPERATION 70
 #define REPORT_INVALID_PROCESS_ALLOCATION 80
 #define REPORT_HIDDEN_SYSTEM_THREAD 90
+#define REPORT_ILLEGAL_ATTACH_PROCESS 100
 
 enum REPORT_CODES
 {
@@ -167,6 +168,12 @@ namespace global
 			UINT64 thread_address;
 			LONG thread_id;
 			CHAR thread[ 4096 ];
+		};
+
+
+		struct ATTACH_PROCESS_REPORT
+		{
+			INT report_code;
 		};
 	}
 }

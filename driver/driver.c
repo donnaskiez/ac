@@ -10,9 +10,14 @@
 #include "modules.h"
 #include "integrity.h"
 
+#include "queue.h"
+
 
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
+
+UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
+UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
 
 VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
@@ -109,9 +114,6 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 	BOOLEAN result;
 	RtlInitUnicodeString( &value_name, ValueName );
 
-	UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
-	UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
-
 	if ( RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE )
 	{
 		DEBUG_LOG( "Value type image path given" );
@@ -120,7 +122,10 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 		driver_config.driver_path.MaximumLength = ValueLength;
 
 		if ( !driver_config.driver_path.Buffer )
+		{
+			DEBUG_ERROR( "Failed to allocate buffer for unicode string driver path" );
 			return STATUS_ABANDONED;
+		}
 
 		RtlCopyMemory( 
 			driver_config.driver_path.Buffer, 
@@ -131,13 +136,16 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 
 	if ( RtlCompareUnicodeString( &value_name, &display_name, FALSE ) == FALSE )
 	{
-		DEBUG_LOG( "Value type image path given" );
+		DEBUG_LOG( "Value type display name given" );
 		driver_config.unicode_driver_name.Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, DRIVER_PATH_POOL_TAG );
 		driver_config.unicode_driver_name.Length = ValueLength;
 		driver_config.unicode_driver_name.MaximumLength = ValueLength;
 
 		if ( !driver_config.unicode_driver_name.Buffer )
+		{
+			DEBUG_ERROR( "Failed to allocate buffer for unicode string driver name" );
 			return STATUS_ABANDONED;
+		}
 
 		RtlCopyMemory(
 			driver_config.unicode_driver_name.Buffer,
@@ -166,7 +174,9 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 )
 {
 	NTSTATUS status;
-	RTL_QUERY_REGISTRY_TABLE query_table[ 2 ] = { 0 };
+
+	/* allocate 3 so the as to act as a null terminator */
+	RTL_QUERY_REGISTRY_TABLE query_table[ 3 ] = { 0 };
 
 	KeInitializeGuardedMutex( &driver_config.lock );
 	
@@ -200,6 +210,7 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 
 	if ( !NT_SUCCESS( status ) )
 	{
+		DEBUG_ERROR( "RtlxQueryRegistryValues failed with status %x", status );
 		FreeDriverConfigurationStringBuffers();
 		return status;
 	}
@@ -221,7 +232,7 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 }
 
 
-NTSTATUS InitialiseDriverConfigOnProcessLaunch(
+NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	_In_ PIRP Irp
 )
 {
@@ -256,6 +267,7 @@ NTSTATUS InitialiseDriverConfigOnProcessLaunch(
 VOID CleanupDriverConfigOnUnload()
 {
 	FreeDriverConfigurationStringBuffers();
+	FreeGlobalReportQueueObjects();
 	IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 }
 
@@ -284,7 +296,14 @@ VOID TerminateProtectedProcessOnViolation()
 	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
 
 	if ( !NT_SUCCESS( status ) )
+	{
+		/*
+		* We don't want to clear the process config if ZwTerminateProcess fails 
+		* so we can try again.
+		*/
 		DEBUG_ERROR( "ZwTerminateProcess failed with status %x", status );
+		return;
+	}
 
 	ClearProcessConfigOnProcessTermination();
 }
@@ -301,9 +320,13 @@ NTSTATUS DriverEntry(
 
 	status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
 
+	KeInitializeGuardedMutex( &process_config.lock );
+
 	if ( !NT_SUCCESS( status ) )
-		return STATUS_ABANDONED;
-		
+	{
+		DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
+		return status;
+	}
 
 	status = IoCreateDevice(
 		DriverObject,
@@ -317,6 +340,7 @@ NTSTATUS DriverEntry(
 
 	if ( !NT_SUCCESS( status ) )
 	{
+		DEBUG_ERROR( "IoCreateDevice failed with status %x", status );
 		FreeDriverConfigurationStringBuffers();
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
@@ -339,7 +363,7 @@ NTSTATUS DriverEntry(
 	DriverObject->MajorFunction[ IRP_MJ_DEVICE_CONTROL ] = DeviceControl;
 	DriverObject->DriverUnload = DriverUnload;
 
-	InitCallbackReportQueue(&flag);
+	InitialiseGlobalReportQueue(&flag);
 
 	if ( !flag )
 	{
@@ -351,19 +375,6 @@ NTSTATUS DriverEntry(
 	} 
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
-
-	//HANDLE handle;
-	//PsCreateSystemThread(
-	//	&handle,
-	//	PROCESS_ALL_ACCESS,
-	//	NULL,
-	//	NULL,
-	//	NULL,
-	//	VerifyInMemoryImageVsDiskImage,
-	//	NULL
-	//);
-
-	//ZwClose( handle );
 
 	return STATUS_SUCCESS;
 }

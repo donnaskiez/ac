@@ -8,6 +8,7 @@
 #include "pool.h"
 #include "integrity.h"
 #include "thread.h"
+#include "queue.h"
 
 #include "hv.h"
 
@@ -106,7 +107,7 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
-		status = InitialiseDriverConfigOnProcessLaunch(Irp);
+		status = InitialiseProcessConfigOnProcessLaunch(Irp);
 
 		if ( !NT_SUCCESS( status ) )
 		{
@@ -123,7 +124,7 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
 
-		status = HandlePeriodicCallbackReportQueue(Irp);
+		status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
 		if ( !NT_SUCCESS( status ) )
 			DEBUG_ERROR( "Failed to handle period callback report queue" );
@@ -252,7 +253,7 @@ NTSTATUS DeviceClose(
 {
 	DEBUG_LOG( "Handle closed to DonnaAC" );
 
-	FreeQueueObjectsAndCleanup();
+	FreeGlobalReportQueueObjects();
 	ClearProcessConfigOnProcessTermination();
 	UnregisterCallbacksOnProcessTermination();
 

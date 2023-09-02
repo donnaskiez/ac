@@ -40,7 +40,7 @@ typedef struct _PROCESS_CONFIG
 
 }PROCESS_CONFIG, *PPROCESS_CONFIG;
 
-NTSTATUS InitialiseDriverConfigOnProcessLaunch(
+NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	_In_ PIRP Irp
 );
 

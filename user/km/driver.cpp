@@ -155,17 +155,23 @@ VOID kernelmode::Driver::VerifySystemModules()
 *	 modules.
 */
 
+struct REPORT_ID
+{
+	INT report_id;
+};
+
 VOID kernelmode::Driver::QueryReportQueue()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
 	PVOID buffer;
 	LONG buffer_size;
-	global::report_structures::OPEN_HANDLE_FAILURE_REPORT report;
+	REPORT_ID* report_header;
+	SIZE_T total_size = NULL;
+	global::report_structures::OPEN_HANDLE_FAILURE_REPORT* handle_report;
+	global::report_structures::ATTACH_PROCESS_REPORT* attach_report;
 
-	buffer_size = sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) * MAX_HANDLE_REPORTS_PER_IRP + 
-		sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER );
-
+	buffer_size = 1024 * 2;
 	buffer = malloc( buffer_size );
 
 	status = DeviceIoControl(
@@ -195,14 +201,34 @@ VOID kernelmode::Driver::QueryReportQueue()
 	if ( header->count == 0 )
 		goto end;
 
+	LOG_INFO( "report count: %i", header->count );
+
 	for ( int i = 0; i < header->count; i++ )
 	{
-		global::report_structures::OPEN_HANDLE_FAILURE_REPORT* report =
-			( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) +
-				i * sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT ) );
+		report_header = (REPORT_ID*)( ( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
 
-		this->report_interface->ReportViolation( report );
+		LOG_INFO( "REport id: %i", report_header->report_id );
+
+		switch ( report_header->report_id )
+		{
+		case REPORT_ILLEGAL_ATTACH_PROCESS:
+
+			attach_report = (global::report_structures::ATTACH_PROCESS_REPORT*)( 
+				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
+
+			this->report_interface->ReportViolation( attach_report );
+
+			total_size += sizeof( global::report_structures::ATTACH_PROCESS_REPORT );
+
+		case REPORT_ILLEGAL_HANDLE_OPERATION:
+
+			handle_report = ( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
+				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
+
+			this->report_interface->ReportViolation( handle_report );
+
+			total_size += sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT );
+		}
 	}
 
 end:
