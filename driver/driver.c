@@ -16,9 +16,6 @@
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
 
-UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
-UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
-
 VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
@@ -111,7 +108,9 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 )
 {
 	UNICODE_STRING value_name;
-	BOOLEAN result;
+	UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
+	UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
+
 	RtlInitUnicodeString( &value_name, ValueName );
 
 	if ( RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE )
@@ -175,7 +174,7 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 {
 	NTSTATUS status;
 
-	/* allocate 3 so the as to act as a null terminator */
+	/* 3rd page acts as a null terminator for the callback routine */
 	RTL_QUERY_REGISTRY_TABLE query_table[ 3 ] = { 0 };
 
 	KeInitializeGuardedMutex( &driver_config.lock );
@@ -264,6 +263,11 @@ NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	return status;
 }
 
+VOID InitialiseProcessConfigOnDriverEntry()
+{
+	KeInitializeGuardedMutex( &process_config.lock );
+}
+
 VOID CleanupDriverConfigOnUnload()
 {
 	FreeDriverConfigurationStringBuffers();
@@ -313,20 +317,18 @@ NTSTATUS DriverEntry(
 	_In_ PUNICODE_STRING RegistryPath
 )
 {
-	UNREFERENCED_PARAMETER( RegistryPath );
-
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
 	status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
-
-	KeInitializeGuardedMutex( &process_config.lock );
 
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
 		return status;
 	}
+
+	InitialiseProcessConfigOnDriverEntry();
 
 	status = IoCreateDevice(
 		DriverObject,

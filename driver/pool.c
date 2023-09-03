@@ -82,6 +82,9 @@ VOID GetPsActiveProcessHead(
 	/* TODO: have a global debugger pool here since shit aint really change */
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
 
+	if ( !debugger_data )
+		return;
+
 	*Address = *(UINT64*)( debugger_data->PsActiveProcessHead );
 
 	ExFreePoolWithTag( debugger_data, POOL_DEBUGGER_DATA_TAG );
@@ -203,6 +206,24 @@ VOID ScanPageForKernelObjectAllocation(
 	}
 }
 
+VOID EnumerateKernelLargePages(
+	_In_ UINT64 PageBase,
+	_In_ ULONG PageSize,
+	_In_ PVOID AddressBuffer,
+	_In_ ULONG ObjectIndex
+)
+{
+	for ( INT page_index = 0; page_index < PageSize; page_index++ )
+	{
+		ScanPageForKernelObjectAllocation( 
+			PageBase + ( page_index * PageSize ), 
+			PAGE_SIZE, 
+			ObjectIndex, 
+			AddressBuffer
+		);
+	}
+}
+
 /*
 * Using MmGetPhysicalMemoryRangesEx2(), we can get a block of structures that
 * describe the physical memory layout. With each physical page base we are going
@@ -271,9 +292,10 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 	PTE pt_entry;
 	UINT64 base_physical_page;
 	UINT64 base_virtual_page;
+	UINT64 base_2mb_virtual_page;
+	UINT64 base_1gb_virtual_page;
 	PHYSICAL_ADDRESS physical;
 	PPHYSICAL_MEMORY_RANGE physical_memory_ranges;
-	KIRQL irql;
 
 	physical_memory_ranges = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
 
@@ -321,8 +343,26 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 			if ( IS_LARGE_PAGE( pdpt_entry.BitAddress ) )
 			{
-				/* 2GB size page */
+				/* 1gb size page */
 				pdpt_large_entry.BitAddress = pdpt_entry.BitAddress;
+
+				physical.QuadPart = pdpt_large_entry.Bits.PhysicalAddress << PAGE_1GB_SHIFT;
+
+				if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, physical_memory_ranges ) == FALSE )
+					continue;
+
+				base_1gb_virtual_page = MmGetVirtualForPhysical( physical );
+
+				if (!base_1gb_virtual_page || !MmIsAddressValid( base_1gb_virtual_page ) )
+					continue;
+
+				EnumerateKernelLargePages(
+					base_1gb_virtual_page,
+					LARGE_PAGE_1GB_ENTRIES,
+					AddressBuffer,
+					INDEX_PROCESS_POOL_TAG
+				);
+
 				continue;
 			}
 
@@ -347,6 +387,24 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 				{
 					/* 2MB size page */
 					pd_large_entry.BitAddress = pd_entry.BitAddress;
+
+					physical.QuadPart = pd_large_entry.Bits.PhysicalAddress << PAGE_2MB_SHIFT;
+
+					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, physical_memory_ranges ) == FALSE )
+						continue;
+
+					base_2mb_virtual_page = MmGetVirtualForPhysical( physical );
+
+					if ( !base_2mb_virtual_page || !MmIsAddressValid( base_2mb_virtual_page ) )
+						continue;
+
+					EnumerateKernelLargePages(
+						base_2mb_virtual_page,
+						LARGE_PAGE_2MB_ENTRIES,
+						AddressBuffer,
+						INDEX_PROCESS_POOL_TAG 
+					);
+
 					continue;
 				}
 
@@ -374,13 +432,13 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 
 					/* if the page base isnt in a legit region, go next */
 					if ( IsPhysicalAddressInPhysicalMemoryRange( physical.QuadPart, physical_memory_ranges ) == FALSE )
-					continue;
+						continue;
 
 					base_virtual_page = MmGetVirtualForPhysical( physical );
 
 					/* stupid fucking intellisense error GO AWAY! */
 					if ( base_virtual_page == NULL || !MmIsAddressValid( base_virtual_page ) )
-					continue;
+						continue;
 
 					ScanPageForKernelObjectAllocation(
 						base_virtual_page,

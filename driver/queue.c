@@ -164,7 +164,6 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 
 	if ( !report_buffer )
 	{
-		DEBUG_LOG( "Failed to allocate report buffer" );
 		KeReleaseGuardedMutex( &report_queue_config.lock );
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
@@ -216,6 +215,8 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 
 end:
 
+	KeReleaseGuardedMutex( &report_queue_config.lock );
+
 	Irp->IoStatus.Information = sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size;
 
 	header.count = count;
@@ -230,8 +231,6 @@ end:
 		report_buffer,
 		sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size
 	);
-
-	KeReleaseGuardedMutex( &report_queue_config.lock );
 
 	if ( report_buffer )
 		ExFreePoolWithTag( report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG );

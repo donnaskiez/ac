@@ -708,3 +708,4 @@ NTSTATUS RetrieveInMemoryModuleExecutableSections(
 
 	return status;
 }
+

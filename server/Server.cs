@@ -24,6 +24,7 @@ namespace server
             _ipEndPoint = new IPEndPoint(IPAddress.Any, 8888);
             _tcpListener = new TcpListener(_ipEndPoint);
             _buffer = new byte[MAX_BUFFER_SIZE];
+            _bufferSize = 0;
             _logger = logger;
         }
 
@@ -38,7 +39,7 @@ namespace server
                 using TcpClient _client = await _tcpListener.AcceptTcpClientAsync();
                 NetworkStream _stream = _client.GetStream();
 
-                _stream.Read(_buffer, 0, MAX_BUFFER_SIZE);
+                _bufferSize = _stream.Read(_buffer, 0, MAX_BUFFER_SIZE);
 
                 Message message = new Message(_buffer, _bufferSize, _logger);
             }
