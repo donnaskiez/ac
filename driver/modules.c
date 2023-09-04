@@ -757,11 +757,8 @@ NTSTATUS LaunchNonMaskableInterrupt(
 
 		InterlockedExchange( &ready, lock );
 
-		if ( ready > 0 )
-		{
-			while ( ready > 0 )
-				InterlockedExchange( &ready, lock );
-		}
+		while ( ready > 0 )
+			InterlockedExchange( &ready, lock );
 
 		InterlockedIncrement( &lock );
 

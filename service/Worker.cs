@@ -1,7 +1,6 @@
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using service.Types;
 using System;
 using System.Reflection.PortableExecutable;
 using System.Net.Sockets;

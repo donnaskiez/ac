@@ -937,6 +937,59 @@ typedef union _PD_ENTRY_LARGE
 //    };
 //} KAPC_STATE, * PKAPC_STATE, * PRKAPC_STATE;
 
+typedef struct _RAW_SMBIOS_DATA
+{
+    BYTE    Used20CallingMethod;
+    BYTE    SMBIOSMajorVersion;
+    BYTE    SMBIOSMinorVersion;
+    BYTE    DmiRevision;
+    UINT32   Length;
+    BYTE    SMBIOSTableData[];
+} RAW_SMBIOS_DATA, * PRAW_SMBIOS_DATA;
+
+typedef struct _SMBIOS_TABLE_HEADER
+{
+    UCHAR Type;
+    UCHAR Length;
+    USHORT Handle;
+    PCHAR TableData;
+
+} SMBIOS_TABLE_HEADER, *PSMBIOS_TABLE_HEADER;
+
+typedef struct _RAW_SMBIOS_TABLE_01
+{
+    UCHAR Type;
+    UCHAR Length;
+    USHORT Handle;
+    UCHAR Manufacturer;
+    UCHAR ProductName;
+    UCHAR Version;
+    UCHAR SerialNumber;
+    UCHAR UUID[ 16 ];
+    UCHAR WakeUpType;
+    UCHAR SKUNumber;
+    UCHAR Family;
+
+} RAW_SMBIOS_TABLE_01, *PRAW_SMBIOS_TABLE_01;
+
+typedef struct _RAW_SMBIOS_TABLE_02 {
+    UCHAR   Type;
+    UCHAR   Length;
+    USHORT  Handle;
+    BYTE    Manufacturer;
+    BYTE    Product;
+    BYTE    Version;
+    BYTE    SerialNumber;
+    BYTE    AssetTag;
+    BYTE    FeatureFlags;
+    BYTE    LocationInChassis;
+    UINT16    ChassisHandle;
+    BYTE    BoardType;
+    BYTE    NumberOfContainedObjectHandles;
+    BYTE    ContainedObjectHandles[ 256 ];
+
+}RAW_SMBIOS_TABLE_02, *PRAW_SMBIOS_TABLE_02;
+
 NTKERNELAPI
 BOOLEAN
 ExEnumHandleTable(

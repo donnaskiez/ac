@@ -12,7 +12,6 @@
 
 #include "queue.h"
 
-
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
 
@@ -227,9 +226,22 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
+	status = ParseSMBIOSTable( 
+		&driver_config.system_information.motherboard_uuid,
+		sizeof(driver_config.system_information.motherboard_uuid)
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ParseSMBIOSTable failed with status %x", status );
+		FreeDriverConfigurationStringBuffers();
+		return status;
+	}
+
+	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_uuid );
+
 	return status;
 }
-
 
 NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	_In_ PIRP Irp

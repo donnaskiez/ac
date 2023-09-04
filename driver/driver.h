@@ -7,6 +7,13 @@
 #include "common.h"
 
 #define DRIVER_PATH_MAX_LENGTH 512
+#define MOTHERBOARD_SERIAL_CODE_LENGTH 128
+
+typedef struct _SYSTEM_INFORMATION
+{
+	CHAR motherboard_uuid[ MOTHERBOARD_SERIAL_CODE_LENGTH ];
+
+}SYSTEM_INFORMATION, * PSYSTEM_INFORMATION;
 
 /*
 * This structure is strictly for driver related stuff
@@ -23,6 +30,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING device_symbolic_link;
 	UNICODE_STRING driver_path;
 	UNICODE_STRING registry_path;
+	SYSTEM_INFORMATION system_information;
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, *PDRIVER_CONFIG;

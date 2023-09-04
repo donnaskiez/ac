@@ -119,7 +119,7 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 	*Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ModuleSize + sizeof( INTEGRITY_CHECK_HEADER ), POOL_TAG_INTEGRITY );
 
 	if ( !*Buffer )
-		return STATUS_ABANDONED;
+		return STATUS_MEMORY_NOT_ALLOCATED;
 
 	/*
 	* Note: Verifier doesn't like it when we map the module so rather then mapping it to our address
@@ -381,6 +381,12 @@ NTSTATUS ComputeHashOfBuffer(
 
 	hash_object = ExAllocatePool2( POOL_FLAG_NON_PAGED, hash_object_size, POOL_TAG_INTEGRITY );
 
+	if ( !hash_object )
+	{
+		status = STATUS_MEMORY_NOT_ALLOCATED;
+		goto end;
+	}
+
 	/*
 	* This call gets the size of the resulting hash, which we will use to allocate the
 	* resulting hash buffer.
@@ -404,7 +410,10 @@ NTSTATUS ComputeHashOfBuffer(
 	resulting_hash = ExAllocatePool2( POOL_FLAG_NON_PAGED, resulting_hash_size, POOL_TAG_INTEGRITY );
 
 	if ( !resulting_hash )
+	{
+		status = STATUS_MEMORY_NOT_ALLOCATED;
 		goto end;
+	}
 
 	/*
 	* Here we create our hash object and store it in the hash_object buffer.
@@ -705,6 +714,179 @@ NTSTATUS RetrieveInMemoryModuleExecutableSections(
 
 	if ( buffer )
 		ExFreePoolWithTag( buffer, POOL_TAG_INTEGRITY );
+
+	return status;
+}
+
+/*
+* From line 727 in the SMBIOS Specification: 
+* 
+*    727 • Each structure shall be terminated by a double-null (0000h), either directly following the
+*    728   formatted area (if no strings are present) or directly following the last string. This includes
+*    729   system- and OEM-specific structures and allows upper-level software to easily traverse the
+*    730   structure table. (See structure-termination examples later in this clause.) 
+* 
+* TLDR is that if the first character proceeding the structure is a null byte, then there are no strings,
+* otherwise to find the end of the string section simply iterate until there is a double null terminator.
+* 
+* source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
+*/
+VOID GetNextSMBIOSStructureInTable(
+	_In_ PSMBIOS_TABLE_HEADER* CurrentStructure
+)
+{
+	PCHAR string_section_start = ( PCHAR )( ( UINT64 )*CurrentStructure + ( *CurrentStructure )->Length );
+	PCHAR current_char_in_strings = string_section_start;
+	PCHAR next_char_in_strings = string_section_start + 1;
+
+	for ( ;; )
+	{
+		if ( *current_char_in_strings == NULL_TERMINATOR && *next_char_in_strings == NULL_TERMINATOR )
+		{
+			*CurrentStructure = ( PSMBIOS_TABLE_HEADER )( ( UINT64 )next_char_in_strings + 1 );
+			return;
+		}
+
+		current_char_in_strings++;
+		next_char_in_strings++;
+	}
+}
+
+NTSTATUS GetStringAtIndexFromSMBIOSTable(
+	_In_ PSMBIOS_TABLE_HEADER Table,
+	_In_ INT Index,
+	_In_ PVOID Buffer,
+	_In_ SIZE_T BufferSize
+)
+{
+	INT current_string_char_index = 0;
+	INT string_count = 0;
+	PCHAR current_string_char = ( PCHAR )( ( UINT64 )Table + Table->Length );
+	PCHAR next_string_char = current_string_char + 1;
+
+	for ( ;; )
+	{
+		DEBUG_LOG("Current string count: %lx", string_count);
+
+		if ( *current_string_char == NULL_TERMINATOR && *next_string_char == NULL_TERMINATOR )
+			return STATUS_NOT_FOUND;
+
+		if ( current_string_char_index >= BufferSize )
+			return STATUS_BUFFER_TOO_SMALL;
+
+		if ( string_count + 1 == Index )
+		{
+			if ( *current_string_char == NULL_TERMINATOR )
+				return STATUS_SUCCESS;
+
+			DEBUG_LOG( "Current char: %c", *current_string_char );
+
+			RtlCopyMemory( ( UINT64 )Buffer + current_string_char_index, current_string_char, sizeof( CHAR ) );
+			current_string_char_index++;
+			goto increment;
+		}
+
+		if ( *current_string_char == NULL_TERMINATOR )
+		{
+			current_string_char_index = 0;
+			string_count++;
+		}
+
+	increment:
+
+		current_string_char++;
+		next_string_char++;
+	}
+
+	return STATUS_NOT_FOUND;
+}
+
+NTSTATUS ParseSMBIOSTable(
+	_In_ PVOID ConfigMotherboardSerialNumber,
+	_In_ SIZE_T ConfigMotherboardSerialNumberSize
+)
+{
+	NTSTATUS status;
+	PVOID firmware_table_buffer;
+	ULONG firmware_table_buffer_size = NULL;
+	ULONG bytes_returned;
+	PRAW_SMBIOS_DATA smbios_data;
+	PSMBIOS_TABLE_HEADER smbios_table_header;
+	PRAW_SMBIOS_TABLE_01 smbios_baseboard_information;
+
+	status = ExGetSystemFirmwareTable(
+		SMBIOS_TABLE,
+		NULL,
+		NULL,
+		firmware_table_buffer_size,
+		&firmware_table_buffer_size
+	);
+
+	/*
+	* Because we pass a null buffer here, the NTSTATUS result will be a BUFFER_TOO_SMALL error, so to validate
+	* this function call we check the return bytes returned (which indicate required buffer size) is above 0.
+	*/
+	if ( firmware_table_buffer_size == NULL )
+	{
+		DEBUG_ERROR( "ExGetSystemFirmwareTable call 1 failed to get required buffer size." );
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	firmware_table_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, firmware_table_buffer_size, POOL_TAG_INTEGRITY );
+
+	if ( !firmware_table_buffer )
+		return STATUS_MEMORY_NOT_ALLOCATED;
+
+	status = ExGetSystemFirmwareTable(
+		SMBIOS_TABLE,
+		NULL,
+		firmware_table_buffer,
+		firmware_table_buffer_size,
+		&bytes_returned
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ExGetSystemFirmwareTable call 2 failed with status %x", status );
+		goto end;
+	}
+
+	smbios_data = ( PRAW_SMBIOS_DATA )firmware_table_buffer;
+	smbios_table_header = ( PSMBIOS_TABLE_HEADER )(&smbios_data->SMBIOSTableData[0] );
+
+	/*
+	* The System Information table is equal to Type == 1 and contains the UUID of the motherboard
+	* in the computer among various other things.
+	* 
+	* source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf line 823
+	*/
+	while ( smbios_table_header->Type != SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE )
+	{
+		DEBUG_LOG( "table header: %llx", ( UINT64 )smbios_table_header );
+		GetNextSMBIOSStructureInTable( &smbios_table_header );
+	}
+
+	DEBUG_LOG( "2nd table header: %llx", ( UINT64 )smbios_table_header );
+
+	__debugbreak();
+
+	status = GetStringAtIndexFromSMBIOSTable(
+		smbios_table_header,
+		MOTHERBOARD_SERIAL_CODE_TABLE_INDEX,
+		ConfigMotherboardSerialNumber,
+		ConfigMotherboardSerialNumberSize
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "GetStringAtIndexFromSMBIOSTable failed with status %x", status );
+		goto end;
+	}
+
+end:
+
+	if ( firmware_table_buffer )
+		ExFreePoolWithTag( firmware_table_buffer, POOL_TAG_INTEGRITY );
 
 	return status;
 }
