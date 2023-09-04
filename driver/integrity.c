@@ -766,8 +766,6 @@ NTSTATUS GetStringAtIndexFromSMBIOSTable(
 
 	for ( ;; )
 	{
-		DEBUG_LOG("Current string count: %lx", string_count);
-
 		if ( *current_string_char == NULL_TERMINATOR && *next_string_char == NULL_TERMINATOR )
 			return STATUS_NOT_FOUND;
 
@@ -778,8 +776,6 @@ NTSTATUS GetStringAtIndexFromSMBIOSTable(
 		{
 			if ( *current_string_char == NULL_TERMINATOR )
 				return STATUS_SUCCESS;
-
-			DEBUG_LOG( "Current char: %c", *current_string_char );
 
 			RtlCopyMemory( ( UINT64 )Buffer + current_string_char_index, current_string_char, sizeof( CHAR ) );
 			current_string_char_index++;
@@ -861,14 +857,7 @@ NTSTATUS ParseSMBIOSTable(
 	* source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf line 823
 	*/
 	while ( smbios_table_header->Type != SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE )
-	{
-		DEBUG_LOG( "table header: %llx", ( UINT64 )smbios_table_header );
 		GetNextSMBIOSStructureInTable( &smbios_table_header );
-	}
-
-	DEBUG_LOG( "2nd table header: %llx", ( UINT64 )smbios_table_header );
-
-	__debugbreak();
 
 	status = GetStringAtIndexFromSMBIOSTable(
 		smbios_table_header,
