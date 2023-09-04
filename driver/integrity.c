@@ -752,6 +752,16 @@ VOID GetNextSMBIOSStructureInTable(
 	}
 }
 
+/*
+* Remember that the string index does not start from the beginning of the struct. For example, lets take 
+* RAW_SMBIOS_TABLE_02: the first string is NOT "Type" at index 0, the first string is Manufacturer. So if we
+* want to find the SerialNumber, the string index would be 4, as the previous 3 values (after the header) are
+* all strings. So remember, the index is into the number of strings that exist for the given table, NOT the 
+* size of the structure or a values index into the struct.
+* 
+* Here we count the number of strings by incrementing the string_count each time we pass a null terminator
+* so we know when we're at the beginning of the target string.
+*/
 NTSTATUS GetStringAtIndexFromSMBIOSTable(
 	_In_ PSMBIOS_TABLE_HEADER Table,
 	_In_ INT Index,
@@ -880,3 +890,93 @@ end:
 	return status;
 }
 
+NTSTATUS QueryDiskDriverForDiskInformation()
+{
+	NTSTATUS status;
+	HANDLE handle;
+	PVOID buffer = NULL;
+	OBJECT_ATTRIBUTES object_attributes;
+	PIO_STATUS_BLOCK status_block = { 0 };
+	STORAGE_DESCRIPTOR_HEADER storage_descriptor_header = { 0 };
+	PSTORAGE_DEVICE_DESCRIPTOR storage_device_descriptor = NULL;
+	UNICODE_STRING physical_drive_path = RTL_CONSTANT_STRING( L"\\\\.\\PhysicalDrive0" );
+
+	InitializeObjectAttributes(
+		&object_attributes,
+		&physical_drive_path,
+		OBJ_CASE_INSENSITIVE,
+		NULL,
+		NULL
+	);
+
+	status = ZwOpenFile(
+		&handle,
+		OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+		&object_attributes,
+		&status_block,
+		NULL,
+		NULL
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "Failed to open handle to PhysicalDrive0 with status %x", status );
+		return status;
+	}
+
+	status = ZwDeviceIoControlFile(
+		&handle,
+		NULL,
+		NULL,
+		NULL,
+		&status_block,
+		IOCTL_STORAGE_QUERY_PROPERTY,
+		NULL,
+		NULL,
+		&storage_descriptor_header,
+		sizeof( storage_descriptor_header )
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwDeviceIoControlFile failed with status %x", status );
+		goto end;
+	}
+
+	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, storage_descriptor_header.Size, POOL_TAG_INTEGRITY );
+
+	if ( !buffer )
+		goto end;
+
+	status = ZwDeviceIoControlFile(
+		&handle,
+		NULL,
+		NULL,
+		NULL,
+		&status_block,
+		IOCTL_STORAGE_QUERY_PROPERTY,
+		NULL,
+		NULL,
+		buffer,
+		storage_descriptor_header.Size
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ZwDeviceIoControlFile failed with status %x", status );
+		goto end;
+	}
+
+	DEBUG_LOG( "Storage descritpr size: %lx", storage_descriptor_header.Size );
+
+	storage_device_descriptor = ( PSTORAGE_DEVICE_DESCRIPTOR )buffer;
+
+	DEBUG_LOG( "Serial number offset: %lx", storage_device_descriptor->SerialNumberOffset );
+
+end:
+
+	if ( buffer )
+		ExFreePoolWithTag( buffer, POOL_TAG_INTEGRITY );
+
+	ZwClose( handle );
+}

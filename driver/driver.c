@@ -227,8 +227,8 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 	}
 
 	status = ParseSMBIOSTable( 
-		&driver_config.system_information.motherboard_uuid,
-		sizeof(driver_config.system_information.motherboard_uuid)
+		&driver_config.system_information.motherboard_serial,
+		sizeof(driver_config.system_information.motherboard_serial)
 	);
 
 	if ( !NT_SUCCESS( status ) )
@@ -238,7 +238,7 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
-	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_uuid );
+	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_serial );
 
 	return status;
 }
@@ -332,15 +332,17 @@ NTSTATUS DriverEntry(
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
-	status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
+	//status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
 
-	if ( !NT_SUCCESS( status ) )
-	{
-		DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
-		return status;
-	}
+	//if ( !NT_SUCCESS( status ) )
+	//{
+	//	DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
+	//	return status;
+	//}
 
-	InitialiseProcessConfigOnDriverEntry();
+	//InitialiseProcessConfigOnDriverEntry();
+
+	QueryDiskDriverForDiskInformation();
 
 	status = IoCreateDevice(
 		DriverObject,
