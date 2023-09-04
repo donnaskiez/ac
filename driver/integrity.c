@@ -904,23 +904,23 @@ NTSTATUS QueryDiskDriverForDiskInformation()
 	PSTORAGE_DEVICE_DESCRIPTOR storage_device_descriptor = NULL;
 	UNICODE_STRING physical_drive_path;
 
-	RtlInitUnicodeString( &physical_drive_path, L"\\Device\\HarddiskVolume1" );
+	RtlInitUnicodeString( &physical_drive_path, L"\\DosDevices\\PhysicalDrive0" );
 
 	InitializeObjectAttributes(
 		&object_attributes,
 		&physical_drive_path,
-		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		OBJ_KERNEL_HANDLE,
 		NULL,
 		NULL
 	);
 
 	status = ZwOpenFile(
 		&handle,
-		FILE_GENERIC_READ | SYNCHRONIZE,
+		FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
 		&object_attributes,
 		&status_block,
-		NULL,
-		NULL
+		FILE_SHARE_READ,
+		FILE_SYNCHRONOUS_IO_NONALERT
 	);
 
 	if ( !NT_SUCCESS( status ) )
