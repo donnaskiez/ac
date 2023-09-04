@@ -890,6 +890,9 @@ end:
 	return status;
 }
 
+/*
+* WIP
+*/
 NTSTATUS QueryDiskDriverForDiskInformation()
 {
 	NTSTATUS status;
@@ -899,19 +902,21 @@ NTSTATUS QueryDiskDriverForDiskInformation()
 	PIO_STATUS_BLOCK status_block = { 0 };
 	STORAGE_DESCRIPTOR_HEADER storage_descriptor_header = { 0 };
 	PSTORAGE_DEVICE_DESCRIPTOR storage_device_descriptor = NULL;
-	UNICODE_STRING physical_drive_path = RTL_CONSTANT_STRING( L"\\\\.\\PhysicalDrive0" );
+	UNICODE_STRING physical_drive_path;
+
+	RtlInitUnicodeString( &physical_drive_path, L"\\Device\\HarddiskVolume1" );
 
 	InitializeObjectAttributes(
 		&object_attributes,
 		&physical_drive_path,
-		OBJ_CASE_INSENSITIVE,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 		NULL,
 		NULL
 	);
 
 	status = ZwOpenFile(
 		&handle,
-		OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+		FILE_GENERIC_READ | SYNCHRONIZE,
 		&object_attributes,
 		&status_block,
 		NULL,
@@ -925,7 +930,7 @@ NTSTATUS QueryDiskDriverForDiskInformation()
 	}
 
 	status = ZwDeviceIoControlFile(
-		&handle,
+		handle,
 		NULL,
 		NULL,
 		NULL,
@@ -949,7 +954,7 @@ NTSTATUS QueryDiskDriverForDiskInformation()
 		goto end;
 
 	status = ZwDeviceIoControlFile(
-		&handle,
+		handle,
 		NULL,
 		NULL,
 		NULL,
