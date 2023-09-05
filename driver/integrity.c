@@ -61,7 +61,7 @@ NTSTATUS GetModuleInformationByName(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "GetSystemModuleInformation failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -106,8 +106,6 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 
 	if ( !ModuleBase || !ModuleSize )
 		return STATUS_INVALID_PARAMETER;
-
-	DEBUG_LOG( "Module base: %llx, size: %llx", (UINT64)ModuleBase, ModuleSize );
 
 	/*
 	* The reason we allocate a buffer to temporarily hold the section data is that
@@ -165,7 +163,8 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 			{
 				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
 				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
-				TerminateProtectedProcessOnViolation();
+				*Buffer = NULL;
+				//TerminateProtectedProcessOnViolation();
 				return status;
 			}
 
@@ -183,7 +182,8 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 			{
 				DEBUG_ERROR( "MmCopyMemory failed with status %x", status );
 				ExFreePoolWithTag( *Buffer, POOL_TAG_INTEGRITY );
-				TerminateProtectedProcessOnViolation();
+				*Buffer = NULL;
+				//TerminateProtectedProcessOnViolation();
 				return status;
 			}
 
@@ -220,9 +220,9 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	HANDLE file_handle;
 	OBJECT_ATTRIBUTES object_attributes;
 	PIO_STATUS_BLOCK pio_block;
-	UNICODE_STRING path = { 0 };
+	UNICODE_STRING path;
 
-	GetDriverPath( &path );
+	RtlInitUnicodeString( &path, Path->Buffer );
 
 	InitializeObjectAttributes(
 		&object_attributes,
@@ -234,17 +234,17 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 
 	status = ZwOpenFile(
 		&file_handle,
-		FILE_GENERIC_READ | SYNCHRONIZE,
+		FILE_GENERIC_READ,
 		&object_attributes,
 		&pio_block,
-		FILE_GENERIC_READ,
+		NULL,
 		NULL
 	);
 
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ZwOpenFile failed with statsu %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -254,7 +254,7 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	{
 		DEBUG_ERROR( "NTSetInformationProcess failed with status %x", status );
 		ZwClose( file_handle );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -276,7 +276,8 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 	{
 		DEBUG_ERROR( "ZwCreateSection failed with status %x", status );
 		ZwClose( file_handle );
-		TerminateProtectedProcessOnViolation();
+		*SectionHandle = NULL;
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -304,7 +305,8 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 		DEBUG_ERROR( "ZwMapViewOfSection failed with status %x", status );
 		ZwClose( file_handle );
 		ZwClose( *SectionHandle );
-		TerminateProtectedProcessOnViolation();
+		*SectionHandle = NULL;
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -352,7 +354,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptOpenAlogrithmProvider failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -373,7 +375,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -401,7 +403,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptGetProperty failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -429,7 +431,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptCreateHash failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -447,7 +449,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptHashData failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -465,7 +467,7 @@ NTSTATUS ComputeHashOfBuffer(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "BCryptFinishHash failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -528,7 +530,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		return status;
 	}
 
@@ -542,7 +544,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffer failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -557,7 +559,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "GetModuleInformationByName failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -571,7 +573,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffe failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -584,7 +586,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !disk_base || !memory_base || !disk_buffer || !in_memory_buffer )
 	{
 		DEBUG_ERROR( "buffers are null lmao" );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -592,7 +594,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	{
 		/* report or bug check etc. */
 		DEBUG_LOG( "Executable section size differs, LOL" );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -606,7 +608,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -620,14 +622,14 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x", status );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
 	if ( memory_text_hash_size != disk_text_hash_size )
 	{
 		DEBUG_ERROR( "Error with the hash algorithm, hash sizes are different." );
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -641,7 +643,7 @@ NTSTATUS VerifyInMemoryImageVsDiskImage(
 	{
 		/* report etc. bug check etc. */
 		DEBUG_ERROR( "Text sections are different from each other!!");
-		TerminateProtectedProcessOnViolation();
+		//TerminateProtectedProcessOnViolation();
 		goto end;
 	}
 
@@ -652,7 +654,8 @@ end:
 	if ( section_handle != NULL )
 		ZwClose( section_handle );
 
-	ZwUnmapViewOfSection( ZwCurrentProcess(), section );
+	if ( section )
+		ZwUnmapViewOfSection( ZwCurrentProcess(), section );
 
 	if ( disk_buffer )
 		ExFreePoolWithTag( disk_buffer, POOL_TAG_INTEGRITY );
@@ -921,16 +924,13 @@ NTSTATUS ValidateProcessLoadedModule(
 	ULONG disk_hash_size = NULL;
 	SIZE_T bytes_written = NULL;
 	UNICODE_STRING module_path;
+	HANDLE section_handle = NULL;
+	PVOID section = NULL;
+	ULONG section_size = NULL;
 
 	module_info = ( PPROCESS_MODULE_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
 
 	GetProtectedProcessEProcess( &process );
-
-	in_memory_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, module_info->module_size, POOL_TAG_INTEGRITY );
-
-	if ( !in_memory_buffer )
-		return STATUS_ABANDONED;
-
 	KeStackAttachProcess( process, &apc_state );
 
 	status = StoreModuleExecutableRegionsInBuffer(
@@ -964,6 +964,59 @@ NTSTATUS ValidateProcessLoadedModule(
 
 	RtlInitUnicodeString( &module_path, &module_info->module_path );
 
+	status = MapDiskImageIntoVirtualAddressSpace(
+		&section_handle,
+		&section,
+		&module_path,
+		&section_size
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
+		goto end;
+	}
+
+	status = StoreModuleExecutableRegionsInBuffer(
+		&disk_buffer,
+		section,
+		section_size,
+		&bytes_written
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status );
+		goto end;
+	}
+
+	status = ComputeHashOfBuffer(
+		disk_buffer,
+		bytes_written,
+		&disk_hash,
+		&disk_hash_size
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "ComputeHashOfBuffer 2 failed with status %x", status );
+		goto end;
+	}
+
+	if ( !in_memory_hash || !disk_hash )
+		goto end;
+
+	bstatus = RtlEqualMemory( in_memory_hash, disk_hash, in_memory_hash_size );
+
+	if ( bstatus == TRUE )
+	{
+		DEBUG_LOG( "ALL BYTES EQUAL!" );
+	}
+	else
+	{
+		DEBUG_ERROR( "BBTES NOT EQUAL!!" );
+	}
+
 	validation_result.is_module_valid = TRUE;
 	Irp->IoStatus.Information = sizeof( PROCESS_MODULE_VALIDATION_RESULT );
 
@@ -974,6 +1027,12 @@ NTSTATUS ValidateProcessLoadedModule(
 	);
 
 end:
+	
+	if ( section_handle != NULL )
+		ZwClose( section_handle );
+
+	if ( section )
+		ZwUnmapViewOfSection( ZwCurrentProcess(), section );
 
 	if ( in_memory_buffer )
 		ExFreePoolWithTag( in_memory_buffer, POOL_TAG_INTEGRITY );
@@ -981,4 +1040,11 @@ end:
 	if ( in_memory_hash )
 		ExFreePoolWithTag( in_memory_hash, POOL_TAG_INTEGRITY );
 
+	if ( disk_buffer )
+		ExFreePoolWithTag( disk_buffer, POOL_TAG_INTEGRITY );
+
+	if ( disk_hash )
+		ExFreePoolWithTag( disk_hash, POOL_TAG_INTEGRITY );
+
+	return status;
 }

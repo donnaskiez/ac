@@ -5,8 +5,10 @@
 usermode::Imports::Imports()
 {
 	NtQueryInformationThread = nullptr;
+	RtlDosPathNameToNtPathName_U = nullptr;
 
 	this->ImportMap[ "NtQueryInformationThread" ] = NtQueryInformationThread;
+	this->ImportMap[ "RtlDosPathNameToNtPathName_U" ] = RtlDosPathNameToNtPathName_U;
 
 	std::map<std::string, void*>::iterator it;
 

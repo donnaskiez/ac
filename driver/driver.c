@@ -66,7 +66,7 @@ VOID GetDriverPath(
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
-	RtlCopyUnicodeString( DriverPath, &driver_config.driver_path );
+	RtlInitUnicodeString( DriverPath, driver_config.driver_path.Buffer );
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
@@ -109,47 +109,45 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 	UNICODE_STRING value_name;
 	UNICODE_STRING image_path = RTL_CONSTANT_STRING( L"ImagePath" );
 	UNICODE_STRING display_name = RTL_CONSTANT_STRING( L"DisplayName" );
+	UNICODE_STRING value;
+	PVOID temp_buffer;
 
 	RtlInitUnicodeString( &value_name, ValueName );
 
 	if ( RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE )
 	{
-		DEBUG_LOG( "Value type image path given" );
-		driver_config.driver_path.Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, DRIVER_PATH_POOL_TAG );
-		driver_config.driver_path.Length = ValueLength;
-		driver_config.driver_path.MaximumLength = ValueLength;
+		temp_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, POOL_TAG_STRINGS );
 
-		if ( !driver_config.driver_path.Buffer )
-		{
-			DEBUG_ERROR( "Failed to allocate buffer for unicode string driver path" );
-			return STATUS_ABANDONED;
-		}
+		if ( !temp_buffer )
+			return STATUS_MEMORY_NOT_ALLOCATED;
 
-		RtlCopyMemory( 
-			driver_config.driver_path.Buffer, 
-			ValueData, 
-			ValueLength 
+		RtlCopyMemory(
+			temp_buffer,
+			ValueData,
+			ValueLength
 		);
+
+		driver_config.driver_path.Buffer = (PWCH)temp_buffer;
+		driver_config.driver_path.Length = ValueLength;
+		driver_config.driver_path.MaximumLength = ValueLength + 1;
 	}
 
 	if ( RtlCompareUnicodeString( &value_name, &display_name, FALSE ) == FALSE )
 	{
-		DEBUG_LOG( "Value type display name given" );
-		driver_config.unicode_driver_name.Buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, DRIVER_PATH_POOL_TAG );
-		driver_config.unicode_driver_name.Length = ValueLength;
-		driver_config.unicode_driver_name.MaximumLength = ValueLength;
+		temp_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, ValueLength, POOL_TAG_STRINGS );
 
-		if ( !driver_config.unicode_driver_name.Buffer )
-		{
-			DEBUG_ERROR( "Failed to allocate buffer for unicode string driver name" );
-			return STATUS_ABANDONED;
-		}
+		if ( !temp_buffer )
+			return STATUS_MEMORY_NOT_ALLOCATED;
 
 		RtlCopyMemory(
-			driver_config.unicode_driver_name.Buffer,
+			temp_buffer,
 			ValueData,
 			ValueLength
 		);
+
+		driver_config.unicode_driver_name.Buffer = ( PWCH )temp_buffer;
+		driver_config.unicode_driver_name.Length = ValueLength;
+		driver_config.unicode_driver_name.MaximumLength = ValueLength + 1;
 	}
 
 	return STATUS_SUCCESS;
@@ -158,10 +156,10 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 VOID FreeDriverConfigurationStringBuffers()
 {
 	if ( driver_config.unicode_driver_name.Buffer )
-		ExFreePoolWithTag( driver_config.unicode_driver_name.Buffer, DRIVER_PATH_POOL_TAG );
+		ExFreePoolWithTag( driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS );
 
 	if ( driver_config.driver_path.Buffer )
-		ExFreePoolWithTag( driver_config.driver_path.Buffer, DRIVER_PATH_POOL_TAG );
+		ExFreePoolWithTag( driver_config.driver_path.Buffer, POOL_TAG_STRINGS );
 
 	if (driver_config.ansi_driver_name.Buffer )
 		RtlFreeAnsiString( &driver_config.ansi_driver_name );

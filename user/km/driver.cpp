@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "../common.h"
+#include <winternl.h>
 
 kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> ReportInterface )
 {
@@ -512,6 +513,9 @@ VOID kernelmode::Driver::CheckDriverHeartbeat()
 
 }
 
+typedef BOOLEAN( NTAPI* RtlDosPathNameToNtPathName_U )(
+	PCWSTR DosPathName, PUNICODE_STRING NtPathName, PCWSTR* NtFileNamePart, PVOID DirectoryInfo );
+
 VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 {
 	HANDLE process_modules_handle;
@@ -520,6 +524,11 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 	PROCESS_MODULE_INFORMATION module_information;
 	PROCESS_MODULE_VALIDATION_RESULT validation_result;
 	DWORD bytes_returned;
+	RtlDosPathNameToNtPathName_U pRtlDosPathNameToNtPathName_U = NULL;
+	UNICODE_STRING nt_path_name;
+
+	pRtlDosPathNameToNtPathName_U = ( RtlDosPathNameToNtPathName_U )
+		GetProcAddress( GetModuleHandle( L"ntdll.dll" ), "RtlDosPathNameToNtPathName_U" );
 
 	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId() );
 
@@ -541,7 +550,15 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 	{
 		module_information.module_base = module_entry.modBaseAddr;
 		module_information.module_size = module_entry.modBaseSize;
-		memcpy( module_information.module_path, module_entry.szExePath, MAX_MODULE_PATH );
+
+		( *pRtlDosPathNameToNtPathName_U )(
+			module_entry.szExePath,
+			&nt_path_name,
+			NULL,
+			NULL
+		);
+
+		memcpy( module_information.module_path, nt_path_name.Buffer, MAX_MODULE_PATH );
 
 		status = DeviceIoControl(
 			this->driver_handle,
