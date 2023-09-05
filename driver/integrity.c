@@ -146,8 +146,6 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 
 	for ( ULONG index = 0; index < num_sections; index++ )
 	{
-		DEBUG_LOG( "section name: %s, size: %lx", section->Name, section->SizeOfRawData );
-
 		if ( section->Characteristics & IMAGE_SCN_MEM_EXECUTE )
 		{
 			/*
@@ -726,7 +724,7 @@ NTSTATUS RetrieveInMemoryModuleExecutableSections(
 *    729   system- and OEM-specific structures and allows upper-level software to easily traverse the
 *    730   structure table. (See structure-termination examples later in this clause.) 
 * 
-* TLDR is that if the first character proceeding the structure is a null byte, then there are no strings,
+* TLDR is that if the first two characters proceeding the structure are null terminators, then there are no strings,
 * otherwise to find the end of the string section simply iterate until there is a double null terminator.
 * 
 * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
@@ -824,7 +822,7 @@ NTSTATUS ParseSMBIOSTable(
 		SMBIOS_TABLE,
 		NULL,
 		NULL,
-		firmware_table_buffer_size,
+		NULL,
 		&firmware_table_buffer_size
 	);
 
@@ -861,17 +859,17 @@ NTSTATUS ParseSMBIOSTable(
 	smbios_table_header = ( PSMBIOS_TABLE_HEADER )(&smbios_data->SMBIOSTableData[0] );
 
 	/*
-	* The System Information table is equal to Type == 1 and contains the UUID of the motherboard
+	* The System Information table is equal to Type == 2 and contains the serial number of the motherboard
 	* in the computer among various other things.
 	* 
 	* source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf line 823
 	*/
-	while ( smbios_table_header->Type != SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE )
+	while ( smbios_table_header->Type != VMWARE_SMBIOS_TABLE )
 		GetNextSMBIOSStructureInTable( &smbios_table_header );
 
 	status = GetStringAtIndexFromSMBIOSTable(
 		smbios_table_header,
-		MOTHERBOARD_SERIAL_CODE_TABLE_INDEX,
+		VMWARE_SMBIOS_TABLE_INDEX,
 		ConfigMotherboardSerialNumber,
 		ConfigMotherboardSerialNumberSize
 	);
@@ -891,97 +889,96 @@ end:
 }
 
 /*
-* WIP
+* Because the infrastructure has already been setup to validate modules in the driver, that
+* is how I will validate the usermode modules as well. Another reason is that the win32 api
+* makes it very easy to take a snapshot of the modules and enumerate them with easy to use 
+* functions and macros.
+* 
+* 1. Take a snapshot of the modules in the process from our dll
+* 2. pass the image base, image size and the image path to our driver via an IRP
+* 3. from our driver, to first verify the in memory module, attach to our protected process
+*    and using the base + size simply use StoreModuleExecutableRegionsInBuffer()
+* 4. Next we use the path to map the image on disk into memory, and pass the image to
+*    StoreModuleExecutableRegionsInBuffer() just as we did before.
+* 5. With the 2 buffers that contain both images executable regions, we hash them and compare
+*    for anomalies.
 */
-NTSTATUS QueryDiskDriverForDiskInformation()
+NTSTATUS ValidateProcessLoadedModule(
+	_In_ PIRP Irp
+)
 {
 	NTSTATUS status;
-	HANDLE handle;
-	PVOID buffer = NULL;
-	OBJECT_ATTRIBUTES object_attributes;
-	PIO_STATUS_BLOCK status_block = { 0 };
-	STORAGE_DESCRIPTOR_HEADER storage_descriptor_header = { 0 };
-	PSTORAGE_DEVICE_DESCRIPTOR storage_device_descriptor = NULL;
-	UNICODE_STRING physical_drive_path;
+	BOOLEAN bstatus;
+	PROCESS_MODULE_VALIDATION_RESULT validation_result;
+	PPROCESS_MODULE_INFORMATION module_info;
+	PKPROCESS process;
+	KAPC_STATE apc_state;
+	PVOID in_memory_buffer = NULL;
+	PVOID disk_buffer = NULL;
+	PVOID in_memory_hash = NULL;
+	PVOID disk_hash = NULL;
+	ULONG in_memory_hash_size = NULL;
+	ULONG disk_hash_size = NULL;
+	SIZE_T bytes_written = NULL;
+	UNICODE_STRING module_path;
 
-	RtlInitUnicodeString( &physical_drive_path, L"\\DosDevices\\PhysicalDrive0" );
+	module_info = ( PPROCESS_MODULE_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
 
-	InitializeObjectAttributes(
-		&object_attributes,
-		&physical_drive_path,
-		OBJ_KERNEL_HANDLE,
-		NULL,
-		NULL
-	);
+	GetProtectedProcessEProcess( &process );
 
-	status = ZwOpenFile(
-		&handle,
-		FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-		&object_attributes,
-		&status_block,
-		FILE_SHARE_READ,
-		FILE_SYNCHRONOUS_IO_NONALERT
-	);
+	in_memory_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, module_info->module_size, POOL_TAG_INTEGRITY );
 
-	if ( !NT_SUCCESS( status ) )
-	{
-		DEBUG_ERROR( "Failed to open handle to PhysicalDrive0 with status %x", status );
-		return status;
-	}
+	if ( !in_memory_buffer )
+		return STATUS_ABANDONED;
 
-	status = ZwDeviceIoControlFile(
-		handle,
-		NULL,
-		NULL,
-		NULL,
-		&status_block,
-		IOCTL_STORAGE_QUERY_PROPERTY,
-		NULL,
-		NULL,
-		&storage_descriptor_header,
-		sizeof( storage_descriptor_header )
+	KeStackAttachProcess( process, &apc_state );
+
+	status = StoreModuleExecutableRegionsInBuffer(
+		&in_memory_buffer,
+		module_info->module_base,
+		module_info->module_size,
+		&bytes_written
 	);
 
 	if ( !NT_SUCCESS( status ) )
 	{
-		DEBUG_ERROR( "ZwDeviceIoControlFile failed with status %x", status );
+		DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffer failed with status %x", status );
+		KeUnstackDetachProcess( &apc_state );
 		goto end;
 	}
 
-	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, storage_descriptor_header.Size, POOL_TAG_INTEGRITY );
+	KeUnstackDetachProcess( &apc_state );
 
-	if ( !buffer )
-		goto end;
-
-	status = ZwDeviceIoControlFile(
-		handle,
-		NULL,
-		NULL,
-		NULL,
-		&status_block,
-		IOCTL_STORAGE_QUERY_PROPERTY,
-		NULL,
-		NULL,
-		buffer,
-		storage_descriptor_header.Size
+	status = ComputeHashOfBuffer(
+		in_memory_buffer,
+		bytes_written,
+		&in_memory_hash,
+		&in_memory_hash_size
 	);
 
 	if ( !NT_SUCCESS( status ) )
 	{
-		DEBUG_ERROR( "ZwDeviceIoControlFile failed with status %x", status );
+		DEBUG_ERROR( "ComputeHashOfBuffer failed with status %x:", status );
 		goto end;
 	}
 
-	DEBUG_LOG( "Storage descritpr size: %lx", storage_descriptor_header.Size );
+	RtlInitUnicodeString( &module_path, &module_info->module_path );
 
-	storage_device_descriptor = ( PSTORAGE_DEVICE_DESCRIPTOR )buffer;
+	validation_result.is_module_valid = TRUE;
+	Irp->IoStatus.Information = sizeof( PROCESS_MODULE_VALIDATION_RESULT );
 
-	DEBUG_LOG( "Serial number offset: %lx", storage_device_descriptor->SerialNumberOffset );
+	RtlCopyMemory( 
+		Irp->AssociatedIrp.SystemBuffer, 
+		&validation_result, 
+		sizeof( PROCESS_MODULE_VALIDATION_RESULT ) 
+	);
 
 end:
 
-	if ( buffer )
-		ExFreePoolWithTag( buffer, POOL_TAG_INTEGRITY );
+	if ( in_memory_buffer )
+		ExFreePoolWithTag( in_memory_buffer, POOL_TAG_INTEGRITY );
 
-	ZwClose( handle );
+	if ( in_memory_hash )
+		ExFreePoolWithTag( in_memory_hash, POOL_TAG_INTEGRITY );
+
 }

@@ -332,17 +332,15 @@ NTSTATUS DriverEntry(
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
-	//status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
+	status = InitialiseDriverConfigOnDriverEntry( RegistryPath );
 
-	//if ( !NT_SUCCESS( status ) )
-	//{
-	//	DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
-	//	return status;
-	//}
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "InitialiseDriverConfigOnDriverEntry failed with status %x", status );
+		return status;
+	}
 
-	//InitialiseProcessConfigOnDriverEntry();
-
-	QueryDiskDriverForDiskInformation();
+	InitialiseProcessConfigOnDriverEntry();
 
 	status = IoCreateDevice(
 		DriverObject,

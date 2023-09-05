@@ -26,6 +26,7 @@ namespace kernelmode
 		VOID ScanPoolsForUnlinkedProcesses();
 		VOID PerformIntegrityCheck();
 		VOID CheckForAttachedThreads();
+		VOID ValidateProcessModules();
 	};
 }
 

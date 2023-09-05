@@ -990,6 +990,12 @@ typedef struct _RAW_SMBIOS_TABLE_02 {
 
 }RAW_SMBIOS_TABLE_02, *PRAW_SMBIOS_TABLE_02;
 
+typedef struct _RTL_RELATIVE_NAME {
+    UNICODE_STRING RelativeName;
+    HANDLE         ContainingDirectory;
+    void* CurDirRef;
+} RTL_RELATIVE_NAME, * PRTL_RELATIVE_NAME;
+
 NTKERNELAPI
 BOOLEAN
 ExEnumHandleTable(
@@ -1064,6 +1070,13 @@ KeCapturePersistentThreadState(
     __in ULONG_PTR BugCheckParameter3,
     __in ULONG_PTR BugCheckParameter4,
     __in PDUMP_HEADER DumpHeader
+);
+
+BOOLEAN NTAPI RtlDosPathNameToRelativeNtPathName_U(
+    _In_       PCWSTR DosFileName,
+    _Out_      PUNICODE_STRING NtFileName,
+    _Out_opt_  PWSTR* FilePath,
+    _Out_opt_  PRTL_RELATIVE_NAME RelativeName
 );
 
 C_ASSERT( FIELD_OFFSET( DUMP_HEADER, Signature ) == 0 );

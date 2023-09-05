@@ -511,3 +511,71 @@ VOID kernelmode::Driver::CheckDriverHeartbeat()
 {
 
 }
+
+VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
+{
+	HANDLE process_modules_handle;
+	MODULEENTRY32 module_entry;
+	BOOLEAN status;
+	PROCESS_MODULE_INFORMATION module_information;
+	PROCESS_MODULE_VALIDATION_RESULT validation_result;
+	DWORD bytes_returned;
+
+	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId() );
+
+	if ( process_modules_handle == INVALID_HANDLE_VALUE )
+	{
+		LOG_ERROR( "CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with status 0x%x", GetLastError() );
+		return;
+	}
+
+	module_entry.dwSize = sizeof( MODULEENTRY32 );
+
+	if ( !Module32First( process_modules_handle, &module_entry ) )
+	{
+		LOG_ERROR( "Module32First failed with status 0x%x", GetLastError() );
+		return;
+	}
+
+	do
+	{
+		module_information.module_base = module_entry.modBaseAddr;
+		module_information.module_size = module_entry.modBaseSize;
+		memcpy( module_information.module_path, module_entry.szExePath, MAX_MODULE_PATH );
+
+		status = DeviceIoControl(
+			this->driver_handle,
+			IOCTL_VALIDATE_PROCESS_LOADED_MODULE,
+			&module_information,
+			sizeof( module_information ),
+			&validation_result,
+			sizeof( validation_result ),
+			&bytes_returned,
+			NULL
+		);
+
+		if ( status == NULL || bytes_returned == NULL )
+		{
+			LOG_ERROR( "failed to validate process module with status %x", GetLastError() );
+			continue;
+		}
+
+		LOG_INFO( "Bytes returned: %lx", bytes_returned );
+
+		/* compare the current checksum to the previously calculated checksum */
+		//if ( this->in_memory_module_checksums[ index ] != in_memory_check_sum )
+		//{
+		//	global::report_structures::MODULE_VERIFICATION_CHECKSUM_FAILURE report;
+		//	report.report_code = REPORT_CODE_MODULE_VERIFICATION;
+		//	report.module_base_address = (UINT64)module_entry.modBaseAddr;
+		//	report.module_size = module_entry.modBaseSize;
+		//	std::wstring wstr( module_entry.szModule );
+		//	report.module_name = std::string( wstr.begin(), wstr.end() );
+		//	this->report_interface->ReportViolation( &report );
+		//}
+
+	} while ( Module32Next( process_modules_handle, &module_entry ) );
+
+end:
+	CloseHandle( process_modules_handle );
+}

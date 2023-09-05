@@ -9,6 +9,7 @@
 #include "../client.h"
 #include "../threadpool.h"
 #include "../um/imports.h"
+#include "../km/kmanager.h"
 
 #define ThreadQuerySetWin32StartAddress 9
 
@@ -30,7 +31,6 @@ namespace usermode
 		std::shared_ptr<global::Client> report_interface;
 
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
-		std::vector<UINT64> GetProcessThreadsStartAddresses();
 		bool CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* Result );
 		bool GetProcessBaseAddress( UINT64* Result );
 		void CheckPageProtection( MEMORY_BASIC_INFORMATION* Page );
@@ -42,7 +42,6 @@ namespace usermode
 
 		void ValidateProcessThreads();
 		void ScanProcessMemory();
-		void VerifyLoadedModuleChecksums(bool Init);
 	};
 }
 

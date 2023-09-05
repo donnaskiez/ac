@@ -19,8 +19,11 @@
 #define IOCTL_VALIDATE_KPRCB_CURRENT_THREAD CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2012, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_PERFORM_INTEGRITY_CHECK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2013, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_DETECT_ATTACHED_THREADS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2014, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_PROCESS_LOADED_MODULE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2015, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define MAX_REPORTS_PER_IRP 20
+
+#define MAX_MODULE_PATH 256
 
 namespace kernelmode
 {
@@ -51,6 +54,7 @@ namespace kernelmode
 		VOID ScanForUnlinkedProcess();
 		VOID PerformIntegrityCheck();
 		VOID CheckForAttachedThreads();
+		VOID VerifyProcessLoadedModuleExecutableRegions();
 	};
 
 	struct DRIVER_INITIATION_INFORMATION
@@ -62,6 +66,18 @@ namespace kernelmode
 	{
 		INT aperf_msr_timing_check;
 		INT invd_emulation_check;
+	};
+
+	struct PROCESS_MODULE_INFORMATION
+	{
+		PVOID module_base;
+		SIZE_T module_size;
+		WCHAR module_path[ MAX_MODULE_PATH ];
+	};
+
+	struct PROCESS_MODULE_VALIDATION_RESULT
+	{
+		INT is_module_valid;
 	};
 }
 

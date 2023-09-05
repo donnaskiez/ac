@@ -50,3 +50,8 @@ VOID kernelmode::KManager::CheckForAttachedThreads()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->CheckForAttachedThreads(); } );
 }
+
+VOID kernelmode::KManager::ValidateProcessModules()
+{
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifyProcessLoadedModuleExecutableRegions(); } );
+}

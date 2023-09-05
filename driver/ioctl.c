@@ -241,6 +241,15 @@ NTSTATUS DeviceControl(
 
 		break;
 
+	case IOCTL_VALIDATE_PROCESS_LOADED_MODULE:
+
+		status = ValidateProcessLoadedModule( Irp );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "ValidateProcessLoadedModule failed with status %x", status );
+
+		break;
+
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
 		break;

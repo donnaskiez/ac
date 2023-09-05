@@ -16,7 +16,6 @@ usermode::Process::Process( std::shared_ptr<global::Client> ReportInterface )
 	this->process_handle = GetCurrentProcess();
 	this->process_id = GetCurrentProcessId();
 	this->function_imports = std::make_unique<Imports>();
-	this->VerifyLoadedModuleChecksums( true );
 	this->report_interface = ReportInterface;
 }
 
@@ -315,79 +314,4 @@ void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
 		report.allocation_type = Page->Type;
 		this->report_interface->ReportViolation( &report );
 	}
-}
-
-void usermode::Process::VerifyLoadedModuleChecksums(bool Init)
-{
-	HANDLE process_modules_handle;
-	MODULEENTRY32 module_entry;
-	PVOID mapped_image;
-	DWORD in_memory_header_sum;
-	DWORD in_memory_check_sum;
-	DWORD result;
-	INT index = 0;
-	std::vector<DWORD> temp;
-
-	process_modules_handle = CreateToolhelp32Snapshot( TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, this->process_id );
-
-	if ( process_modules_handle == INVALID_HANDLE_VALUE )
-	{
-		LOG_ERROR( "CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with status 0x%x", GetLastError() );
-		return;
-	}
-
-	module_entry.dwSize = sizeof( MODULEENTRY32 );
-
-	if ( !Module32First( process_modules_handle, &module_entry ) )
-	{
-		LOG_ERROR( "Module32First failed with status 0x%x", GetLastError() );
-		return;
-	}
-
-	do
-	{
-		/* compute checksum for the in memory module */
-		mapped_image = CheckSumMappedFile(
-			module_entry.modBaseAddr,
-			module_entry.modBaseSize,
-			&in_memory_header_sum,
-			&in_memory_check_sum
-		);
-
-		if ( !mapped_image )
-		{
-			LOG_ERROR( "CheckSumMappedFile failed with status 0x%x", GetLastError() );
-			goto end;
-		}
-
-		/* if we are initiliasing simply fill the vector with checksums */
-		if ( Init )
-		{
-			this->in_memory_module_checksums.push_back( in_memory_check_sum );
-			continue;
-		}
-
-		/* compare the current checksum to the previously calculated checksum */
-		if ( this->in_memory_module_checksums[ index ] != in_memory_check_sum )
-		{
-			global::report_structures::MODULE_VERIFICATION_CHECKSUM_FAILURE report;
-			report.report_code = REPORT_CODE_MODULE_VERIFICATION;
-			report.module_base_address = (UINT64)module_entry.modBaseAddr;
-			report.module_size = module_entry.modBaseSize;
-			std::wstring wstr( module_entry.szModule );
-			report.module_name = std::string( wstr.begin(), wstr.end() );
-			this->report_interface->ReportViolation( &report );
-		}
-
-		//store the new checksums in a temp vector
-		temp.push_back( in_memory_check_sum );
-		index++;
-
-	} while ( Module32Next( process_modules_handle, &module_entry ) );
-
-	if (!Init ) 
-		this->in_memory_module_checksums = temp;
-
-end:
-	CloseHandle( process_modules_handle );
 }
