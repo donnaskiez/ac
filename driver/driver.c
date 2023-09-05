@@ -307,6 +307,9 @@ VOID TerminateProtectedProcessOnViolation()
 		return;
 	}
 
+	/*
+	* THERE IS A BUG WIHT THE HANDLE!! xD todo fix !
+	*/
 	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
 
 	if ( !NT_SUCCESS( status ) )

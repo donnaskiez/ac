@@ -577,19 +577,17 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 			continue;
 		}
 
-		LOG_INFO( "Bytes returned: %lx", bytes_returned );
-
-		/* compare the current checksum to the previously calculated checksum */
-		//if ( this->in_memory_module_checksums[ index ] != in_memory_check_sum )
-		//{
-		//	global::report_structures::MODULE_VERIFICATION_CHECKSUM_FAILURE report;
-		//	report.report_code = REPORT_CODE_MODULE_VERIFICATION;
-		//	report.module_base_address = (UINT64)module_entry.modBaseAddr;
-		//	report.module_size = module_entry.modBaseSize;
-		//	std::wstring wstr( module_entry.szModule );
-		//	report.module_name = std::string( wstr.begin(), wstr.end() );
-		//	this->report_interface->ReportViolation( &report );
-		//}
+		if ( validation_result.is_module_valid == FALSE )
+		{
+			/*TODO: copy module aswell from an anomaly offset */
+			global::report_structures::PROCESS_MODULES_INTEGRITY_CHECK_FAILURE report;
+			report.report_code = REPORT_CODE_MODULE_VERIFICATION;
+			report.module_base_address = (UINT64)module_entry.modBaseAddr;
+			report.module_size = module_entry.modBaseSize;
+			std::wstring wstr( module_entry.szModule );
+			report.module_name = std::string( wstr.begin(), wstr.end() );
+			this->report_interface->ReportViolation( &report );
+		}
 
 	} while ( Module32Next( process_modules_handle, &module_entry ) );
 

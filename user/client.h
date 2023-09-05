@@ -82,7 +82,7 @@ namespace global
 
 	namespace report_structures
 	{
-		struct MODULE_VERIFICATION_CHECKSUM_FAILURE
+		struct PROCESS_MODULES_INTEGRITY_CHECK_FAILURE
 		{
 			INT report_code;
 			UINT64 module_base_address;

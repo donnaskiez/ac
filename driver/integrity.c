@@ -121,7 +121,7 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
 
 	/*
 	* Note: Verifier doesn't like it when we map the module so rather then mapping it to our address
-	* space we will simply use MmCopyMemory on the module to avoid upsettings verifier :)
+	* space we will simply use MmCopyMemory on the module to avoid upsetting verifier :)
 	*/
 
 	dos_header = ( PIMAGE_DOS_HEADER )ModuleBase;
@@ -302,6 +302,14 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
 
 	if ( !NT_SUCCESS( status ) )
 	{
+		/*
+		* It is of utmost importants to mark SectionHandle as null after closing the
+		* handle from inside this function since an error has occured. The reason this is
+		* so important is because we are not responsible for freeing the function if it succeeds
+		* and even if it fails, we still allocate a value to the handle via ZwCreateSection.
+		* Meaning when the caller goes to check if the handle is null, it will not be null
+		* and will cause a double free. 
+		*/
 		DEBUG_ERROR( "ZwMapViewOfSection failed with status %x", status );
 		ZwClose( file_handle );
 		ZwClose( *SectionHandle );
@@ -477,7 +485,7 @@ NTSTATUS ComputeHashOfBuffer(
 end:
 
 	if ( algo_handle )
-		BCryptCloseAlgorithmProvider( algo_handle, 0 );
+		BCryptCloseAlgorithmProvider( algo_handle, NULL );
 
 	if ( hash_handle )
 		BCryptDestroyHash( hash_handle );
@@ -931,6 +939,7 @@ NTSTATUS ValidateProcessLoadedModule(
 	module_info = ( PPROCESS_MODULE_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
 
 	GetProtectedProcessEProcess( &process );
+
 	KeStackAttachProcess( process, &apc_state );
 
 	status = StoreModuleExecutableRegionsInBuffer(
@@ -1008,16 +1017,14 @@ NTSTATUS ValidateProcessLoadedModule(
 
 	bstatus = RtlEqualMemory( in_memory_hash, disk_hash, in_memory_hash_size );
 
-	if ( bstatus == TRUE )
-	{
-		DEBUG_LOG( "ALL BYTES EQUAL!" );
-	}
-	else
-	{
-		DEBUG_ERROR( "BBTES NOT EQUAL!!" );
-	}
+	/*
+	* Because each module is passed per IRP we don't need to send any reports
+	* to the queue we can simply pass it back to usermode via the same IRP.
+	* We also don't need to send any module information since usermode has everything
+	* needed to file the report.
+	*/
+	validation_result.is_module_valid = bstatus;
 
-	validation_result.is_module_valid = TRUE;
 	Irp->IoStatus.Information = sizeof( PROCESS_MODULE_VALIDATION_RESULT );
 
 	RtlCopyMemory( 
