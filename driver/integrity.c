@@ -1059,6 +1059,10 @@ end:
     return status;
 }
 
+/*
+* TODO: Query PhysicalDrive%n to get the serial numbers for all harddrives, can use the command
+* "wmic diskdrive" check in console.
+*/
 NTSTATUS GetHardDiskDriveSerialNumber(
     _In_ PVOID ConfigDrive0Serial,
     _In_ SIZE_T ConfigDrive0MaxSize
@@ -1085,23 +1089,18 @@ NTSTATUS GetHardDiskDriveSerialNumber(
         NULL 
     );
 
-    status = ZwCreateFile(
+    status = ZwOpenFile(
         &handle,
         GENERIC_READ,
         &attributes,
         &status_block,
         NULL,
-        FILE_ATTRIBUTE_NORMAL,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        FILE_OPEN,
-        FILE_NON_DIRECTORY_FILE,
-        NULL,
-        NULL 
+        NULL
     );
 
     if ( !NT_SUCCESS( status ) ) 
     {
-        DEBUG_LOG( "Open PhysicalDrive0 failed with status %x", status);
+        DEBUG_LOG( "ZwOpenFile on PhysicalDrive0 failed with status %x", status);
         goto end;
     }
 
