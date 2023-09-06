@@ -236,7 +236,20 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
+	status = GetHardDiskDriveSerialNumber(
+		&driver_config.system_information.drive_0_serial,
+		sizeof( driver_config.system_information.drive_0_serial )
+	);
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		DEBUG_ERROR( "GetHardDiskDriverSerialNumber failed with status %x", status );
+		FreeDriverConfigurationStringBuffers();
+		return status;
+	}
+
 	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_serial );
+	DEBUG_LOG( "Drive 0 serial: %s", driver_config.system_information.drive_0_serial );
 
 	return status;
 }

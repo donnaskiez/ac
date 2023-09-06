@@ -818,7 +818,7 @@ NTSTATUS GetStringAtIndexFromSMBIOSTable(
 
 NTSTATUS ParseSMBIOSTable(
     _In_ PVOID ConfigMotherboardSerialNumber,
-    _In_ SIZE_T ConfigMotherboardSerialNumberSize
+    _In_ SIZE_T ConfigMotherboardSerialNumberMaxSize
 )
 {
     NTSTATUS status;
@@ -882,7 +882,7 @@ NTSTATUS ParseSMBIOSTable(
         smbios_table_header,
         VMWARE_SMBIOS_TABLE_INDEX,
         ConfigMotherboardSerialNumber,
-        ConfigMotherboardSerialNumberSize
+        ConfigMotherboardSerialNumberMaxSize
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -1055,6 +1055,131 @@ end:
 
     if ( disk_hash )
         ExFreePoolWithTag( disk_hash, POOL_TAG_INTEGRITY );
+
+    return status;
+}
+
+NTSTATUS GetHardDiskDriveSerialNumber(
+    _In_ PVOID ConfigDrive0Serial,
+    _In_ SIZE_T ConfigDrive0MaxSize
+) 
+{
+    NTSTATUS status;
+    HANDLE handle;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK status_block;
+    STORAGE_PROPERTY_QUERY storage_property = { 0 };
+    STORAGE_DESCRIPTOR_HEADER storage_descriptor_header = { 0 };
+    PSTORAGE_DEVICE_DESCRIPTOR device_descriptor = NULL;
+    UNICODE_STRING physical_drive_path;
+    PCHAR serial_number = NULL;
+    SIZE_T serial_length = NULL;
+
+    RtlInitUnicodeString( &physical_drive_path, L"\\DosDevices\\PhysicalDrive0" );
+
+    InitializeObjectAttributes( 
+        &attributes, 
+        &physical_drive_path,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, 
+        NULL, 
+        NULL 
+    );
+
+    status = ZwCreateFile(
+        &handle,
+        GENERIC_READ,
+        &attributes,
+        &status_block,
+        NULL,
+        FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE,
+        NULL,
+        NULL 
+    );
+
+    if ( !NT_SUCCESS( status ) ) 
+    {
+        DEBUG_LOG( "Open PhysicalDrive0 failed with status %x", status);
+        goto end;
+    }
+
+    storage_property.PropertyId = StorageDeviceProperty;
+    storage_property.QueryType = PropertyStandardQuery;
+
+    status = ZwDeviceIoControlFile(
+        handle,
+        NULL,
+        NULL,
+        NULL,
+        &status_block,
+        IOCTL_STORAGE_QUERY_PROPERTY,
+        &storage_property,
+        sizeof( STORAGE_PROPERTY_QUERY ),
+        &storage_descriptor_header,
+        sizeof( STORAGE_DESCRIPTOR_HEADER ) 
+    );
+
+    if ( !NT_SUCCESS( status ) ) 
+    {
+        DEBUG_LOG( "ZwDeviceIoControlFile first call failed with status %x", status );
+        goto end;
+    }
+
+    device_descriptor = ExAllocatePool2( POOL_FLAG_NON_PAGED, storage_descriptor_header.Size, POOL_TAG_INTEGRITY );
+
+    if ( !device_descriptor ) 
+    {
+        status = STATUS_MEMORY_NOT_ALLOCATED;
+        goto end;
+    }
+
+    status = ZwDeviceIoControlFile(
+        handle,
+        NULL,
+        NULL,
+        NULL,
+        &status_block,
+        IOCTL_STORAGE_QUERY_PROPERTY,
+        &storage_property,
+        sizeof( STORAGE_PROPERTY_QUERY ),
+        device_descriptor,
+        storage_descriptor_header.Size
+    );
+
+    if ( !NT_SUCCESS( status )  ) 
+    {
+        DEBUG_LOG( "ZwDeviceIoControlFile second call failed with status %x", status );
+        goto end;
+    }
+
+    if ( device_descriptor->SerialNumberOffset > 0 ) 
+    {
+        serial_number = ( PCHAR )( ( UINT64 )device_descriptor + device_descriptor->SerialNumberOffset );
+        serial_length = strnlen_s( serial_number, DEVICE_DRIVE_0_SERIAL_CODE_LENGTH ) + 1;
+
+        if ( serial_length > ConfigDrive0MaxSize )
+        {
+            DEBUG_ERROR( "Serial length is greater then config drive 0 buffer size" );
+            status = STATUS_BUFFER_TOO_SMALL;
+            goto end;
+        }
+
+        RtlCopyMemory(
+            ConfigDrive0Serial,
+            serial_number,
+            serial_length
+        );
+    }
+
+end:
+
+    if ( handle )
+        ZwClose( handle );
+
+    if ( device_descriptor )
+        ExFreePoolWithTag( device_descriptor, POOL_TAG_INTEGRITY );
 
     return status;
 }

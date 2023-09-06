@@ -1001,6 +1001,102 @@ typedef struct _RTL_RELATIVE_NAME {
     void* CurDirRef;
 } RTL_RELATIVE_NAME, * PRTL_RELATIVE_NAME;
 
+typedef struct _STORAGE_DESCRIPTOR_HEADER {
+    ULONG  Version;
+    ULONG  Size;
+} STORAGE_DESCRIPTOR_HEADER, * PSTORAGE_DESCRIPTOR_HEADER;
+
+typedef enum _STORAGE_BUS_TYPE {
+    BusTypeUnknown = 0x00,
+    BusTypeScsi,
+    BusTypeAtapi,
+    BusTypeAta,
+    BusType1394,
+    BusTypeSsa,
+    BusTypeFibre,
+    BusTypeUsb,
+    BusTypeRAID,
+    BusTypeMaxReserved = 0x7F
+} STORAGE_BUS_TYPE, * PSTORAGE_BUS_TYPE;
+
+typedef enum _STORAGE_SET_TYPE {
+    PropertyStandardSet = 0,          // Sets the descriptor
+    PropertyExistsSet,                // Used to test whether the descriptor is supported
+    PropertySetMaxDefined             // use to validate the value
+} STORAGE_SET_TYPE, * PSTORAGE_SET_TYPE;
+
+//
+// define some initial property id's
+//
+
+typedef enum _STORAGE_QUERY_TYPE {
+    PropertyStandardQuery = 0,          // Retrieves the descriptor
+    PropertyExistsQuery,                // Used to test whether the descriptor is supported
+    PropertyMaskQuery,                  // Used to retrieve a mask of writeable fields in the descriptor
+    PropertyQueryMaxDefined     // use to validate the value
+} STORAGE_QUERY_TYPE, * PSTORAGE_QUERY_TYPE;
+
+typedef enum _STORAGE_PROPERTY_ID {
+    StorageDeviceProperty = 0,
+    StorageAdapterProperty,
+    StorageDeviceIdProperty,
+    StorageDeviceUniqueIdProperty,                  // See storduid.h for details
+    StorageDeviceWriteCacheProperty,
+    StorageMiniportProperty,
+    StorageAccessAlignmentProperty,
+    StorageDeviceSeekPenaltyProperty,
+    StorageDeviceTrimProperty,
+    StorageDeviceWriteAggregationProperty,
+    StorageDeviceDeviceTelemetryProperty,
+    StorageDeviceLBProvisioningProperty,
+    StorageDevicePowerProperty,
+    StorageDeviceCopyOffloadProperty,
+    StorageDeviceResiliencyProperty,
+    StorageDeviceMediumProductType,
+    StorageAdapterRpmbProperty,
+    StorageAdapterCryptoProperty,
+    StorageDeviceIoCapabilityProperty = 48,
+    StorageAdapterProtocolSpecificProperty,
+    StorageDeviceProtocolSpecificProperty,
+    StorageAdapterTemperatureProperty,
+    StorageDeviceTemperatureProperty,
+    StorageAdapterPhysicalTopologyProperty,
+    StorageDevicePhysicalTopologyProperty,
+    StorageDeviceAttributesProperty,
+    StorageDeviceManagementStatus,
+    StorageAdapterSerialNumberProperty,
+    StorageDeviceLocationProperty,
+    StorageDeviceNumaProperty,
+    StorageDeviceZonedDeviceProperty,
+    StorageDeviceUnsafeShutdownCount,
+    StorageDeviceEnduranceProperty,
+    StorageDeviceLedStateProperty,
+    StorageDeviceSelfEncryptionProperty = 64,
+    StorageFruIdProperty,
+} STORAGE_PROPERTY_ID, * PSTORAGE_PROPERTY_ID;
+
+typedef struct _STORAGE_PROPERTY_QUERY {
+    STORAGE_PROPERTY_ID  PropertyId;
+    STORAGE_QUERY_TYPE  QueryType;
+    UCHAR  AdditionalParameters[ 1 ];
+} STORAGE_PROPERTY_QUERY, * PSTORAGE_PROPERTY_QUERY;
+
+typedef struct _STORAGE_DEVICE_DESCRIPTOR {
+    ULONG  Version;
+    ULONG  Size;
+    UCHAR  DeviceType;
+    UCHAR  DeviceTypeModifier;
+    BOOLEAN  RemovableMedia;
+    BOOLEAN  CommandQueueing;
+    ULONG  VendorIdOffset;
+    ULONG  ProductIdOffset;
+    ULONG  ProductRevisionOffset;
+    ULONG  SerialNumberOffset;
+    STORAGE_BUS_TYPE  BusType;
+    ULONG  RawPropertiesLength;
+    UCHAR  RawDeviceProperties[ 1 ];
+} STORAGE_DEVICE_DESCRIPTOR, * PSTORAGE_DEVICE_DESCRIPTOR;
+
 NTKERNELAPI
 BOOLEAN
 ExEnumHandleTable(

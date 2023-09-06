@@ -47,11 +47,16 @@ NTSTATUS RetrieveInMemoryModuleExecutableSections(
 
 NTSTATUS ParseSMBIOSTable(
 	_In_ PVOID ConfigMotherboardSerialNumber,
-	_In_ SIZE_T ConfigMotherboardSerialNumberSize
+	_In_ SIZE_T ConfigMotherboardSerialMaxNumberSize
 );
 
 NTSTATUS ValidateProcessLoadedModule(
 	_In_ PIRP Irp
+);
+
+NTSTATUS GetHardDiskDriveSerialNumber(
+	_In_ PVOID ConfigDrive0Serial,
+	_In_ SIZE_T ConfigDrive0MaxSize
 );
 
 #endif
