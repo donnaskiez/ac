@@ -875,12 +875,12 @@ NTSTATUS ParseSMBIOSTable(
     * 
     * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf line 823
     */
-    while ( smbios_table_header->Type != VMWARE_SMBIOS_TABLE )
+    while ( smbios_table_header->Type != SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE )
         GetNextSMBIOSStructureInTable( &smbios_table_header );
 
     status = GetStringAtIndexFromSMBIOSTable(
         smbios_table_header,
-        VMWARE_SMBIOS_TABLE_INDEX,
+        MOTHERBOARD_SERIAL_CODE_TABLE_INDEX,
         ConfigMotherboardSerialNumber,
         ConfigMotherboardSerialNumberMaxSize
     );

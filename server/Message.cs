@@ -35,8 +35,8 @@ namespace server
         {
             public int message_type;
             public Int64 steam64_id;
-            public fixed char motherboard_serial_number[128];
-            public fixed char device_drive_0_serial[256];
+            public fixed char motherboard_serial_number[32];
+            public fixed char device_drive_0_serial[32];
         };
 
         struct REPORT_PACKET_HEADER
@@ -52,27 +52,30 @@ namespace server
             _logger = logger;
             _header = this.GetMessageHeader();
 
-            char[] string_1 = new char[128];
-            char[] string_2 = new char[256];
+            char[] string_1 = new char[32];
+            char[] string_2 = new char[32];
 
             unsafe
             {
-                for (int i = 0; i < 128; i++)
+                for (int i = 0; i < 32; i++)
                 {
                     string_1[i] = _header.motherboard_serial_number[i];
                 }
 
-                for (int i=0;i<256;i++)
+                for (int i=0;i<32;i++)
                 {
                     string_2[i] = _header.device_drive_0_serial[i];
                 }
             }
 
-            _logger.Information("SteamID: {0}, MoboSerial: {3}, DriveSerial: {4}, Message type: {1}",
+            string test1 = new string(string_1);
+            string test2 = new string(string_2);
+
+            _logger.Information("SteamID: {0}, MoboSerial: {2}, DriveSerial: {3}, Message type: {1}",
                 _header.steam64_id,
                 _header.message_type,
-                string_1,
-                string_2
+                test1,
+                test2
             );
 
 
@@ -95,7 +98,7 @@ namespace server
 
         unsafe private REPORT_PACKET_HEADER GetReportType()
         {
-            return Helper.BytesToStructure<REPORT_PACKET_HEADER>(ref _buffer, sizeof(REPORT_PACKET_HEADER));
+            return Helper.BytesToStructure<REPORT_PACKET_HEADER>(ref _buffer, sizeof(PACKET_HEADER));
         }
 
         unsafe private void HandleReportMessage(int reportId)

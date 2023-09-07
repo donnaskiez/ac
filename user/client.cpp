@@ -12,9 +12,15 @@ global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR P
 	this->pipe = std::make_shared<global::Pipe>( PipeName );
 }
 
+global::Client::~Client()
+{
+	delete system_information;
+}
+
 void global::Client::UpdateSystemInformation(global::headers::SYSTEM_INFORMATION* SystemInformation)
 {
-	memcpy( &this->system_information, SystemInformation, sizeof( global::headers::SYSTEM_INFORMATION ) );
+	this->system_information = new global::headers::SYSTEM_INFORMATION;
+	memcpy( this->system_information, SystemInformation, sizeof( global::headers::SYSTEM_INFORMATION ) );
 }
 
 /*

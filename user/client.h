@@ -6,6 +6,7 @@
 #include "threadpool.h"
 #include "pipe.h"
 #include <TlHelp32.h>
+#include "common.h"
 
 #define REPORT_BUFFER_SIZE 8192
 #define SEND_BUFFER_SIZE 8192
@@ -52,7 +53,7 @@ namespace global
 		std::shared_ptr<global::ThreadPool> thread_pool;
 		std::shared_ptr<global::Pipe> pipe;
 		std::mutex mutex;
-		global::headers::SYSTEM_INFORMATION system_information;
+		global::headers::SYSTEM_INFORMATION* system_information;
 
 		byte report_buffer[ REPORT_BUFFER_SIZE ];
 		byte send_buffer[ SEND_BUFFER_SIZE ];
@@ -60,6 +61,7 @@ namespace global
 	public:
 
 		Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
+		~Client();
 
 		void UpdateSystemInformation( global::headers::SYSTEM_INFORMATION* SystemInformation );
 
@@ -72,8 +74,23 @@ namespace global
 			global::headers::PIPE_PACKET_HEADER header;
 			header.message_type = REPORT_PACKET_ID;
 			header.steam64_id = TEST_STEAM_64_ID;
-			memcpy( this->report_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
+			memcpy( 
+				header.system_information.drive_0_serial, 
+				this->system_information->drive_0_serial, 
+				sizeof(this->system_information->drive_0_serial) );
+
+			memcpy( 
+				header.system_information.motherboard_serial, 
+				this->system_information->motherboard_serial, 
+				sizeof( this->system_information->motherboard_serial ) );
+
+			memcpy( 
+				this->report_buffer, 
+				&header, 
+				sizeof( global::headers::PIPE_PACKET_HEADER ) );
+
+			global::headers::PIPE_PACKET_HEADER* test = ( global::headers::PIPE_PACKET_HEADER* )this->report_buffer;
 			memcpy( PVOID( ( UINT64 )this->report_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ), Report, sizeof( T ) );
 			this->pipe->WriteToPipe( this->report_buffer, sizeof(T) + sizeof( global::headers::PIPE_PACKET_HEADER ) );
 			RtlZeroMemory( this->report_buffer, REPORT_BUFFER_SIZE );
