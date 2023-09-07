@@ -23,10 +23,15 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     LPCWSTR driver_name = L"\\\\.\\DonnaAC";
 
     std::shared_ptr<global::ThreadPool> thread_pool = std::make_shared<global::ThreadPool>( 4 );
-    std::shared_ptr<global::Client> report_interface = std::make_shared<global::Client>( thread_pool, pipe_name );
+    std::shared_ptr<global::Client> client_interface = std::make_shared<global::Client>( thread_pool, pipe_name );
 
-    usermode::UManager umanager( thread_pool, report_interface );
-    kernelmode::KManager kmanager( driver_name, thread_pool, report_interface);
+    usermode::UManager umanager( thread_pool, client_interface );
+    kernelmode::KManager kmanager( driver_name, thread_pool, client_interface);
+
+    global::headers::SYSTEM_INFORMATION system_information;
+    kmanager.RequestHardwareInformation( &system_information );
+
+    client_interface->UpdateSystemInformation( &system_information );
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {

@@ -97,6 +97,15 @@ VOID GetDriverSymbolicLink(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
+VOID GetDriverConfigSystemInformation(
+	_In_ PSYSTEM_INFORMATION* SystemInformation
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	*SystemInformation = &driver_config.system_information;
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
 NTSTATUS RegistryPathQueryCallbackRoutine(
 	IN PWSTR ValueName,
 	IN ULONG ValueType,

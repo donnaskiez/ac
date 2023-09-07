@@ -12,6 +12,11 @@ global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR P
 	this->pipe = std::make_shared<global::Pipe>( PipeName );
 }
 
+void global::Client::UpdateSystemInformation(global::headers::SYSTEM_INFORMATION* SystemInformation)
+{
+	memcpy( &this->system_information, SystemInformation, sizeof( global::headers::SYSTEM_INFORMATION ) );
+}
+
 /*
 * Request an item from the server
 */
@@ -23,13 +28,14 @@ void global::Client::ServerReceive()
 /*
 * Send an item to the server
 */
-void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
+void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId )
 {
 	mutex.lock();
-
 	global::headers::PIPE_PACKET_HEADER header;
 	header.message_type = SERVER_SEND_PACKET_ID;
 	header.steam64_id = TEST_STEAM_64_ID;
+	memcpy( &header.system_information, &this->system_information, sizeof( global::headers::SYSTEM_INFORMATION ) );
+
 	memcpy( this->send_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
 	LONG total_size_of_headers = sizeof( global::headers::PIPE_PACKET_HEADER ) + sizeof( global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER );

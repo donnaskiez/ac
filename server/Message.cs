@@ -8,6 +8,10 @@ using System.Threading.Tasks;
 using Serilog;
 using server;
 using service;
+using System.Net;
+using System.Net.Sockets;
+using server.Types.Reports;
+using System.Runtime.InteropServices;
 
 namespace server
 {
@@ -15,9 +19,9 @@ namespace server
     {
         private byte[] _buffer;
         private int _bufferSize;
-        private int _messageType;
         private ILogger _logger;
         private PACKET_HEADER _header;
+        private NetworkStream _networkStream;
 
         private enum MESSAGE_TYPE
         {
@@ -26,10 +30,13 @@ namespace server
             MESSAGE_TYPE_RECEIVE = 3
         }
 
-        public struct PACKET_HEADER
+        [StructLayout(LayoutKind.Sequential)]
+        public unsafe struct PACKET_HEADER
         {
             public int message_type;
             public Int64 steam64_id;
+            public fixed char motherboard_serial_number[128];
+            public fixed char device_drive_0_serial[256];
         };
 
         struct REPORT_PACKET_HEADER
@@ -37,19 +44,39 @@ namespace server
             public int reportId;
         }
 
-        public Message(byte[] buffer, int bufferSize, ILogger logger)
+        public Message(NetworkStream networkStream, byte[] buffer, int bufferSize, ILogger logger)
         {
+            _networkStream = networkStream;
             _buffer = buffer;
             _bufferSize = bufferSize;
             _logger = logger;
             _header = this.GetMessageHeader();
 
-            _logger.Information("SteamID: {0}, Message type: {1}", 
+            char[] string_1 = new char[128];
+            char[] string_2 = new char[256];
+
+            unsafe
+            {
+                for (int i = 0; i < 128; i++)
+                {
+                    string_1[i] = _header.motherboard_serial_number[i];
+                }
+
+                for (int i=0;i<256;i++)
+                {
+                    string_2[i] = _header.device_drive_0_serial[i];
+                }
+            }
+
+            _logger.Information("SteamID: {0}, MoboSerial: {3}, DriveSerial: {4}, Message type: {1}",
                 _header.steam64_id,
-                _header.message_type
+                _header.message_type,
+                string_1,
+                string_2
             );
 
-            switch (_messageType)
+
+            switch (_header.message_type)
             {
                 case (int)MESSAGE_TYPE.MESSAGE_TYPE_REPORT:
                     int reportId = GetReportType().reportId;
@@ -75,7 +102,8 @@ namespace server
         {
             _logger.Information("Report id: {0}", reportId);
 
-            var openHandleFailure = Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
+            OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
+                Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
 
             _logger.Information("Report code: {0}, Process Name: {4} ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,

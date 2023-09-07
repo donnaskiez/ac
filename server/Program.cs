@@ -1,4 +1,5 @@
 ﻿using Serilog;
+using server.Database;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
@@ -13,6 +14,9 @@ namespace server
             using var logger = new LoggerConfiguration()
                 .WriteTo.Console()
                 .CreateLogger();
+
+            DatabaseConnection database = new DatabaseConnection();
+            database.Open();
 
             Server server = new Server(logger);
             await server.Listen();

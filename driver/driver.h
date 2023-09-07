@@ -75,6 +75,9 @@ VOID GetDriverPath(
 	_In_ PUNICODE_STRING DriverPath
 );
 
+VOID GetDriverConfigSystemInformation(
+	_In_ PSYSTEM_INFORMATION* SystemInformation
+);
 
 VOID TerminateProtectedProcessOnViolation();
 

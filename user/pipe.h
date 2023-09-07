@@ -7,6 +7,9 @@
 #define SERVER_REQUEST_PACKET_ID 2
 #define SERVER_SEND_PACKET_ID 3
 
+#define MOTHERBOARD_SERIAL_CODE_LENGTH 128
+#define DEVICE_DRIVE_0_SERIAL_CODE_LENGTH 256
+
 namespace global
 {
 	class Pipe
@@ -23,10 +26,17 @@ namespace global
 
 	namespace headers
 	{
+		struct SYSTEM_INFORMATION
+		{
+			CHAR motherboard_serial[ MOTHERBOARD_SERIAL_CODE_LENGTH ];
+			CHAR drive_0_serial[ DEVICE_DRIVE_0_SERIAL_CODE_LENGTH ];
+		};
+
 		struct PIPE_PACKET_HEADER
 		{
 			INT message_type;
 			UINT64 steam64_id;
+			SYSTEM_INFORMATION system_information;
 		};
 
 		struct PIPE_PACKET_REQUEST_EXTENSION_HEADER

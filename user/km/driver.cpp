@@ -5,6 +5,9 @@
 #include "../common.h"
 #include <winternl.h>
 
+typedef BOOLEAN( NTAPI* RtlDosPathNameToNtPathName_U )(
+	PCWSTR DosPathName, PUNICODE_STRING NtPathName, PCWSTR* NtFileNamePart, PVOID DirectoryInfo );
+
 kernelmode::Driver::Driver( LPCWSTR DriverName, std::shared_ptr<global::Client> ReportInterface )
 {
 	this->driver_name = DriverName;
@@ -513,9 +516,6 @@ VOID kernelmode::Driver::CheckDriverHeartbeat()
 
 }
 
-typedef BOOLEAN( NTAPI* RtlDosPathNameToNtPathName_U )(
-	PCWSTR DosPathName, PUNICODE_STRING NtPathName, PCWSTR* NtFileNamePart, PVOID DirectoryInfo );
-
 VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 {
 	HANDLE process_modules_handle;
@@ -593,4 +593,34 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 
 end:
 	CloseHandle( process_modules_handle );
+}
+
+VOID kernelmode::Driver::RequestHardwareInformation( global::headers::SYSTEM_INFORMATION* SystemInformation )
+{
+	BOOLEAN status;
+	global::headers::SYSTEM_INFORMATION system_information;
+	DWORD bytes_returned;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_REQUEST_HARDWARE_INFORMATION,
+		NULL,
+		NULL,
+		&system_information,
+		sizeof( global::headers::SYSTEM_INFORMATION ),
+		&bytes_returned,
+		NULL
+	);
+
+	if ( status == NULL || bytes_returned == NULL)
+	{
+		LOG_ERROR( "DeviceIoControl failed with status %x", GetLastError() );
+		return;
+	}
+
+	memcpy( 
+		SystemInformation, 
+		&system_information, 
+		sizeof( global::headers::SYSTEM_INFORMATION ) 
+	);
 }

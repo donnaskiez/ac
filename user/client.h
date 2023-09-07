@@ -25,6 +25,8 @@
 #define REPORT_HIDDEN_SYSTEM_THREAD 90
 #define REPORT_ILLEGAL_ATTACH_PROCESS 100
 
+#define TEST_STEAM_64_ID 123456789;
+
 enum REPORT_CODES
 {
 	USERMODE_MODULE = 10,
@@ -50,6 +52,7 @@ namespace global
 		std::shared_ptr<global::ThreadPool> thread_pool;
 		std::shared_ptr<global::Pipe> pipe;
 		std::mutex mutex;
+		global::headers::SYSTEM_INFORMATION system_information;
 
 		byte report_buffer[ REPORT_BUFFER_SIZE ];
 		byte send_buffer[ SEND_BUFFER_SIZE ];
@@ -57,6 +60,8 @@ namespace global
 	public:
 
 		Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
+
+		void UpdateSystemInformation( global::headers::SYSTEM_INFORMATION* SystemInformation );
 
 		/* lock buffer, attach header, copy report, send to service then clear buffer */
 		template <typename T>
@@ -66,6 +71,7 @@ namespace global
 
 			global::headers::PIPE_PACKET_HEADER header;
 			header.message_type = REPORT_PACKET_ID;
+			header.steam64_id = TEST_STEAM_64_ID;
 			memcpy( this->report_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
 			memcpy( PVOID( ( UINT64 )this->report_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ), Report, sizeof( T ) );

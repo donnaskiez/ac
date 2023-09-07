@@ -250,6 +250,27 @@ NTSTATUS DeviceControl(
 
 		break;
 
+	case IOCTL_REQUEST_HARDWARE_INFORMATION:;
+
+		PSYSTEM_INFORMATION system_information = NULL;
+		GetDriverConfigSystemInformation( &system_information );
+
+		if ( system_information == NULL )
+		{
+			DEBUG_ERROR( "GetDriverConfigSystemInformation failed" );
+			goto end;
+		}
+
+		Irp->IoStatus.Information = sizeof( SYSTEM_INFORMATION );
+
+		RtlCopyMemory(
+			Irp->AssociatedIrp.SystemBuffer,
+			system_information,
+			sizeof( SYSTEM_INFORMATION )
+		);
+
+		break;
+
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
 		break;

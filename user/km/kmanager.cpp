@@ -55,3 +55,8 @@ VOID kernelmode::KManager::ValidateProcessModules()
 {
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifyProcessLoadedModuleExecutableRegions(); } );
 }
+
+VOID kernelmode::KManager::RequestHardwareInformation(global::headers::SYSTEM_INFORMATION* SystemInformation)
+{
+	this->thread_pool->QueueJob( [ this, SystemInformation ]() { this->driver_interface->RequestHardwareInformation(SystemInformation); } );
+}
