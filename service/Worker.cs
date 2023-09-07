@@ -33,6 +33,7 @@ namespace service
         struct PIPE_PACKET_HEADER
         {
             int message_type;
+            Int64 steam64_id;
         };
 
         public Worker(ILogger<Worker> logger)

@@ -115,10 +115,10 @@ NTSTATUS DeviceControl(
 			goto end;
 		}
 
-		//status = InitiateDriverCallbacks();
+		status = InitiateDriverCallbacks();
 
-		//if ( !NT_SUCCESS( status ) )
-		//	DEBUG_ERROR( "InitiateDriverCallbacks failed with status %x", status );
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "InitiateDriverCallbacks failed with status %x", status );
 		
 		break;
 
@@ -207,7 +207,7 @@ NTSTATUS DeviceControl(
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION:
 
 		ClearProcessConfigOnProcessTermination();
-		//UnregisterCallbacksOnProcessTermination();
+		UnregisterCallbacksOnProcessTermination();
 
 		break;
 
@@ -270,7 +270,7 @@ NTSTATUS DeviceClose(
 
 	FreeGlobalReportQueueObjects();
 	ClearProcessConfigOnProcessTermination();
-	//UnregisterCallbacksOnProcessTermination();
+	UnregisterCallbacksOnProcessTermination();
 
 	IoCompleteRequest( Irp, IO_NO_INCREMENT );
 	return Irp->IoStatus.Status;

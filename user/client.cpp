@@ -4,6 +4,8 @@
 
 #include <cmath>
 
+#define TEST_STEAM_64_ID 123456789;
+
 global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName )
 {
 	this->thread_pool = ThreadPool;
@@ -27,6 +29,7 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 
 	global::headers::PIPE_PACKET_HEADER header;
 	header.message_type = SERVER_SEND_PACKET_ID;
+	header.steam64_id = TEST_STEAM_64_ID;
 	memcpy( this->send_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
 	LONG total_size_of_headers = sizeof( global::headers::PIPE_PACKET_HEADER ) + sizeof( global::headers::PIPE_PACKET_SEND_EXTENSION_HEADER );

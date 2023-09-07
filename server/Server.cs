@@ -41,8 +41,13 @@ namespace server
 
                 _bufferSize = _stream.Read(_buffer, 0, MAX_BUFFER_SIZE);
 
-                Message message = new Message(_buffer, _bufferSize, _logger);
+                ThreadPool.QueueUserWorkItem(DispatchMessage);
             }
+        }
+
+        private void DispatchMessage(Object? stateInfo)
+        {
+            Message message = new Message(_buffer, _bufferSize, _logger);
         }
     }
 }

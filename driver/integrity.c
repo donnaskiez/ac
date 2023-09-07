@@ -952,14 +952,13 @@ NTSTATUS ValidateProcessLoadedModule(
         &bytes_written
     );
 
+    KeUnstackDetachProcess( &apc_state );
+
     if ( !NT_SUCCESS( status ) )
     {
         DEBUG_ERROR( "StoreModuleExecutableRegionsInBuffer failed with status %x", status );
-        KeUnstackDetachProcess( &apc_state );
         goto end;
     }
-
-    KeUnstackDetachProcess( &apc_state );
 
     status = ComputeHashOfBuffer(
         in_memory_buffer,

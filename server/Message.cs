@@ -17,6 +17,7 @@ namespace server
         private int _bufferSize;
         private int _messageType;
         private ILogger _logger;
+        private PACKET_HEADER _header;
 
         private enum MESSAGE_TYPE
         {
@@ -25,14 +26,15 @@ namespace server
             MESSAGE_TYPE_RECEIVE = 3
         }
 
-        struct PACKET_HEADER
+        public struct PACKET_HEADER
         {
-            int messageType;
-        }
+            public int message_type;
+            public Int64 steam64_id;
+        };
 
         struct REPORT_PACKET_HEADER
         {
-            int reportId;
+            public int reportId;
         }
 
         public Message(byte[] buffer, int bufferSize, ILogger logger)
@@ -40,15 +42,18 @@ namespace server
             _buffer = buffer;
             _bufferSize = bufferSize;
             _logger = logger;
+            _header = this.GetMessageHeader();
 
-            this.GetMessageType();
-
-            _logger.Information("Message type: {0}", _messageType);
+            _logger.Information("SteamID: {0}, Message type: {1}", 
+                _header.steam64_id,
+                _header.message_type
+            );
 
             switch (_messageType)
             {
                 case (int)MESSAGE_TYPE.MESSAGE_TYPE_REPORT:
-                    this.HandleReportMessage(this.GetReportType());
+                    int reportId = GetReportType().reportId;
+                    this.HandleReportMessage(reportId);
                     break;
                 default:
                     _logger.Information("This message type is not accepted at the moment.");
@@ -56,21 +61,21 @@ namespace server
             }
         }
 
-        private void GetMessageType()
+        private PACKET_HEADER GetMessageHeader()
         {
-            _messageType = BitConverter.ToInt32(_buffer, 0);
+            return Helper.BytesToStructure<PACKET_HEADER>(ref _buffer, 0);
         }
 
-        private int GetReportType()
+        unsafe private REPORT_PACKET_HEADER GetReportType()
         {
-            return BitConverter.ToInt32(_buffer, sizeof(int));
+            return Helper.BytesToStructure<REPORT_PACKET_HEADER>(ref _buffer, sizeof(REPORT_PACKET_HEADER));
         }
 
-        private void HandleReportMessage(int reportId)
+        unsafe private void HandleReportMessage(int reportId)
         {
             _logger.Information("Report id: {0}", reportId);
 
-            var openHandleFailure = Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(int));
+            var openHandleFailure = Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
 
             _logger.Information("Report code: {0}, Process Name: {4} ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,

@@ -26,6 +26,7 @@ namespace global
 		struct PIPE_PACKET_HEADER
 		{
 			INT message_type;
+			UINT64 steam64_id;
 		};
 
 		struct PIPE_PACKET_REQUEST_EXTENSION_HEADER
