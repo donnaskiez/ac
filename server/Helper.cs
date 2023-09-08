@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -10,24 +10,41 @@ using System.Threading.Tasks;
 
 namespace server
 {
-	public class Helper
-	{
-		unsafe public static T BytesToStructure<T>(ref byte[] buffer)
-		{
-			int typeSize = Marshal.SizeOf(typeof(T));
-			IntPtr ptr = Marshal.AllocHGlobal(typeSize);
+    public class Helper
+    {
+        unsafe public static T BytesToStructure<T>(ref byte[] buffer, int offset)
+        {
+            //int typeSize = Marshal.SizeOf(typeof(T));
+            int typeSize = buffer.Length - offset;
+            IntPtr ptr = Marshal.AllocHGlobal(typeSize);
 
-			try
-			{
-				Marshal.Copy(buffer, 0, ptr, typeSize);
-				return (T)Marshal.PtrToStructure(ptr, typeof(T));
-			}
-			finally
-			{
-				Marshal.FreeHGlobal(ptr);
-			}
-		}
-	}
+            try
+            {
+                Marshal.Copy(buffer, offset, ptr, typeSize);
+                return (T)Marshal.PtrToStructure(ptr, typeof(T));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
+        }
+
+        unsafe public static string FixedUnsafeBufferToSafeString(ref byte[] buffer, int bufferSize, int offset, int stringSize)
+        {
+            if (stringSize > bufferSize)
+                return null;
+
+            char[] stringBuffer = new char[stringSize];
+
+            for (int i = 0; i < stringSize; i++)
+            {
+                stringBuffer[i] = (char)buffer[offset + i];
+            }
+
+            return new string(stringBuffer);
+        }
+            
+    }
 }
 
 #pragma warning restore CS8600

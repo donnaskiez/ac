@@ -19,7 +19,7 @@ namespace service
             _buffer = buffer;
         }
 
-        public void SendMessageToServer()
+        public void DispatchMessage()
         {
             Client client = new Client(_buffer, _bufferSize);
             client.SendMessageToServer();

@@ -29,13 +29,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     kernelmode::KManager kmanager( driver_name, thread_pool, client_interface);
 
     global::headers::SYSTEM_INFORMATION system_information;
-    kmanager.RequestHardwareInformation( &system_information );
-
-
-    LOG_INFO( "drive serial dioctl: %s", system_information.drive_0_serial );
-    LOG_INFO( "mobo serial dioctl: %s", system_information.motherboard_serial );
-
-    client_interface->UpdateSystemInformation( &system_information );
+    kmanager.SendClientHardwareInformation();
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {

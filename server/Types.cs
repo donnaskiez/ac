@@ -1,4 +1,5 @@
-﻿using Serilog;
+﻿using Org.BouncyCastle.Utilities;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,19 +12,23 @@ namespace server
 {
     namespace Types
     {
-        namespace Receive
+        namespace ClientSend
         {
-            struct PIPE_PACKET_SEND_EXTENSION_HEADER
+            struct CLIENT_SEND_PACKET_HEADER
             {
-                public int request_id;
-                public int current_packet_number;
-                public int total_incoming_packet_count;
-                public uint packet_size;
-                public uint total_incoming_packet_size;
+                public int RequestId;
+                public int PacketSize;
             };
+
+            [StructLayout(LayoutKind.Sequential)]
+            public unsafe struct PACKET_CLIENT_HARDWARE_INFORMATION
+            {
+                public fixed char MotherboardSerialNumber[32];
+                public fixed char DeviceDriver0Serial[32];
+            }
         }
 
-        namespace Reports
+        namespace ClientReport
         {
             [StructLayout(LayoutKind.Sequential)]
             public unsafe struct MODULE_VERIFICATION_CHECKSUM_FAILURE

@@ -64,7 +64,7 @@ namespace service
                         _logger.LogInformation("Message received at pipe server with size: {0}", numBytesRead);
 
                         Message message = new Message(_buffer, numBytesRead);
-                        message.SendMessageToServer();
+                        message.DispatchMessage();
                     }
                 }
                 catch (Exception ex)

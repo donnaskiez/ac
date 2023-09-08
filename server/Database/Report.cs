@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using server.Types.Reports;
+using server.Types.ClientReport;
 using System;
 using System.Collections.Generic;
 using System.Linq;

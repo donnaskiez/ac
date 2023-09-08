@@ -14,7 +14,7 @@ namespace server
             using var logger = new LoggerConfiguration()
                 .WriteTo.Console()
                 .CreateLogger();
-
+            
             DatabaseConnection database = new DatabaseConnection();
             database.Open();
 

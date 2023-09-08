@@ -15,8 +15,6 @@ namespace server
         private TcpListener _tcpListener;
         private ILogger _logger;
 
-        private const int MAX_BUFFER_SIZE = 8192;
-
         public Server(ILogger logger)
         {
             _ipEndPoint = new IPEndPoint(IPAddress.Any, 8888);
@@ -33,15 +31,26 @@ namespace server
             while (true)
             {
                 using TcpClient _client = await _tcpListener.AcceptTcpClientAsync();
-                NetworkStream _stream = _client.GetStream();
 
-                byte[] buffer = new byte[MAX_BUFFER_SIZE];
-                int bufferSize = 0;
+                NetworkStream _stream = _client.GetStream();
                 NetworkStream clientStreamReference = _stream;
 
-                bufferSize = _stream.Read(buffer, 0, MAX_BUFFER_SIZE);
+                byte[] buffer = new byte[2048];
+                int bytesRead = 0;
 
-                ThreadPool.QueueUserWorkItem(state => DispatchMessage(state, clientStreamReference, buffer, bufferSize) );
+                using (MemoryStream stream = new MemoryStream())
+                {
+
+                    while (_stream.DataAvailable)
+                    {
+                        bytesRead = _stream.Read(buffer, 0, buffer.Length);
+                        stream.Write(buffer, 0, bytesRead);
+                    }
+
+                    byte[] message = stream.ToArray();
+
+                    ThreadPool.QueueUserWorkItem(state => DispatchMessage(state, clientStreamReference, message, message.Length));
+                }
             }
         }
 

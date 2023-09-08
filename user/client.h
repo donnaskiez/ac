@@ -39,7 +39,11 @@ enum REPORT_CODES
 	HANDLE_OPERATION = 70
 };
 
-#define SERVER_SEND_MODULE_INTEGRITY_CHECK 10
+#define CLIENT_REQUEST_MODULE_INTEGRITY_CHECK 10
+
+#define CLIENT_SEND_SYSTEM_INFORMATION 10
+
+#define MAX_CLIENT_SEND_PACKET_SIZE 60000
 
 enum SERVER_SEND_CODES
 {
@@ -53,15 +57,12 @@ namespace global
 		std::shared_ptr<global::ThreadPool> thread_pool;
 		std::shared_ptr<global::Pipe> pipe;
 		std::mutex mutex;
-		global::headers::SYSTEM_INFORMATION* system_information;
 
 		byte report_buffer[ REPORT_BUFFER_SIZE ];
-		byte send_buffer[ SEND_BUFFER_SIZE ];
 
 	public:
 
 		Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName );
-		~Client();
 
 		void UpdateSystemInformation( global::headers::SYSTEM_INFORMATION* SystemInformation );
 
@@ -72,12 +73,10 @@ namespace global
 			mutex.lock();
 
 			global::headers::PIPE_PACKET_HEADER header;
-			header.message_type = REPORT_PACKET_ID;
+			header.message_type = MESSAGE_TYPE_CLIENT_REPORT;
 			header.steam64_id = TEST_STEAM_64_ID;
-			memcpy( &header.system_information.drive_0_serial, &this->system_information->drive_0_serial, sizeof(this->system_information->drive_0_serial) );
-			memcpy( &header.system_information.motherboard_serial, &this->system_information->motherboard_serial, sizeof( this->system_information->motherboard_serial ) );
-
 			memcpy( &this->report_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
+
 			memcpy( PVOID( ( UINT64 )this->report_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ), Report, sizeof( T ) );
 			this->pipe->WriteToPipe( this->report_buffer, sizeof(T) + sizeof( global::headers::PIPE_PACKET_HEADER ) );
 			RtlZeroMemory( this->report_buffer, REPORT_BUFFER_SIZE );
@@ -86,7 +85,6 @@ namespace global
 		}
 
 		void ServerReceive();
-
 		void ServerSend( PVOID Buffer, SIZE_T Size, INT RequestId );
 	};
 

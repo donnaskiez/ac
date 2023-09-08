@@ -370,7 +370,7 @@ VOID kernelmode::Driver::RequestModuleExecutableRegions()
 
 	LOG_INFO( "bytes returned: %lx", bytes_returned );
 
-	this->report_interface->ServerSend( buffer, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+	this->report_interface->ServerSend( buffer, bytes_returned, CLIENT_REQUEST_MODULE_INTEGRITY_CHECK );
 
 end:
 	free( buffer );
@@ -399,7 +399,7 @@ VOID kernelmode::Driver::ScanForUnlinkedProcess()
 		return;
 	}
 
-	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+	this->report_interface->ServerSend( &report, bytes_returned, CLIENT_REQUEST_MODULE_INTEGRITY_CHECK );
 }
 
 VOID kernelmode::Driver::PerformIntegrityCheck()
@@ -489,7 +489,7 @@ VOID kernelmode::Driver::ValidateKPRCBThreads()
 	if ( bytes_returned == NULL )
 		return;
 
-	this->report_interface->ServerSend( &report, bytes_returned, SERVER_SEND_MODULE_INTEGRITY_CHECK );
+	this->report_interface->ServerSend( &report, bytes_returned, CLIENT_REQUEST_MODULE_INTEGRITY_CHECK );
 }
 
 VOID kernelmode::Driver::CheckForAttachedThreads()
@@ -595,12 +595,12 @@ end:
 	CloseHandle( process_modules_handle );
 }
 
-VOID kernelmode::Driver::RequestHardwareInformation( global::headers::SYSTEM_INFORMATION* SystemInformation )
+VOID kernelmode::Driver::SendClientHardwareInformation()
 {
 	BOOLEAN status;
 	global::headers::SYSTEM_INFORMATION system_information;
 	DWORD bytes_returned;
-
+	std::cout << "HELLO?>?" << std::endl;
 	status = DeviceIoControl(
 		this->driver_handle,
 		IOCTL_REQUEST_HARDWARE_INFORMATION,
@@ -618,9 +618,8 @@ VOID kernelmode::Driver::RequestHardwareInformation( global::headers::SYSTEM_INF
 		return;
 	}
 
-	memcpy( 
-		SystemInformation, 
-		&system_information, 
-		sizeof( global::headers::SYSTEM_INFORMATION ) 
-	);
+	std::cout << system_information.motherboard_serial << " " << system_information.drive_0_serial << std::endl;
+
+	this->report_interface->ServerSend( 
+		&system_information, sizeof( global::headers::SYSTEM_INFORMATION ), CLIENT_SEND_SYSTEM_INFORMATION );
 }

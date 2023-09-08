@@ -27,7 +27,7 @@ namespace kernelmode
 		VOID PerformIntegrityCheck();
 		VOID CheckForAttachedThreads();
 		VOID ValidateProcessModules();
-		VOID RequestHardwareInformation( global::headers::SYSTEM_INFORMATION* SystemInformation );
+		VOID SendClientHardwareInformation();
 	};
 }
 

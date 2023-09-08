@@ -56,7 +56,7 @@ namespace kernelmode
 		VOID PerformIntegrityCheck();
 		VOID CheckForAttachedThreads();
 		VOID VerifyProcessLoadedModuleExecutableRegions();
-		VOID RequestHardwareInformation( global::headers::SYSTEM_INFORMATION* SystemInformation );
+		VOID SendClientHardwareInformation();
 	};
 
 	struct DRIVER_INITIATION_INFORMATION
