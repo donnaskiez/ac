@@ -1,6 +1,7 @@
 #include "pipe.h"
 
 #include "common.h"
+#include <intrin.h>
 
 global::Pipe::Pipe( LPTSTR PipeName )
 {

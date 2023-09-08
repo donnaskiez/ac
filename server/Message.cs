@@ -59,23 +59,23 @@ namespace server
             {
                 for (int i = 0; i < 32; i++)
                 {
-                    string_1[i] = _header.motherboard_serial_number[i];
+                    string_1[i] = (char)_buffer[16+i];
                 }
 
                 for (int i=0;i<32;i++)
                 {
-                    string_2[i] = _header.device_drive_0_serial[i];
+                    string_2[i] = (char)_buffer[16 + 32 + i];
                 }
             }
 
             string test1 = new string(string_1);
             string test2 = new string(string_2);
 
-            _logger.Information("SteamID: {0}, MoboSerial: {2}, DriveSerial: {3}, Message type: {1}",
+            _logger.Information("SteamID: {0:x}, MoboSerial: {2:x}, DriveSerial: {3:x}, Message type: {1:x}",
                 _header.steam64_id,
                 _header.message_type,
-                test1,
-                test2
+                string_1,
+                string_2
             );
 
 
@@ -98,7 +98,7 @@ namespace server
 
         unsafe private REPORT_PACKET_HEADER GetReportType()
         {
-            return Helper.BytesToStructure<REPORT_PACKET_HEADER>(ref _buffer, sizeof(PACKET_HEADER));
+            return Helper.BytesToStructure<REPORT_PACKET_HEADER>(ref _buffer, 80);
         }
 
         unsafe private void HandleReportMessage(int reportId)
@@ -106,9 +106,9 @@ namespace server
             _logger.Information("Report id: {0}", reportId);
 
             OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
-                Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<Types.Reports.OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, 80);
 
-            _logger.Information("Report code: {0}, Process Name: {4} ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
+            _logger.Information("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,
                 openHandleFailure.ProcessId,
                 openHandleFailure.ThreadId,

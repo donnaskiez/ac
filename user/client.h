@@ -74,23 +74,10 @@ namespace global
 			global::headers::PIPE_PACKET_HEADER header;
 			header.message_type = REPORT_PACKET_ID;
 			header.steam64_id = TEST_STEAM_64_ID;
+			memcpy( &header.system_information.drive_0_serial, &this->system_information->drive_0_serial, sizeof(this->system_information->drive_0_serial) );
+			memcpy( &header.system_information.motherboard_serial, &this->system_information->motherboard_serial, sizeof( this->system_information->motherboard_serial ) );
 
-			memcpy( 
-				header.system_information.drive_0_serial, 
-				this->system_information->drive_0_serial, 
-				sizeof(this->system_information->drive_0_serial) );
-
-			memcpy( 
-				header.system_information.motherboard_serial, 
-				this->system_information->motherboard_serial, 
-				sizeof( this->system_information->motherboard_serial ) );
-
-			memcpy( 
-				this->report_buffer, 
-				&header, 
-				sizeof( global::headers::PIPE_PACKET_HEADER ) );
-
-			global::headers::PIPE_PACKET_HEADER* test = ( global::headers::PIPE_PACKET_HEADER* )this->report_buffer;
+			memcpy( &this->report_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 			memcpy( PVOID( ( UINT64 )this->report_buffer + sizeof( global::headers::PIPE_PACKET_HEADER ) ), Report, sizeof( T ) );
 			this->pipe->WriteToPipe( this->report_buffer, sizeof(T) + sizeof( global::headers::PIPE_PACKET_HEADER ) );
 			RtlZeroMemory( this->report_buffer, REPORT_BUFFER_SIZE );
