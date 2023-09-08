@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace server.Database
 {
-    public class Report : DatabaseConnection
+    public class ClientReport : DatabaseConnection
     {
         private ILogger _logger;
 
@@ -23,7 +23,7 @@ namespace server.Database
             MODULE_VERIFICATION_SUCCESS = 70
         }
 
-        public Report(ILogger<Report> logger)
+        public ClientReport(ILogger<ClientReport> logger)
         {
             _logger = logger;
         }

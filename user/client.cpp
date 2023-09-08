@@ -26,11 +26,9 @@ void global::Client::ServerReceive()
 void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId )
 {
 	mutex.lock();
-	global::headers::PIPE_PACKET_HEADER header;
-	header.message_type = MESSAGE_TYPE_CLIENT_SEND;
-	header.steam64_id = TEST_STEAM_64_ID;
 
-	SIZE_T total_header_size = sizeof( global::headers::CLIENT_SEND_PACKET_HEADER ) + sizeof( global::headers::PIPE_PACKET_HEADER );
+	SIZE_T total_header_size = sizeof( global::headers::CLIENT_SEND_PACKET_HEADER ) + 
+		sizeof( global::headers::PIPE_PACKET_HEADER );
 
 	if ( Size + total_header_size > MAX_CLIENT_SEND_PACKET_SIZE )
 	{
@@ -49,6 +47,10 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId )
 
 	RtlZeroMemory( send_buffer, total_header_size + Size );
 
+	global::headers::PIPE_PACKET_HEADER header;
+	header.message_type = MESSAGE_TYPE_CLIENT_SEND;
+	header.steam64_id = TEST_STEAM_64_ID;
+
 	memcpy( send_buffer, &header, sizeof( global::headers::PIPE_PACKET_HEADER ) );
 
 	global::headers::CLIENT_SEND_PACKET_HEADER header_extension;
@@ -63,6 +65,5 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId )
 	this->pipe->WriteToPipe( send_buffer, header_extension.packet_size );
 
 	mutex.unlock();
-
 	free( send_buffer );
 }

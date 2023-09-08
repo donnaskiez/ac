@@ -86,9 +86,7 @@ namespace server
         }
 
         unsafe private void HandleReportMessage(int reportId)
-        {
-            _logger.Information("Report id: {0}", reportId);
-
+        { 
             OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
                 Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
 
@@ -97,35 +95,40 @@ namespace server
                 openHandleFailure.ProcessId,
                 openHandleFailure.ThreadId,
                 openHandleFailure.DesiredAccess);
-
         }
 
         private void HandleClientSendMessage(int clientSendId)
         {
             CLIENT_SEND_PACKET_HEADER header = GetClientSendPacketHeader();
 
-            _logger.Information("RequestId: {0}, PacketSize: {1}", header.RequestId, header.PacketSize);
-
             switch (header.RequestId)
             {
                 case (int)CLIENT_SEND_REQUEST_ID.SYSTEM_INFORMATION:
-                    this.HandleClientSendHardwareInformation();
+                    this.HandleClientSendHardwareInformation(header);
                     break;
             }
 
         }
 
-        unsafe private void HandleClientSendHardwareInformation()
+        unsafe private void HandleClientSendHardwareInformation(CLIENT_SEND_PACKET_HEADER sendPacketHeader)
         {
             _logger.Information("Handling client send hardware information");
 
             string moboSerial = Helper.FixedUnsafeBufferToSafeString(
                 ref _buffer, _bufferSize, sizeof(PACKET_HEADER) + sizeof(CLIENT_SEND_PACKET_HEADER), 32);
 
+            if (moboSerial == null)
+                return;
+
             string driveSerial = Helper.FixedUnsafeBufferToSafeString(
                 ref _buffer, _bufferSize, sizeof(PACKET_HEADER) + sizeof(CLIENT_SEND_PACKET_HEADER) + 32, 32);
 
-            _logger.Information("Mobo Serial: {0}, drive serial: {1}", moboSerial, driveSerial);
+            if (driveSerial == null)
+                return;
+
+            _logger.Information("SteamId: {0}, Mobo Serial: {1}, drive serial: {2}", _header.steam64_id, moboSerial, driveSerial);
+
+
         }
     }
 }
