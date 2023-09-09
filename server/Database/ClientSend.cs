@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace server.Database
 {
-    public class ClientSend : DatabaseConnection
+    public class ClientSend
     {
         private ILogger _logger;
 
@@ -32,12 +32,12 @@ namespace server.Database
 
             switch (reportCode)
             {
-                case (int)ReportCodes.MODULE_VERIFICATION_CHECKSUM_FAILURE:
+/*                case (int)ReportCodes.MODULE_VERIFICATION_CHECKSUM_FAILURE:
                     InsertReportWithCode10((MODULE_VERIFICATION_CHECKSUM_FAILURE)Convert.ChangeType(report, typeof(MODULE_VERIFICATION_CHECKSUM_FAILURE)));
                     break;
                 default:
                     _logger.LogError("Unknown report code: {0}", reportCode);
-                    break;
+                    break;*/
             }
         }
 

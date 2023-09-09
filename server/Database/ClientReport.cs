@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace server.Database
 {
-    public class ClientReport : DatabaseConnection
+    public class ClientReport
     {
         private ILogger _logger;
 

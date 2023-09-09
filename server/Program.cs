@@ -1,5 +1,8 @@
 ﻿using Serilog;
 using server.Database;
+using server.Database.Entity;
+using server.Database.Model;
+using System.Configuration;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
@@ -15,8 +18,46 @@ namespace server
                 .WriteTo.Console()
                 .CreateLogger();
             
-            DatabaseConnection database = new DatabaseConnection();
-            database.Open();
+            using (var context = new ModelContext())
+            {
+                context.Database.EnsureCreated();
+
+                Database.Entity.UserEntity user = new Database.Entity.UserEntity(logger, context);
+
+                user.IsBanned = false;
+                user.Steam64Id = 123123123;
+
+                user.HardwareConfigurationEntity = new HardwareConfigurationEntity(context);
+                user.HardwareConfigurationEntity.MotherboardSerial = 987654321;
+                user.HardwareConfigurationEntity.DeviceDrive0Serial = 123456789;
+
+                if (user.IsUsersHardwareBanned())
+                {
+                    logger.Information("Users hardware is banned");
+                }
+                else
+                {
+                    if (user.CheckIfUserExists())
+                    {
+                        if (user.CheckIfUserIsBanned())
+                        {
+                            logger.Information("User is banned");
+                        }
+                        else
+                        {
+                            logger.Information("User is not banned");
+                        }
+                    }
+                    else
+                    {
+                        logger.Information("User does not exist");
+
+                        user.InsertUser();
+                    }
+                }
+
+                await context.SaveChangesAsync();
+            }
 
             Server server = new Server(logger);
             await server.Listen();
