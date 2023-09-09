@@ -12,6 +12,9 @@ using System.Net.Sockets;
 using server.Types.ClientReport;
 using server.Types.ClientSend;
 using System.Runtime.InteropServices;
+using server.Database.Model;
+using server.Database.Entity;
+using Org.BouncyCastle.Asn1.BC;
 
 namespace server
 {
@@ -38,12 +41,25 @@ namespace server
         public struct PACKET_HEADER
         {
             public int message_type;
-            public Int64 steam64_id;
+            public ulong steam64_id;
         };
 
-        struct PACKET_REQUEST_HEADER
+        private struct PACKET_REQUEST_HEADER
         {
             public int RequestId;
+        }
+
+        private struct SYSTEM_INFORMATION_REQUEST_RESPONSE
+        {
+            public int RequestId;
+            public int CanUserProceed;
+            public int reason;
+        }
+
+        private enum USER_BAN_REASONS
+        {
+            HARDWARE_BAN = 10,
+            USER_BAN = 20
         }
 
         public Message(NetworkStream networkStream, byte[] buffer, int bufferSize, ILogger logger)
@@ -128,7 +144,72 @@ namespace server
 
             _logger.Information("SteamId: {0}, Mobo Serial: {1}, drive serial: {2}", _header.steam64_id, moboSerial, driveSerial);
 
+            using (var context = new ModelContext())
+            {
+                context.Database.EnsureCreated();
 
+                UserEntity user = new UserEntity(_logger, context);
+
+                user.Steam64Id = _header.steam64_id;
+                user.HardwareConfigurationEntity = new HardwareConfigurationEntity(context);
+                user.HardwareConfigurationEntity.MotherboardSerial = moboSerial;
+                user.HardwareConfigurationEntity.DeviceDrive0Serial = driveSerial;
+
+                if (user.IsUsersHardwareBanned())
+                {
+                    //return packet saying user is banned
+                    _logger.Information("Users hardware is banned");
+
+                    BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.HARDWARE_BAN);
+
+                    context.SaveChanges();
+                    return;
+                    
+                }
+
+                if (user.CheckIfUserExists())
+                {
+                    if (user.CheckIfUserIsBanned())
+                    {
+                        //same here, send packet back saying user is banned
+                        _logger.Information("User is banned");
+
+                        BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.USER_BAN);
+
+                        context.SaveChanges();
+                        return;
+                    }
+                    else
+                    {
+                        //send packet back that the user has successfully been authenticated
+                        _logger.Information("User is not banned");
+
+                        BuildSystemVerificationResponseHeader(1, sendPacketHeader.RequestId, 0);
+
+                        context.SaveChanges();
+                        return;
+                    }
+                }
+
+                _logger.Information("User does not exist and is on valid hardware, creating new user");
+
+                user.InsertUser();
+                BuildSystemVerificationResponseHeader(1, sendPacketHeader.RequestId, 0);
+
+                context.SaveChanges();
+            }
+        }
+
+        private void BuildSystemVerificationResponseHeader(int canUserProceed, int requestId, int reason)
+        {
+            SYSTEM_INFORMATION_REQUEST_RESPONSE response = new SYSTEM_INFORMATION_REQUEST_RESPONSE();
+            response.CanUserProceed = canUserProceed;
+            response.RequestId = requestId;
+            response.reason = reason;
+
+            byte[] responseBytes = Helper.StructureToBytes<SYSTEM_INFORMATION_REQUEST_RESPONSE>(ref response);
+
+            _networkStream.Write(responseBytes, 0, Marshal.SizeOf(response));
         }
     }
 }

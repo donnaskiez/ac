@@ -21,9 +21,8 @@ namespace server.Database.Entity
 
         public bool CheckIfHardwareConfigurationExists()
         {
-            return _modelContext.HardwareConfiguration.Any(h => 
-                h.MotherboardSerial == MotherboardSerial && 
-                h.DeviceDrive0Serial == DeviceDrive0Serial);
+            return _modelContext.HardwareConfiguration.Any(h => h.MotherboardSerial == MotherboardSerial && 
+                                                                h.DeviceDrive0Serial == DeviceDrive0Serial);
         }
     }
 }

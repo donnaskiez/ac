@@ -29,6 +29,24 @@ namespace server
             }
         }
 
+        unsafe public static byte[] StructureToBytes<T>(ref T structure)
+        {
+            int typeSize = Marshal.SizeOf(typeof(T));
+            byte[] buffer = new byte[typeSize];
+            IntPtr ptr = Marshal.AllocHGlobal(typeSize);
+
+            try
+            {
+                Marshal.StructureToPtr(structure, ptr, true);
+                Marshal.Copy(ptr, buffer, 0, typeSize);
+                return buffer;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
+        }   
+
         unsafe public static string FixedUnsafeBufferToSafeString(ref byte[] buffer, int bufferSize, int offset, int stringSize)
         {
             if (stringSize > bufferSize)

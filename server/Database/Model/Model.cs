@@ -22,7 +22,7 @@ namespace server.Database.Model
         public int UserId { get; set; }
         public virtual User User { get; set; }
         public bool IsBanned { get; set; }
-        public ulong DeviceDrive0Serial { get; set; }
-        public ulong MotherboardSerial { get; set; }
+        public string DeviceDrive0Serial { get; set; }
+        public string MotherboardSerial { get; set; }
     }
 }
