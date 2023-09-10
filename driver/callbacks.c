@@ -68,7 +68,6 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 		{
 			OperationInformation->Parameters->CreateHandleInformation.DesiredAccess = deny_access;
 			OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess = deny_access;
-			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
 
 			/*
 			* These processes will constantly open handles to any open process for various reasons,
@@ -78,6 +77,8 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 				process_creator_name == "svchost.exe" ||
 				process_creator_name == "explorer.exe" )
 				goto end;
+
+			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
 
 			POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
 

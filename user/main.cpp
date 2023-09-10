@@ -43,7 +43,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
         srand( time( NULL ) );
         int seed = ( rand() % 5 );
 
-        LOG_INFO( "Seed: %i", seed );
+        std::cout << "Seed: " << seed << std::endl;
 
         switch ( seed )
         {
