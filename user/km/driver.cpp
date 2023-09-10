@@ -585,7 +585,8 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 			report.module_base_address = (UINT64)module_entry.modBaseAddr;
 			report.module_size = module_entry.modBaseSize;
 			std::wstring wstr( module_entry.szModule );
-			report.module_name = std::string( wstr.begin(), wstr.end() );
+			std::string module_name_string = std::string( wstr.begin(), wstr.end() );
+			memcpy( &report.module_name, &module_name_string, module_name_string.length() );
 			this->report_interface->ReportViolation( &report );
 		}
 

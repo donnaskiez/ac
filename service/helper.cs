@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Serilog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -12,19 +13,26 @@ namespace service
 {
     public class Helper
     {
-        unsafe public static T BytesToStructure<T>(ref byte[] buffer, int offset)
+        unsafe public static T BytesToStructure<T>(byte[] buffer, int offset)
         {
             int typeSize = Marshal.SizeOf(typeof(T));
+
+            if (buffer.Length == 0)
+                return default(T);
+
             IntPtr ptr = Marshal.AllocHGlobal(typeSize);
 
             try
             {
                 Marshal.Copy(buffer, offset, ptr, typeSize);
-                return (T)Marshal.PtrToStructure(ptr, typeof(T));
-            }
-            finally
-            {
+                T result = (T)Marshal.PtrToStructure(ptr, typeof(T));
                 Marshal.FreeHGlobal(ptr);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Log.Information(ex.Message);
+                return default(T);
             }
         }
     }

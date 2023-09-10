@@ -22,6 +22,8 @@ namespace service
         private int _bufferSize;
         private static int MAX_BUFFER_SIZE = 8192;
 
+        private static int OK_RESPONSE_SIZE = 4;
+
         public Worker(Serilog.ILogger logger)
         {
             _logger = logger;
@@ -69,11 +71,12 @@ namespace service
         {
             byte[] responseMessage = message.GetResponseFromServer();
 
+            if (responseMessage.Length == OK_RESPONSE_SIZE)
+                return;
+
             _logger.Information("Sending response message to client with size: {0}", responseMessage.Length);
 
             _pipeServer.Write(responseMessage, 0, responseMessage.Length);
-
-            _logger.Information("written to pipe");
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]

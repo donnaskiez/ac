@@ -40,9 +40,33 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
+        srand( time( NULL ) );
+        int seed = ( rand() % 5 );
+
+        LOG_INFO( "Seed: %i", seed );
+
+        switch ( seed )
+        {
+        case 0:
+            kmanager.EnumerateHandleTables();
+            break;
+        case 1:
+            kmanager.PerformIntegrityCheck();
+            break;
+        case 2:
+            kmanager.RunNmiCallbacks();
+            break;
+        case 3:
+            kmanager.VerifySystemModules();
+            break;
+        case 4:
+            kmanager.ValidateProcessModules();
+            break;
+        }
+
         kmanager.MonitorCallbackReports();
 
-        std::this_thread::sleep_for( std::chrono::milliseconds( 5000 ) );
+        std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
     }
 
     fclose( stdout );

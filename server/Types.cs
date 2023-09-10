@@ -32,13 +32,14 @@ namespace server
 
         namespace ClientReport
         {
-            [StructLayout(LayoutKind.Sequential)]
-            public unsafe struct MODULE_VERIFICATION_CHECKSUM_FAILURE
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+            public unsafe struct PROCESS_MODULE_INTEGRITY_CHECK_FAILURE
             {
                 public int ReportCode;
                 public UInt64 ModuleBaseAddress;
                 public UInt64 ModuleSize;
-                public fixed char ModuleName[512];
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+                public string ModuleName;
             }
 
             public struct PROCESS_THREAD_START_FAILURE
@@ -72,14 +73,15 @@ namespace server
                 public UInt64 InvalidRip;
             }
 
-            [StructLayout(LayoutKind.Sequential)]
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
             public unsafe struct MODULE_VALIDATION_FAILURE
             {
                 public int ReportCode;
                 public int ReportType;
                 public long DriverBaseAddress;
                 public long DriverSize;
-                public fixed char ModuleName[128];
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+                public string ModuleName;
             }
 
             [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]

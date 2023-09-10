@@ -68,6 +68,20 @@ namespace server
             USER_BAN = 20
         }
 
+        private enum ReportCodes
+        {
+            REPORT_CODE_MODULE_VERIFICATION = 10,
+            REPORT_CODE_START_ADDRESS_VERIFICATION = 20,
+            REPORT_PAGE_PROTECTION_VERIFICATION = 30,
+            REPORT_PATTERN_SCAN_FAILURE = 40,
+            REPORT_NMI_CALLBACK_FAILURE = 50,
+            REPORT_MODULE_VALIDATION_FAILURE = 60,
+            REPORT_ILLEGAL_HANDLE_OPERATION = 70,
+            REPORT_INVALID_PROCESS_ALLOCATION = 80,
+            REPORT_HIDDEN_SYSTEM_THREAD = 90,
+            REPORT_ILLEGAL_ATTACH_PROCESS = 100
+        }
+
         public Message(TcpClient client, byte[] buffer, int bufferSize, ILogger logger)
         {
             _tcpClient = client;
@@ -110,14 +124,33 @@ namespace server
 
         unsafe private void HandleReportMessage(int reportId)
         { 
-            OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
-                Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));
+            switch (reportId)
+            {
+                case (int)ReportCodes.REPORT_ILLEGAL_HANDLE_OPERATION:
+                    _logger.Information("REPORT_ILLEGAL_HANDLE_OPERATION");
+                    break;
+                case (int)ReportCodes.REPORT_CODE_MODULE_VERIFICATION:
+                    _logger.Information("REPORT_CODE_MODULE_VERIFICATION");
+                    break;
+                case (int)ReportCodes.REPORT_NMI_CALLBACK_FAILURE:
+                    _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
+                    break;
+                case (int)ReportCodes.REPORT_MODULE_VALIDATION_FAILURE:
+                    _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
+                    break;
+                default:
+                    _logger.Information("Report code not handled yet");
+                    break;
+            }
 
-            _logger.Information("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
+/*            OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
+                Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));*/
+
+/*            _logger.Information("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,
                 openHandleFailure.ProcessId,
                 openHandleFailure.ThreadId,
-                openHandleFailure.DesiredAccess);
+                openHandleFailure.DesiredAccess);*/
 
             BuildReportResponseMessage(1);
         }

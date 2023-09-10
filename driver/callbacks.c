@@ -70,6 +70,15 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess = deny_access;
 			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
 
+			/*
+			* These processes will constantly open handles to any open process for various reasons,
+			* so we will still strip them but we won't report them.. for now atleast.
+			*/
+			if ( process_creator_name == "Discord.exe" ||
+				process_creator_name == "svchost.exe" ||
+				process_creator_name == "explorer.exe" )
+				goto end;
+
 			POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
 
 			if ( !report )
@@ -294,7 +303,7 @@ BOOLEAN EnumHandleCallback(
 		report->process_id = PsGetProcessId( process );
 		report->thread_id = NULL;
 		report->access = handle_access_mask;
-		RtlCopyMemory( report->process_name, protected_process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+		RtlCopyMemory( report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
 		InsertReportToQueue( report );
 	}

@@ -95,7 +95,7 @@ namespace global
 			INT report_code;
 			UINT64 module_base_address;
 			UINT64 module_size;
-			std::string module_name;
+			CHAR module_name[ 256 ];
 		};
 
 		struct PROCESS_THREAD_START_FAILURE
