@@ -25,6 +25,7 @@ namespace server
         private ILogger _logger;
         private PACKET_HEADER _header;
         private NetworkStream _networkStream;
+        private TcpClient _tcpClient;
 
         private enum MESSAGE_TYPE
         {
@@ -62,9 +63,10 @@ namespace server
             USER_BAN = 20
         }
 
-        public Message(NetworkStream networkStream, byte[] buffer, int bufferSize, ILogger logger)
+        public Message(TcpClient client, byte[] buffer, int bufferSize, ILogger logger)
         {
-            _networkStream = networkStream;
+            _tcpClient = client;
+            _networkStream = client.GetStream();
             _buffer = buffer;
             _bufferSize = bufferSize;
             _logger = logger;
@@ -148,55 +150,59 @@ namespace server
             {
                 context.Database.EnsureCreated();
 
-                UserEntity user = new UserEntity(_logger, context);
-
-                user.Steam64Id = _header.steam64_id;
-                user.HardwareConfigurationEntity = new HardwareConfigurationEntity(context);
-                user.HardwareConfigurationEntity.MotherboardSerial = moboSerial;
-                user.HardwareConfigurationEntity.DeviceDrive0Serial = driveSerial;
-
-                if (user.IsUsersHardwareBanned())
+                // Create a new user
+                var user = new User
                 {
-                    //return packet saying user is banned
-                    _logger.Information("Users hardware is banned");
-
-                    BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.HARDWARE_BAN);
-
-                    context.SaveChanges();
-                    return;
-                    
-                }
-
-                if (user.CheckIfUserExists())
+                    Steam64Id = 12312322222, // Replace with a valid Steam64Id
+                };
+                context.Users.Add(user);
+                // Create a new hardware configuration associated with the user
+                var hardwareConfiguration = new HardwareConfiguration
                 {
-                    if (user.CheckIfUserIsBanned())
-                    {
-                        //same here, send packet back saying user is banned
-                        _logger.Information("User is banned");
+                    DeviceDrive0Serial = "Serial123", // Replace with a valid serial number
+                    MotherboardSerial = "MotherboardSerial123", // Replace with a valid serial number
+                    User = user // Associate the hardware configuration with the user
+                };
 
-                        BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.USER_BAN);
-
-                        context.SaveChanges();
-                        return;
-                    }
-                    else
-                    {
-                        //send packet back that the user has successfully been authenticated
-                        _logger.Information("User is not banned");
-
-                        BuildSystemVerificationResponseHeader(1, sendPacketHeader.RequestId, 0);
-
-                        context.SaveChanges();
-                        return;
-                    }
-                }
-
-                _logger.Information("User does not exist and is on valid hardware, creating new user");
-
-                user.InsertUser();
-                BuildSystemVerificationResponseHeader(1, sendPacketHeader.RequestId, 0);
+                // Add the user and hardware configuration to the context and save changes
+                context.HardwareConfiguration.Add(hardwareConfiguration);
 
                 context.SaveChanges();
+
+                /*                UserEntity user = new UserEntity(context);
+                                user.Steam64Id = _header.steam64_id;
+
+                                if (!user.CheckIfUserExists())
+                                {
+                                    _logger.Information("Creating new user");
+                                    user.InsertUser();
+                                    context.SaveChanges();
+                                }
+                                else if (user.CheckIfUserIsBanned())
+                                {
+                                    _logger.Information("User is banned");
+                                    BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.USER_BAN);
+                                    return;
+                                }
+
+                                HardwareConfigurationEntity hwConfig = new HardwareConfigurationEntity(context)
+                                {
+                                    User = user,
+                                    IsBanned = false,
+                                    MotherboardSerial = moboSerial,
+                                    DeviceDrive0Serial = driveSerial
+                                };*/
+
+                /*                if (hwConfig.CheckIfHardwareIsBanned())
+                                {
+                                    _logger.Information("Users hardware is banned");
+                                    BuildSystemVerificationResponseHeader(0, sendPacketHeader.RequestId, (int)USER_BAN_REASONS.HARDWARE_BAN);
+                                    return;
+                                }*/
+
+                //context.HardwareConfiguration.Add(hwConfig);
+
+                //context.SaveChanges();
             }
         }
 

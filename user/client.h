@@ -84,7 +84,7 @@ namespace global
 			mutex.unlock();
 		}
 
-		void ServerReceive();
+		void ServerReceive(PVOID Buffer, SIZE_T Size);
 		void ServerSend( PVOID Buffer, SIZE_T Size, INT RequestId );
 	};
 
@@ -184,6 +184,13 @@ namespace global
 			INT report_code;
 			UINT32 thread_id;
 			UINT64 thread_address;
+		};
+
+		struct SYSTEM_INFORMATION_REQUEST_RESPONSE
+		{
+			INT RequestId;
+			INT CanUserProceed;
+			INT reason;
 		};
 	}
 }

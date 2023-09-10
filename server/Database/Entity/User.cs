@@ -10,15 +10,11 @@ namespace server.Database.Entity
 {
     public class UserEntity : User
     {
-        private readonly ILogger _logger;
         private readonly ModelContext _modelContext;
-        public HardwareConfigurationEntity HardwareConfigurationEntity { get; set; }
 
-        public UserEntity(ILogger logger, ModelContext modelContext)
+        public UserEntity(ModelContext modelContext)
         {
-            _logger = logger;
             _modelContext = modelContext;
-            HardwareConfigurationEntity = new HardwareConfigurationEntity(_modelContext);
         }
 
         public bool CheckIfUserExists()
@@ -29,15 +25,6 @@ namespace server.Database.Entity
         public bool CheckIfUserIsBanned()
         {
             return _modelContext.Users.Any(u => u.Steam64Id == Steam64Id && u.IsBanned);
-        }
-
-        public bool IsUsersHardwareBanned()
-        {
-            HardwareConfigurationEntity hwConfig = new HardwareConfigurationEntity(_modelContext);
-            hwConfig.MotherboardSerial = HardwareConfigurationEntity.MotherboardSerial;
-            hwConfig.DeviceDrive0Serial = HardwareConfigurationEntity.DeviceDrive0Serial;
-
-            return hwConfig.CheckIfHardwareConfigurationExists() && hwConfig.IsBanned;
         }
 
         public void InsertUser()

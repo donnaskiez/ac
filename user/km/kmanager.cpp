@@ -58,5 +58,5 @@ VOID kernelmode::KManager::ValidateProcessModules()
 
 VOID kernelmode::KManager::SendClientHardwareInformation()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->SendClientHardwareInformation(); } );
+	this->driver_interface->SendClientHardwareInformation();
 }

@@ -600,7 +600,7 @@ VOID kernelmode::Driver::SendClientHardwareInformation()
 	BOOLEAN status;
 	global::headers::SYSTEM_INFORMATION system_information;
 	DWORD bytes_returned;
-	std::cout << "HELLO?>?" << std::endl;
+
 	status = DeviceIoControl(
 		this->driver_handle,
 		IOCTL_REQUEST_HARDWARE_INFORMATION,
@@ -617,8 +617,6 @@ VOID kernelmode::Driver::SendClientHardwareInformation()
 		LOG_ERROR( "DeviceIoControl failed with status %x", GetLastError() );
 		return;
 	}
-
-	std::cout << system_information.motherboard_serial << " " << system_information.drive_0_serial << std::endl;
 
 	this->report_interface->ServerSend( 
 		&system_information, sizeof( global::headers::SYSTEM_INFORMATION ), CLIENT_SEND_SYSTEM_INFORMATION );

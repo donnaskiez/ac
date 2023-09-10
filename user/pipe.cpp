@@ -59,6 +59,11 @@ void global::Pipe::ReadPipe(PVOID Buffer, SIZE_T Size)
 			NULL
 		);
 
+		LOG_INFO("Bytes read: %d", bytes_read);
+
+		if ( bytes_read > Size )
+			break;
+
 		if ( !status && GetLastError() != ERROR_MORE_DATA )
 			break;
 

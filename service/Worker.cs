@@ -17,24 +17,9 @@ namespace service
     {
         private readonly ILogger<Worker> _logger;
         private NamedPipeServerStream _pipeServer;
-
         private byte[] _buffer;
         private int _bufferSize;
-
-        private static int MAX_BUFFER_SIZE = 8192;
-
-        private enum MESSAGE_TYPE
-        {
-            MESSAGE_TYPE_REPORT = 1,
-            MESSAGE_TYPE_SEND = 2,
-            MESSAGE_TYPE_RECEIVE = 3
-        }
-
-        struct PIPE_PACKET_HEADER
-        {
-            int message_type;
-            Int64 steam64_id;
-        };
+        private static int MAX_BUFFER_SIZE = 60000;
 
         public Worker(ILogger<Worker> logger)
         {
@@ -63,8 +48,12 @@ namespace service
                     {
                         _logger.LogInformation("Message received at pipe server with size: {0}", numBytesRead);
 
-                        Message message = new Message(_buffer, numBytesRead);
-                        message.DispatchMessage();
+                        Client message = new Client(ref _buffer, numBytesRead);
+                        message.SendMessageToServer();
+
+                        byte[] responseMessage = await message.GetResponseFromServer();
+
+                        _pipeServer.Write(responseMessage, 0, responseMessage.Length);
                     }
                 }
                 catch (Exception ex)

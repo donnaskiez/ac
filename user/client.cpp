@@ -15,9 +15,9 @@ global::Client::Client( std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR P
 /*
 * Request an item from the server
 */
-void global::Client::ServerReceive()
+void global::Client::ServerReceive(PVOID Buffer, SIZE_T Size)
 {
-
+	this->pipe->ReadPipe( Buffer, Size );
 }
 
 /*
@@ -61,6 +61,8 @@ void global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId )
 		&header_extension, sizeof( global::headers::CLIENT_SEND_PACKET_HEADER ) );
 
 	memcpy(PVOID((UINT64)send_buffer + total_header_size), Buffer, Size);
+
+	LOG_INFO( "Writing to pipe" );
 
 	this->pipe->WriteToPipe( send_buffer, header_extension.packet_size );
 

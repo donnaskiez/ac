@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,13 +14,12 @@ namespace server.Database.Model
         public int UserId { get; set; }
         public ulong Steam64Id { get; set; }
         public bool IsBanned { get; set; }
-        public ICollection<HardwareConfiguration> HardwareConfigurations { get; set; }
+        public virtual ICollection<HardwareConfiguration> HardwareConfigurations { get; set; }
     }
 
     public class HardwareConfiguration
     {
         public int HardwareId { get; set; }
-        public int UserId { get; set; }
         public virtual User User { get; set; }
         public bool IsBanned { get; set; }
         public string DeviceDrive0Serial { get; set; }

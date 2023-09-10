@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,16 +13,25 @@ namespace server.Database.Entity
     public class HardwareConfigurationEntity : HardwareConfiguration
     {
         private readonly ModelContext _modelContext;
+        public UserEntity UserEntity { get; set; }
 
         public HardwareConfigurationEntity(ModelContext modelContext)
         {
+            UserEntity = new UserEntity(modelContext);
             _modelContext = modelContext;
         }
 
-        public bool CheckIfHardwareConfigurationExists()
+        public bool CheckIfHardwareIsBanned()
         {
-            return _modelContext.HardwareConfiguration.Any(h => h.MotherboardSerial == MotherboardSerial && 
-                                                                h.DeviceDrive0Serial == DeviceDrive0Serial);
+            return _modelContext.HardwareConfiguration.Any(
+                        h => h.MotherboardSerial == MotherboardSerial &&
+                             h.DeviceDrive0Serial == DeviceDrive0Serial &&
+                             h.IsBanned);
+        }
+
+        public void InsertHardwareConfiguration()
+        {
+            _modelContext.HardwareConfiguration.Add(this);
         }
     }
 }

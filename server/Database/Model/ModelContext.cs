@@ -33,12 +33,7 @@ namespace server.Database.Model
                     .IsRequired();
 
                 entity.Property(e => e.IsBanned)
-                    .IsRequired();
-
-                entity.HasMany(g => g.HardwareConfigurations)
-                    .WithOne(s => s.User)
-                    .HasForeignKey(s => s.UserId)
-                    .HasPrincipalKey(keyExpression: e => e.UserId);
+                    .HasDefaultValue(false);
             });
 
             modelBuilder.Entity<HardwareConfiguration>(entity =>
@@ -48,12 +43,17 @@ namespace server.Database.Model
                 entity.Property(e => e.HardwareId)
                     .UseMySQLAutoIncrementColumn(entity.Property(e => e.HardwareId).Metadata.Name);
 
-                entity.Property(f => f.IsBanned)
+                entity.Property(e => e.IsBanned)
                     .HasDefaultValue(false);
 
-                entity.HasOne(s => s.User)
-                    .WithMany(g => g.HardwareConfigurations)
-                    .HasForeignKey(s => s.UserId);
+                entity.Property(e => e.MotherboardSerial)
+                    .IsRequired();
+
+                entity.Property(e => e.DeviceDrive0Serial)
+                    .IsRequired();
+
+                entity.HasOne(d => d.User)
+                    .WithMany(f => f.HardwareConfigurations);
             });
         }
     }

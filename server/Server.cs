@@ -30,10 +30,10 @@ namespace server
 
             while (true)
             {
-                using TcpClient _client = await _tcpListener.AcceptTcpClientAsync();
+                TcpClient client = await _tcpListener.AcceptTcpClientAsync();
 
-                NetworkStream _stream = _client.GetStream();
-                NetworkStream clientStreamReference = _stream;
+                NetworkStream _stream = client.GetStream();
+                TcpClient clientReference = client;
 
                 byte[] buffer = new byte[2048];
                 int bytesRead = 0;
@@ -49,14 +49,14 @@ namespace server
 
                     byte[] message = stream.ToArray();
 
-                    ThreadPool.QueueUserWorkItem(state => DispatchMessage(state, clientStreamReference, message, message.Length));
+                    ThreadPool.QueueUserWorkItem(state => DispatchMessage(state, clientReference, message, message.Length));
                 }
             }
         }
 
-        private void DispatchMessage(Object? stateInfo, NetworkStream clientStreamReference, byte[] buffer, int bufferSize)
+        private void DispatchMessage(Object? stateInfo, TcpClient client, byte[] buffer, int bufferSize)
         {
-            Message message = new Message(clientStreamReference, buffer, bufferSize, _logger);
+            Message message = new Message(client, buffer, bufferSize, _logger);
         }
     }
 }

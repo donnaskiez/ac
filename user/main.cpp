@@ -31,6 +31,13 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     global::headers::SYSTEM_INFORMATION system_information;
     kmanager.SendClientHardwareInformation();
 
+    global::report_structures::SYSTEM_INFORMATION_REQUEST_RESPONSE response;
+
+    client_interface->ServerReceive( &response, sizeof( response ) );
+
+    std::cout << "RequestID: " << response.RequestId << " CanUserProceed: " << 
+        response.CanUserProceed << " Reason: " << response.reason << std::endl;
+
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
         kmanager.MonitorCallbackReports();
