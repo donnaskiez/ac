@@ -73,9 +73,10 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 			* These processes will constantly open handles to any open process for various reasons,
 			* so we will still strip them but we won't report them.. for now atleast.
 			*/
-			if ( process_creator_name == "Discord.exe" ||
-				process_creator_name == "svchost.exe" ||
-				process_creator_name == "explorer.exe" )
+
+			if ( !strcmp( process_creator_name, "Discord.exe" ) ||
+				 !strcmp( process_creator_name, "svchost.exe" ) ||
+				 !strcmp( process_creator_name, "explorer.exe" ) )
 				goto end;
 
 			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
