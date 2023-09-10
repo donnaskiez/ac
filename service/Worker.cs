@@ -6,6 +6,7 @@ using System.Reflection.PortableExecutable;
 using System.Net.Sockets;
 using System.Net;
 using System.Net.Http;
+using Serilog;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 #pragma warning disable CS8600
@@ -15,28 +16,28 @@ namespace service
 {
     public class Worker : BackgroundService
     {
-        private readonly ILogger<Worker> _logger;
+        private readonly Serilog.ILogger _logger;
         private NamedPipeServerStream _pipeServer;
         private byte[] _buffer;
         private int _bufferSize;
-        private static int MAX_BUFFER_SIZE = 60000;
+        private static int MAX_BUFFER_SIZE = 8192;
 
-        public Worker(ILogger<Worker> logger)
+        public Worker(Serilog.ILogger logger)
         {
             _logger = logger;
-            _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1);
+            _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1, 0, PipeOptions.Asynchronous);
             _bufferSize = MAX_BUFFER_SIZE;
             _buffer = new byte[_bufferSize];
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Windows service starting, waiting for client to connect");
+            _logger.Information("Windows service starting, waiting for client to connect");
 
             // to do: verify whos connecting 
             _pipeServer.WaitForConnection();
 
-            _logger.LogInformation("Client connected to the pipe server");
+            _logger.Information("Client connected to the pipe server");
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -46,23 +47,33 @@ namespace service
 
                     if (numBytesRead > 0)
                     {
-                        _logger.LogInformation("Message received at pipe server with size: {0}", numBytesRead);
+                        _logger.Information("Message received at pipe server with size: {0}", numBytesRead);
 
-                        Client message = new Client(ref _buffer, numBytesRead);
+                        Client message = new Client(ref _buffer, numBytesRead, _logger);
+
                         message.SendMessageToServer();
 
-                        byte[] responseMessage = await message.GetResponseFromServer();
-
-                        _pipeServer.Write(responseMessage, 0, responseMessage.Length);
+                        ThreadPool.QueueUserWorkItem(state => RelayResponseMessage(ref message));
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("Reading buffer from pipe failed with message: {0}", ex.Message);
+                    _logger.Error("Reading buffer from pipe failed with message: {0}", ex.Message);
                 }
 
                 Array.Clear(_buffer, 0, _bufferSize);
             }
+        }
+
+        private void RelayResponseMessage(ref Client message)
+        {
+            byte[] responseMessage = message.GetResponseFromServer();
+
+            _logger.Information("Sending response message to client with size: {0}", responseMessage.Length);
+
+            _pipeServer.Write(responseMessage, 0, responseMessage.Length);
+
+            _logger.Information("written to pipe");
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]

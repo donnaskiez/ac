@@ -40,7 +40,6 @@ namespace server
 
                 using (MemoryStream stream = new MemoryStream())
                 {
-
                     while (_stream.DataAvailable)
                     {
                         bytesRead = _stream.Read(buffer, 0, buffer.Length);

@@ -20,11 +20,13 @@ namespace server
                 public int PacketSize;
             };
 
-            [StructLayout(LayoutKind.Sequential)]
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
             public unsafe struct PACKET_CLIENT_HARDWARE_INFORMATION
             {
-                public fixed char MotherboardSerialNumber[32];
-                public fixed char DeviceDriver0Serial[32];
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                public string MotherboardSerialNumber;
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                public string DeviceDriver0Serial;
             }
         }
 
@@ -80,7 +82,7 @@ namespace server
                 public fixed char ModuleName[128];
             }
 
-            [StructLayout(LayoutKind.Sequential)]
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
             public unsafe struct OPEN_HANDLE_FAILURE_REPORT
             {
                 public int ReportCode;
@@ -88,7 +90,8 @@ namespace server
                 public uint ProcessId;
                 public uint ThreadId;
                 public uint DesiredAccess;
-                public fixed char ProcessName[64];
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+                public string processName;
 
             }
         }

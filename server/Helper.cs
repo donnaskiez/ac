@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Serilog;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -12,20 +14,26 @@ namespace server
 {
     public class Helper
     {
-        unsafe public static T BytesToStructure<T>(ref byte[] buffer, int offset)
+        unsafe public static T BytesToStructure<T>(byte[] buffer, int offset)
         {
-            //int typeSize = Marshal.SizeOf(typeof(T));
-            int typeSize = buffer.Length - offset;
+            int typeSize = Marshal.SizeOf(typeof(T));
+
+            if (buffer.Length == 0)
+                return default(T);
+
             IntPtr ptr = Marshal.AllocHGlobal(typeSize);
 
             try
             {
                 Marshal.Copy(buffer, offset, ptr, typeSize);
-                return (T)Marshal.PtrToStructure(ptr, typeof(T));
-            }
-            finally
-            {
+                T result = (T)Marshal.PtrToStructure(ptr, typeof(T));
                 Marshal.FreeHGlobal(ptr);
+                return result;
+            }
+            catch(Exception ex)
+            {
+                Log.Information(ex.Message);
+                return default(T);
             }
         }
 
@@ -39,11 +47,13 @@ namespace server
             {
                 Marshal.StructureToPtr(structure, ptr, true);
                 Marshal.Copy(ptr, buffer, 0, typeSize);
+                Marshal.FreeHGlobal(ptr);
                 return buffer;
             }
-            finally
+            catch (Exception ex)
             {
-                Marshal.FreeHGlobal(ptr);
+                Log.Information(ex.Message);
+                return null;
             }
         }   
 

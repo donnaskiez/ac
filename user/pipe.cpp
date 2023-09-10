@@ -12,7 +12,7 @@ global::Pipe::Pipe( LPTSTR PipeName )
 		0,
 		NULL,
 		OPEN_EXISTING,
-		0,
+		FILE_FLAG_OVERLAPPED,
 		NULL
 	);
 
@@ -49,29 +49,13 @@ void global::Pipe::ReadPipe(PVOID Buffer, SIZE_T Size)
 	BOOL status = FALSE;
 	DWORD bytes_read;
 
-	do
-	{
-		status = ReadFile(
-			this->pipe_handle,
-			Buffer,
-			Size,
-			&bytes_read,
-			NULL
-		);
+	status = ReadFile(
+		this->pipe_handle,
+		Buffer,
+		Size,
+		&bytes_read,
+		NULL
+	);
 
-		LOG_INFO("Bytes read: %d", bytes_read);
-
-		if ( bytes_read > Size )
-			break;
-
-		if ( !status && GetLastError() != ERROR_MORE_DATA )
-			break;
-
-	} while ( !status );
-
-	if ( !status )
-	{
-		LOG_ERROR( "ReadFile failed with status 0x%x", GetLastError() );
-		return;
-	}
+	LOG_INFO( "Bytes read: %d", bytes_read );
 }

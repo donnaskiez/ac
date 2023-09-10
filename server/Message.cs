@@ -57,6 +57,11 @@ namespace server
             public int reason;
         }
 
+        private struct REPORT_RESPONSE
+        {
+            public int success;
+        }
+
         private enum USER_BAN_REASONS
         {
             HARDWARE_BAN = 10,
@@ -90,29 +95,41 @@ namespace server
         
         private PACKET_HEADER GetMessageHeader()
         {
-            return Helper.BytesToStructure<PACKET_HEADER>(ref _buffer, 0);
+            return Helper.BytesToStructure<PACKET_HEADER>(_buffer, 0);
         }
 
         unsafe private PACKET_REQUEST_HEADER GetPacketRequestId()
         {
-            return Helper.BytesToStructure<PACKET_REQUEST_HEADER>(ref _buffer, sizeof(PACKET_HEADER));
+            return Helper.BytesToStructure<PACKET_REQUEST_HEADER>(_buffer, sizeof(PACKET_HEADER));
         }
 
         unsafe private CLIENT_SEND_PACKET_HEADER GetClientSendPacketHeader()
         {
-            return Helper.BytesToStructure<CLIENT_SEND_PACKET_HEADER>(ref _buffer, sizeof(PACKET_HEADER));
+            return Helper.BytesToStructure<CLIENT_SEND_PACKET_HEADER>(_buffer, sizeof(PACKET_HEADER));
         }
 
         unsafe private void HandleReportMessage(int reportId)
         { 
             OPEN_HANDLE_FAILURE_REPORT openHandleFailure = 
-                Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(ref _buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));
 
             _logger.Information("Report code: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 openHandleFailure.ReportCode,
                 openHandleFailure.ProcessId,
                 openHandleFailure.ThreadId,
                 openHandleFailure.DesiredAccess);
+
+            BuildReportResponseMessage(1);
+        }
+
+        private void BuildReportResponseMessage(int success)
+        {
+            REPORT_RESPONSE response = new REPORT_RESPONSE();
+            response.success = 1;
+
+            byte[] responseBytes = Helper.StructureToBytes<REPORT_RESPONSE>(ref response);
+
+            _networkStream.Write(responseBytes, 0, responseBytes.Length);
         }
 
         private void HandleClientSendMessage(int clientSendId)
@@ -132,19 +149,9 @@ namespace server
         {
             _logger.Information("Handling client send hardware information");
 
-            string moboSerial = Helper.FixedUnsafeBufferToSafeString(
-                ref _buffer, _bufferSize, sizeof(PACKET_HEADER) + sizeof(CLIENT_SEND_PACKET_HEADER), 32);
+            PACKET_CLIENT_HARDWARE_INFORMATION info = Helper.BytesToStructure<PACKET_CLIENT_HARDWARE_INFORMATION>(_buffer, sizeof(PACKET_HEADER) + sizeof(CLIENT_SEND_PACKET_HEADER));
 
-            if (moboSerial == null)
-                return;
-
-            string driveSerial = Helper.FixedUnsafeBufferToSafeString(
-                ref _buffer, _bufferSize, sizeof(PACKET_HEADER) + sizeof(CLIENT_SEND_PACKET_HEADER) + 32, 32);
-
-            if (driveSerial == null)
-                return;
-
-            _logger.Information("SteamId: {0}, Mobo Serial: {1}, drive serial: {2}", _header.steam64_id, moboSerial, driveSerial);
+            _logger.Information("SteamId: {0}, Mobo Serial: {1}, drive serial: {2}", _header.steam64_id, info.MotherboardSerialNumber, info.DeviceDriver0Serial);
 
             using (var context = new ModelContext())
             {
@@ -169,8 +176,8 @@ namespace server
 
                 var hardwareConfiguration = new HardwareConfigurationEntity(context)
                 {
-                    DeviceDrive0Serial = driveSerial,
-                    MotherboardSerial = moboSerial,
+                    DeviceDrive0Serial = info.DeviceDriver0Serial,
+                    MotherboardSerial = info.MotherboardSerialNumber,
                     User = user 
                 };
 
@@ -203,7 +210,7 @@ namespace server
 
             byte[] responseBytes = Helper.StructureToBytes<SYSTEM_INFORMATION_REQUEST_RESPONSE>(ref response);
 
-            _networkStream.Write(responseBytes, 0, Marshal.SizeOf(response));
+            _networkStream.Write(responseBytes, 0, responseBytes.Length);
         }
     }
 }
