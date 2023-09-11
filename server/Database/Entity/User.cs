@@ -27,6 +27,14 @@ namespace server.Database.Entity
             return _modelContext.Users.Any(u => u.Steam64Id == Steam64Id && u.IsBanned);
         }
 
+        public bool CheckIfUsersHardwareExists()
+        {
+            List<HardwareConfiguration> hardwareConfigurations = _modelContext.HardwareConfiguration
+                .Where(h => h.User.Steam64Id == Steam64Id).ToList();
+
+            return hardwareConfigurations.Count > 0;
+        }
+
         public void InsertUser()
         {
             _modelContext.Users.Add(this);

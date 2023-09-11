@@ -43,7 +43,7 @@ namespace server.Message
             public int success;
         }
 
-        public ClientReport(ILogger logger, byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
+        public ClientReport(ILogger logger, ref byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
         {
             this._logger = logger;
             this._buffer = buffer;
@@ -62,6 +62,11 @@ namespace server.Message
         public byte[] GetResponsePacket()
         {
             return Helper.StructureToBytes<CLIENT_REPORT_PACKET_RESPONSE>(ref this._responsePacket);
+        }
+
+        private void SetResponsePacketData(int success)
+        {
+            this._responsePacket.success = success;
         }
 
         public bool HandleMessage()
@@ -109,6 +114,7 @@ namespace server.Message
                     break;
             }
 
+            SetResponsePacketData(1);
             return true;
         }
     }

@@ -70,7 +70,7 @@ namespace server.Message
 
         private void HandleClientSendReport()
         {
-            ClientReport report = new ClientReport(_logger, _buffer, _bufferSize, _header);
+            ClientReport report = new ClientReport(_logger, ref _buffer, _bufferSize, _header);
            
             if (report.HandleMessage())
             {
@@ -84,7 +84,7 @@ namespace server.Message
 
         private void HandleClientSendMessage()
         {
-            ClientSend send = new ClientSend(_logger, _buffer, _bufferSize, _header);
+            ClientSend send = new ClientSend(_logger, ref _buffer, _bufferSize, _header);
 
             if (send.HandleMessage())
             {

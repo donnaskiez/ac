@@ -29,13 +29,6 @@ namespace server.Database.Entity
                              h.IsBanned);
         }
 
-        public bool CheckIfHardwareExists()
-        {
-            return _modelContext.HardwareConfiguration.Any(
-                                       h => h.MotherboardSerial == MotherboardSerial &&
-                                            h.DeviceDrive0Serial == DeviceDrive0Serial);
-        }
-
         public void InsertHardwareConfiguration()
         {
             _modelContext.HardwareConfiguration.Add(this);

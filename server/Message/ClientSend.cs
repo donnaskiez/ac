@@ -40,7 +40,7 @@ namespace server.Message
             public int reason;
         }
 
-        public ClientSend(ILogger logger, byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
+        public ClientSend(ILogger logger, ref byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
         {
             this._logger = logger;
             this._buffer = buffer;
@@ -92,6 +92,25 @@ namespace server.Message
                 info.MotherboardSerialNumber, 
                 info.DeviceDriver0Serial);
 
+            /*
+             * When a client connects to the server, we will perform the following.
+             * 
+             * 1. Check if the user exists, 
+             *          - if the user doesn't exist we instert them into the database.
+             *          - if the user does exist, check if they're banned
+             *          - if the user is banned, return a response packet stating the
+             *            client may not proceed
+             * 2. Next we check if the hardware is banned. We don't care if the hardware doesn't exist
+             *    at this point because if it doesn't exist it can't be banned.
+             *          - If the hardware is banned, return a cannot proceed packet.
+             * 3. Then we check if the users hardware already exists in the database, and the foreign
+             *    UserId references the user by checking if the Steam64Id matches.
+             *          - If a hardware configuration already exists, we send a response packet 
+             *            allowing the client to continue.
+             * 4. If we make it to here, the user is new and the hardware is not banned, so we then create
+             *    a new user and a new hardware configuration and insert it into the database and then
+             *    return a packet notifying the client can continue.
+             */
             using (var context = new ModelContext())
             {
                 context.Database.EnsureCreated();
@@ -127,9 +146,9 @@ namespace server.Message
                     return;
                 }
 
-                if (hardwareConfiguration.CheckIfHardwareExists())
+                if (user.CheckIfUsersHardwareExists())
                 {
-                    _logger.Information("Users hardware already exists.");
+                    _logger.Information("Users hardware already references the user.");
                     SetResponsePacketData(1, sendPacketHeader.RequestId, 0);
                     return;
                 }
