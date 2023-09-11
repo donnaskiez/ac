@@ -309,8 +309,6 @@ NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 
 	KeReleaseGuardedMutex( &process_config.lock );
 
-	Irp->IoStatus.Status = status;
-
 	return status;
 }
 

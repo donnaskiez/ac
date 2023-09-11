@@ -179,7 +179,6 @@ BOOLEAN EnumHandleCallback(
 	PEPROCESS protected_process = NULL;
 	LPCSTR process_name;
 	LPCSTR protected_process_name;
-	LONG protected_process_id = NULL;
 	ACCESS_MASK handle_access_mask;
 
 	object_header = GET_OBJECT_HEADER_FROM_HANDLE( Entry->ObjectPointerBits );
@@ -195,7 +194,6 @@ BOOLEAN EnumHandleCallback(
 		process = ( PEPROCESS )object;
 		process_name = PsGetProcessImageFileName( process );
 
-		GetProtectedProcessId( &protected_process_id );
 		GetProtectedProcessEProcess( &protected_process );
 
 		protected_process_name = PsGetProcessImageFileName( protected_process );
@@ -297,7 +295,7 @@ BOOLEAN EnumHandleCallback(
 		* since both of these reports are closely related by the fact they are
 		* triggered by a process either opening a handle to our protected process
 		* or have a valid open handle to it. I also don't think its worth creating
-		* another queue specifically for open handle reports since they will be 
+		* another queue specifically for open handle reports since they will be
 		* rare.
 		*/
 		report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
@@ -305,7 +303,7 @@ BOOLEAN EnumHandleCallback(
 		report->process_id = PsGetProcessId( process );
 		report->thread_id = NULL;
 		report->access = handle_access_mask;
-		RtlCopyMemory( report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+		RtlCopyMemory( &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
 		InsertReportToQueue( report );
 	}
@@ -325,16 +323,16 @@ NTSTATUS EnumerateProcessHandles(
 	if ( !Process )
 		return STATUS_INVALID_PARAMETER;
 
-	//if ( Process == PsInitialSystemProcess )
-	//	return STATUS_SUCCESS;
+	if ( Process == PsInitialSystemProcess )
+		return STATUS_SUCCESS;
 
 	PHANDLE_TABLE handle_table = *( PHANDLE_TABLE* )( ( uintptr_t )Process + EPROCESS_HANDLE_TABLE_OFFSET );
 
 	if ( !handle_table )
-		return STATUS_ABANDONED;
+		return STATUS_INVALID_ADDRESS;
 
 	if ( !MmIsAddressValid( handle_table ) )
-		return STATUS_ABANDONED;
+		return STATUS_INVALID_ADDRESS;
 
 #pragma warning(push)
 #pragma warning(suppress : 6387)
@@ -362,31 +360,29 @@ VOID EnumerateProcessListWithCallbackFunction(
 )
 {
 	UINT64 current_process;
-	UINT64 active_process_head = NULL;
 	PLIST_ENTRY process_list_head = NULL;
 	PLIST_ENTRY process_list_entry = NULL;
+	PEPROCESS base_process = PsInitialSystemProcess;
 
-	if ( !Function )
+	if ( !base_process || !Function)
 		return;
 
-	GetPsActiveProcessHead( &active_process_head );
-
-	if ( !active_process_head )
-		return;
-
-	process_list_head = (PLIST_ENTRY)( active_process_head );
+	process_list_head = ( UINT64 )( ( UINT64 )base_process + EPROCESS_PLIST_ENTRY_OFFSET );
 	process_list_entry = process_list_head;
 
 	do
 	{
 		current_process = ( PEPROCESS )( ( UINT64 )process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET );
 
+		if ( !current_process )
+			return;
+
 		VOID( *callback_function_ptr )( PEPROCESS ) = Function;
 		( *callback_function_ptr )( current_process );
 
 		process_list_entry = process_list_entry->Flink;
 
-	} while ( process_list_entry != process_list_head->Blink );
+	} while ( process_list_entry != process_list_head->Blink);
 }
 
 NTSTATUS InitiateDriverCallbacks()

@@ -75,6 +75,11 @@ end:
 	return debugger_data;
 }
 
+/*
+* This for some reason does not work on my main pc but works on the vm. The debugger
+* data it uses to get the list head may be providing different data based on whether
+* or not the machine is being debugged? Not sure. So need to look into this at somepoint.
+*/
 VOID GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 )
