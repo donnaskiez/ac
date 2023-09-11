@@ -101,7 +101,7 @@ namespace server.Message
                     _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
                     break;
                 case (int)CLIENT_SEND_REPORT_ID.REPORT_ILLEGAL_HANDLE_OPERATION:
-                    _logger.Information("REPORT_ILLEGAL_HANDLE_OPERATION");
+                    HandleReportIllegalHandleOperation();
                     break;
                 case (int)CLIENT_SEND_REPORT_ID.REPORT_INVALID_PROCESS_ALLOCATION:
                     _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
@@ -123,7 +123,8 @@ namespace server.Message
 
         unsafe public void HandleReportIllegalHandleOperation()
         {
-            OPEN_HANDLE_FAILURE_REPORT report = Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));
+            OPEN_HANDLE_FAILURE_REPORT report = 
+                Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));
 
             _logger.Information("ProcessName: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 report.ProcessName,

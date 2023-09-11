@@ -12,7 +12,6 @@ namespace server.Database.Model
     {
         public DbSet<User> Users { get; set; }
         public DbSet<HardwareConfiguration> HardwareConfiguration { get; set; }
-
         public DbSet<ReportIllegalHandleOperation> ReportIllegalHandleOperation { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
