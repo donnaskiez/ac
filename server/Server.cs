@@ -4,8 +4,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
-using server;
 using Serilog;
+using server.Message;
 
 namespace server
 {
@@ -55,7 +55,7 @@ namespace server
 
         private void DispatchMessage(Object? stateInfo, TcpClient client, byte[] buffer, int bufferSize)
         {
-            Message message = new Message(client, buffer, bufferSize, _logger);
+            MessageHandler message = new MessageHandler(client, buffer, bufferSize, _logger);
         }
     }
 }

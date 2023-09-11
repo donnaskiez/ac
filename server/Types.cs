@@ -20,6 +20,12 @@ namespace server
                 public int PacketSize;
             };
 
+            public enum USER_BAN_REASONS
+            {
+                HARDWARE_BAN = 10,
+                USER_BAN = 20
+            }
+
             [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
             public unsafe struct PACKET_CLIENT_HARDWARE_INFORMATION
             {
