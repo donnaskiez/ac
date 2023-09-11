@@ -1,4 +1,7 @@
 ﻿using Serilog;
+using server.Database.Entity;
+using server.Database.Entity.Report;
+using server.Database.Model;
 using server.Types.ClientReport;
 using System;
 using System.Collections.Generic;
@@ -116,6 +119,39 @@ namespace server.Message
 
             SetResponsePacketData(1);
             return true;
+        }
+
+        unsafe public void HandleReportIllegalHandleOperation()
+        {
+            OPEN_HANDLE_FAILURE_REPORT report = Helper.BytesToStructure<OPEN_HANDLE_FAILURE_REPORT>(_buffer, sizeof(PACKET_HEADER));
+
+            _logger.Information("ProcessName: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
+                report.ProcessName,
+                report.ProcessId,
+                report.ThreadId,
+                report.DesiredAccess);
+
+            using (var context = new ModelContext())
+            {
+                /*
+                 * This doesn't seem to be the most optimal way to do this, but it works..
+                 * Maybe look into it further at somepoint..
+                 */
+                UserEntity user = new UserEntity(context);
+
+                var newReport = new IllegalHandleOperationEntity(context)
+                {
+                    User = user.GetUserBySteamId(this._packetHeader.steam64_id),
+                    IsKernelHandle = report.IsKernelHandle,
+                    ProcessId = report.ProcessId,
+                    ThreadId = report.ThreadId,
+                    DesiredAccess = report.DesiredAccess,
+                    ProcessName = report.ProcessName
+                };
+
+                newReport.InsertReport();
+                context.SaveChanges();
+            }
         }
     }
 }

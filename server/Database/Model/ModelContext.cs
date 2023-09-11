@@ -13,6 +13,8 @@ namespace server.Database.Model
         public DbSet<User> Users { get; set; }
         public DbSet<HardwareConfiguration> HardwareConfiguration { get; set; }
 
+        public DbSet<ReportIllegalHandleOperation> ReportIllegalHandleOperation { get; set; }
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             optionsBuilder.UseMySQL("server=localhost;userid=root;password=root;database=ac_db");
@@ -54,6 +56,32 @@ namespace server.Database.Model
 
                 entity.HasOne(d => d.User)
                     .WithMany(f => f.HardwareConfigurations);
+            });
+
+            modelBuilder.Entity<ReportIllegalHandleOperation>(entity =>
+            {
+                entity.HasKey(e => e.ReportId);
+
+                entity.Property(e => e.ReportId)
+                    .UseMySQLAutoIncrementColumn(entity.Property(e => e.ReportId).Metadata.Name);
+
+                entity.Property(e => e.IsKernelHandle)
+                    .IsRequired();
+
+                entity.Property(e => e.ProcessId)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadId)
+                    .IsRequired();
+
+                entity.Property(e => e.DesiredAccess)
+                    .IsRequired();
+
+                entity.Property(e => e.ProcessName)
+                    .IsRequired();
+
+                entity.HasOne(d => d.User)
+                    .WithMany(f => f.ReportIllegalHandleOperations);
             });
         }
     }

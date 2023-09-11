@@ -27,6 +27,11 @@ namespace server.Database.Entity
             return _modelContext.Users.Any(u => u.Steam64Id == Steam64Id && u.IsBanned);
         }
 
+        public User GetUserBySteamId(ulong steamId)
+        {
+            return _modelContext.Users.First(u => u.Steam64Id == steamId);
+        }
+
         public bool CheckIfUsersHardwareExists()
         {
             List<HardwareConfiguration> hardwareConfigurations = _modelContext.HardwareConfiguration

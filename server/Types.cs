@@ -99,7 +99,7 @@ namespace server
                 public uint ThreadId;
                 public uint DesiredAccess;
                 [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
-                public string processName;
+                public string ProcessName;
 
             }
         }
