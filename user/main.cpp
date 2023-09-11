@@ -54,7 +54,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
             kmanager.PerformIntegrityCheck();
             break;
         case 2:
-            kmanager.RunNmiCallbacks();
+            //kmanager.RunNmiCallbacks();
             break;
         case 3:
             kmanager.VerifySystemModules();

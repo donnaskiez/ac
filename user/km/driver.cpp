@@ -589,6 +589,10 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 			memcpy( &report.module_name, &module_name_string, module_name_string.length() );
 			this->report_interface->ReportViolation( &report );
 		}
+		else
+		{
+			LOG_INFO("Module %s is valid", module_entry.szModule );
+		}
 
 	} while ( Module32Next( process_modules_handle, &module_entry ) );
 

@@ -23,9 +23,9 @@ namespace server
             [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
             public unsafe struct PACKET_CLIENT_HARDWARE_INFORMATION
             {
-                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
                 public string MotherboardSerialNumber;
-                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
                 public string DeviceDriver0Serial;
             }
         }
