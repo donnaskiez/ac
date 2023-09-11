@@ -48,7 +48,8 @@ typedef struct _DRIVER_CONFIG
 typedef struct _PROCESS_CONFIG
 {
 	BOOLEAN initialised;
-	LONG protected_process_id;
+	LONG um_handle;
+	LONG km_handle;
 	PEPROCESS protected_process_eprocess;
 	KGUARDED_MUTEX lock;
 
@@ -72,11 +73,11 @@ VOID ReadProcessInitialisedConfigFlag(
 );
 
 VOID GetDriverPath(
-	_In_ PUNICODE_STRING DriverPath
+	_Out_ PUNICODE_STRING DriverPath
 );
 
 VOID GetDriverConfigSystemInformation(
-	_In_ PSYSTEM_INFORMATION* SystemInformation
+	_Out_ PSYSTEM_INFORMATION* SystemInformation
 );
 
 VOID TerminateProtectedProcessOnViolation();

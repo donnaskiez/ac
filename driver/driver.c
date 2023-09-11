@@ -19,6 +19,9 @@ VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
 {
+	if ( Flag == NULL )
+		return;
+
 	KeAcquireGuardedMutex( &process_config.lock );
 	*Flag = process_config.initialised;
 	KeReleaseGuardedMutex( &process_config.lock );
@@ -28,6 +31,9 @@ VOID GetProtectedProcessEProcess(
 	_Out_ PEPROCESS* Process 
 )
 {
+	if ( Process == NULL )
+		return;
+
 	KeAcquireGuardedMutex( &process_config.lock );
 	*Process = process_config.protected_process_eprocess;
 	KeReleaseGuardedMutex( &process_config.lock );
@@ -38,7 +44,8 @@ VOID GetProtectedProcessId(
 )
 {
 	KeAcquireGuardedMutex( &process_config.lock );
-	*ProcessId = process_config.protected_process_id;
+	RtlZeroMemory( ProcessId, sizeof( LONG ) );
+	*ProcessId = process_config.km_handle;
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
@@ -46,61 +53,72 @@ VOID ClearProcessConfigOnProcessTermination()
 {
 	DEBUG_LOG( "Process closed, clearing driver process_configuration" );
 	KeAcquireGuardedMutex( &process_config.lock );
-	process_config.protected_process_id = NULL;
+	process_config.km_handle = NULL;
+	process_config.um_handle = NULL;
 	process_config.protected_process_eprocess = NULL;
 	process_config.initialised = FALSE;
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
 VOID GetDriverName(
-	_In_ LPCSTR* DriverName
+	_Out_ LPCSTR* DriverName
 )
 {
+	if ( DriverName == NULL )
+		return;
+
 	KeAcquireGuardedMutex( &driver_config.lock );
 	*DriverName = driver_config.ansi_driver_name.Buffer;
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
 VOID GetDriverPath(
-	_In_ PUNICODE_STRING DriverPath
+	_Out_ PUNICODE_STRING DriverPath
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlZeroMemory( DriverPath, sizeof( UNICODE_STRING ) );
 	RtlInitUnicodeString( DriverPath, driver_config.driver_path.Buffer );
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
 VOID GetDriverRegistryPath(
-	_In_ PUNICODE_STRING RegistryPath
+	_Out_ PUNICODE_STRING RegistryPath
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlZeroMemory( RegistryPath, sizeof( UNICODE_STRING ) );
 	RtlCopyUnicodeString( RegistryPath, &driver_config.registry_path );
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
 VOID GetDriverDeviceName(
-	_In_ PUNICODE_STRING DeviceName
+	_Out_ PUNICODE_STRING DeviceName
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlZeroMemory( DeviceName, sizeof( UNICODE_STRING ) );
 	RtlCopyUnicodeString( DeviceName, &driver_config.device_name );
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
 VOID GetDriverSymbolicLink(
-	_In_ PUNICODE_STRING DeviceSymbolicLink
+	_Out_ PUNICODE_STRING DeviceSymbolicLink
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
+	RtlZeroMemory( DeviceSymbolicLink, sizeof( UNICODE_STRING ) );
 	RtlCopyUnicodeString( DeviceSymbolicLink, &driver_config.device_symbolic_link );
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
 VOID GetDriverConfigSystemInformation(
-	_In_ PSYSTEM_INFORMATION* SystemInformation
+	_Out_ PSYSTEM_INFORMATION* SystemInformation
 )
 {
+	if ( SystemInformation == NULL )
+		return;
+
 	KeAcquireGuardedMutex( &driver_config.lock );
 	*SystemInformation = &driver_config.system_information;
 	KeReleaseGuardedMutex( &driver_config.lock );
@@ -285,7 +303,8 @@ NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	KeAcquireGuardedMutex( &process_config.lock );
 
 	process_config.protected_process_eprocess = eprocess;
-	process_config.protected_process_id = information->protected_process_id;
+	process_config.um_handle = information->protected_process_id;
+	process_config.km_handle = PsGetProcessId( eprocess );
 	process_config.initialised = TRUE;
 
 	KeReleaseGuardedMutex( &process_config.lock );
@@ -328,9 +347,9 @@ VOID TerminateProtectedProcessOnViolation()
 		DEBUG_ERROR( "Failed to terminate process as process id is null" );
 		return;
 	}
-
+	
 	/*
-	* THERE IS A BUG WIHT THE HANDLE!! xD todo fix !
+	* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle.
 	*/
 	status = ZwTerminateProcess( process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION );
 

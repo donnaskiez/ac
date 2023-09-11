@@ -591,7 +591,7 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 		}
 		else
 		{
-			LOG_INFO("Module %s is valid", module_entry.szModule );
+			LOG_INFO("Module %S is valid", module_entry.szModule );
 		}
 
 	} while ( Module32Next( process_modules_handle, &module_entry ) );
