@@ -28,7 +28,7 @@ namespace usermode
 		std::mutex mutex;
 		std::unique_ptr<Imports> function_imports;
 		std::vector<DWORD> in_memory_module_checksums;
-		std::shared_ptr<global::Client> report_interface;
+		std::shared_ptr<global::Client> client_interface;
 
 		HANDLE GetHandleToProcessGivenName( std::string ProcessName );
 		bool CheckIfAddressLiesWithinValidProcessModule( UINT64 Address, bool* Result );
@@ -38,7 +38,7 @@ namespace usermode
 
 	public:
 
-		Process( std::shared_ptr<global::Client> ReportInterface );
+		Process( std::shared_ptr<global::Client> ClientInterface );
 
 		void ValidateProcessThreads();
 		void ScanProcessMemory();

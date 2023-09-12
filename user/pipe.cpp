@@ -40,11 +40,9 @@ void global::Pipe::WriteToPipe( PVOID Buffer, SIZE_T Size )
 		LOG_ERROR( "WriteFile failed with status code 0x%x", GetLastError() );
 		return;
 	}
-
-	LOG_INFO( "Sent bytes over pipe" );
 }
 
-void global::Pipe::ReadPipe(PVOID Buffer, SIZE_T Size)
+void global::Pipe::ReadPipe( PVOID Buffer, SIZE_T Size )
 {
 	BOOL status = FALSE;
 	DWORD bytes_read;
@@ -57,5 +55,9 @@ void global::Pipe::ReadPipe(PVOID Buffer, SIZE_T Size)
 		NULL
 	);
 
-	LOG_INFO( "Bytes read: %d", bytes_read );
+	if ( status == NULL )
+	{
+		LOG_ERROR( "ReadFile failed with status code 0x%x", GetLastError() );
+		return;
+	}
 }

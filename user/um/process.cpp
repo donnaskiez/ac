@@ -11,12 +11,12 @@
 
 const static char MASK_BYTE = '\x00';
 
-usermode::Process::Process( std::shared_ptr<global::Client> ReportInterface )
+usermode::Process::Process( std::shared_ptr<global::Client> ClientInterface )
 {
 	this->process_handle = GetCurrentProcess();
 	this->process_id = GetCurrentProcessId();
 	this->function_imports = std::make_unique<Imports>();
-	this->report_interface = ReportInterface;
+	this->client_interface = ClientInterface;
 }
 
 void usermode::Process::ValidateProcessThreads()
@@ -81,7 +81,7 @@ void usermode::Process::ValidateProcessThreads()
 				report.report_code = REPORT_CODE_START_ADDRESS_VERIFICATION;
 				report.start_address = start_address;
 				report.thread_id = thread_entry.th32ThreadID;
-				this->report_interface->ReportViolation( &report );
+				this->client_interface->ReportViolation( &report );
 			}
 		}
 
@@ -275,7 +275,7 @@ void usermode::Process::PatternScanRegion( UINT64 Address, MEMORY_BASIC_INFORMAT
 				report.report_code = REPORT_PATTERN_SCAN_FAILURE;
 				report.address = (UINT64)base + i;
 				report.signature_id = 1; /* this will be taken from the vector in future */
-				this->report_interface->ReportViolation( &report );
+				this->client_interface->ReportViolation( &report );
 
 				/* 
 				* for now return, however when we stream the signatures we iterate over
@@ -312,6 +312,6 @@ void usermode::Process::CheckPageProtection( MEMORY_BASIC_INFORMATION* Page )
 		report.allocation_protection = Page->AllocationProtect;
 		report.allocation_state = Page->State;
 		report.allocation_type = Page->Type;
-		this->report_interface->ReportViolation( &report );
+		this->client_interface->ReportViolation( &report );
 	}
 }

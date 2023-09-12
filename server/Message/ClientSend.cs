@@ -103,11 +103,15 @@ namespace server.Message
              * 2. Next we check if the hardware is banned. We don't care if the hardware doesn't exist
              *    at this point because if it doesn't exist it can't be banned.
              *          - If the hardware is banned, return a cannot proceed packet.
-             * 3. Then we check if the users hardware already exists in the database, and the foreign
+             * 3. Here, we use the method GetUserBySteamId get either get the existing user from the database 
+             *    or the newly created user. We then set the User property of the HardwareConfigurationEntity
+             *          - This prevents the bug where a new user was always being added with an existing 
+             *            user existing with the same steam id.
+             * 4. Then we check if the users hardware already exists in the database, and the foreign
              *    UserId references the user by checking if the Steam64Id matches.
              *          - If a hardware configuration already exists, we send a response packet 
              *            allowing the client to continue.
-             * 4. If we make it to here, the user is new and the hardware is not banned, so we then create
+             * 5. If we make it to here, the user is new and the hardware is not banned, so we then create
              *    a new user and a new hardware configuration and insert it into the database and then
              *    return a packet notifying the client can continue.
              */
@@ -153,8 +157,10 @@ namespace server.Message
                     return;
                 }
 
+                _logger.Information("Users hardware does not existing, inserting hardware.");
                 hardwareConfiguration.InsertHardwareConfiguration();
                 SetResponsePacketData(1, sendPacketHeader.RequestId, 0);
+
                 context.SaveChanges();
             }
         }

@@ -37,4 +37,6 @@ namespace server.Database.Model
         public uint DesiredAccess { get; set; }
         public string ProcessName { get; set; }
     }
+
+
 }

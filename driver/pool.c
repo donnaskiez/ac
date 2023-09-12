@@ -84,7 +84,6 @@ VOID GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 )
 {
-	/* TODO: have a global debugger pool here since shit aint really change */
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
 
 	if ( !debugger_data )
@@ -192,6 +191,9 @@ VOID ScanPageForKernelObjectAllocation(
 
 					address_list = ( PUINT64 )AddressBuffer;
 
+					/*
+					* Find the first free entry in the process address list and store the address.
+					*/
 					for ( INT i = 0; i < process_count; i++ )
 					{
 						if ( address_list[ i ] == NULL )

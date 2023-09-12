@@ -24,16 +24,16 @@ namespace server.Message
 
         private enum CLIENT_SEND_REPORT_ID
         {
-            REPORT_CODE_MODULE_VERIFICATION = 10,
-            REPORT_CODE_START_ADDRESS_VERIFICATION = 20,
-            REPORT_PAGE_PROTECTION_VERIFICATION = 30,
-            REPORT_PATTERN_SCAN_FAILURE = 40,
-            REPORT_NMI_CALLBACK_FAILURE = 50,
-            REPORT_MODULE_VALIDATION_FAILURE = 60,
-            REPORT_ILLEGAL_HANDLE_OPERATION = 70,
-            REPORT_INVALID_PROCESS_ALLOCATION = 80,
-            REPORT_HIDDEN_SYSTEM_THREAD = 90,
-            REPORT_ILLEGAL_ATTACH_PROCESS = 100
+            MODULE_VERIFICATION = 10,
+            START_ADDRESS_VERIFICATION = 20,
+            PAGE_PROTECTION_VERIFICATION = 30,
+            PATTERN_SCAN_FAILURE = 40,
+            NMI_CALLBACK_FAILURE = 50,
+            MODULE_VALIDATION_FAILURE = 60,
+            ILLEGAL_HANDLE_OPERATION = 70,
+            INVALID_PROCESS_ALLOCATION = 80,
+            HIDDEN_SYSTEM_THREAD = 90,
+            ILLEGAL_ATTACH_PROCESS = 100
         }
 
         private struct CLIENT_REPORT_PACKET_HEADER
@@ -82,34 +82,34 @@ namespace server.Message
 
             switch (this._clientReportPacketHeader.reportCode)
             {
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_CODE_MODULE_VERIFICATION:
-                    _logger.Information("REPORT_CODE_MODULE_VERIFICATION");
+                case (int)CLIENT_SEND_REPORT_ID.MODULE_VERIFICATION:
+                    _logger.Information("REPORT CODE: MODULE_VERIFICATION");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_CODE_START_ADDRESS_VERIFICATION:
+                case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
                     _logger.Information("REPORT_CODE_START_ADDRESS_VERIFICATION");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_PAGE_PROTECTION_VERIFICATION:
+                case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
                     _logger.Information("REPORT_PAGE_PROTECTION_VERIFICATION");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_PATTERN_SCAN_FAILURE:
+                case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
                     _logger.Information("REPORT_PATTERN_SCAN_FAILURE");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_NMI_CALLBACK_FAILURE:
+                case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
                     _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_MODULE_VALIDATION_FAILURE:
+                case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
                     _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_ILLEGAL_HANDLE_OPERATION:
+                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
                     HandleReportIllegalHandleOperation();
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_INVALID_PROCESS_ALLOCATION:
+                case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
                     _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_HIDDEN_SYSTEM_THREAD:
+                case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
                     _logger.Information("REPORT_HIDDEN_SYSTEM_THREAD");
                     break;
-                case (int)CLIENT_SEND_REPORT_ID.REPORT_ILLEGAL_ATTACH_PROCESS:
+                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
                     _logger.Information("REPORT_ILLEGAL_ATTACH_PROCESS");
                     break;
                 default:
