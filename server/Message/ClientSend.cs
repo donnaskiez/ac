@@ -136,7 +136,7 @@ namespace server.Message
                 {
                     DeviceDrive0Serial = info.DeviceDriver0Serial,
                     MotherboardSerial = info.MotherboardSerialNumber,
-                    User = user
+                    User = user.GetUserBySteamId(this._packetHeader.steam64_id)
                 };
 
                 if (hardwareConfiguration.CheckIfHardwareIsBanned())
