@@ -360,7 +360,7 @@ NTSTATUS EnumerateProcessHandles(
 */
 VOID EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function,
-	_In_ PVOID Context
+	_In_opt_ PVOID Context
 )
 {
 	UINT64 current_process;

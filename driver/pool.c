@@ -470,20 +470,27 @@ VOID WalkKernelPageTables(
 
 VOID IncrementProcessCounter(
 	_In_ PEPROCESS Process,
-	_In_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
+
+	if ( !context ) 
+		return;
+
 	context->process_count += 1;
 }
 
 VOID CheckIfProcessAllocationIsInProcessList(
 	_In_ PEPROCESS Process,
-	_In_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	PUINT64 allocation_address;
 	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
+
+	if ( !context )
+		return;
 
 	for ( INT i = 0; i < context->process_count; i++ )
 	{
@@ -531,7 +538,7 @@ NTSTATUS FindUnlinkedProcesses(
 		ExAllocatePool2( POOL_FLAG_NON_PAGED, context.process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
 
 	if ( !context.process_buffer )
-		return STATUS_ABANDONED;
+		return STATUS_MEMORY_NOT_ALLOCATED;
 
 	WalkKernelPageTables( &context );
 

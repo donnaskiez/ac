@@ -765,7 +765,6 @@ NTSTATUS LaunchNonMaskableInterrupt(
 		KeInitializeAffinityEx( ProcAffinityPool );
 		KeAddProcessorAffinityEx( ProcAffinityPool, core );
 
-		DEBUG_LOG( "Sending NMI" );
 		HalSendNMI( ProcAffinityPool );
 
 		/*
@@ -834,9 +833,14 @@ NTSTATUS HandleNmiIOCTL(
 		DEBUG_ERROR( "Error analysing nmi data" );
 
 	ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
-	ExFreePoolWithTag( nmi_context.stack_frames, STACK_FRAMES_POOL );
-	ExFreePoolWithTag( nmi_context.thread_data_pool, THREAD_DATA_POOL );
 	ExFreePoolWithTag( nmi_context.nmi_core_context, NMI_CONTEXT_POOL );
+
+	if ( nmi_context.stack_frames )
+		ExFreePoolWithTag( nmi_context.stack_frames, STACK_FRAMES_POOL );
+
+	if (nmi_context.thread_data_pool )
+		ExFreePoolWithTag( nmi_context.thread_data_pool, THREAD_DATA_POOL );
+
 	KeDeregisterNmiCallback( callback_handle );
 
 	return status;

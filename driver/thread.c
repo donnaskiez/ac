@@ -18,7 +18,7 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 
 VOID KPRCBThreadValidationProcessCallback(
 	_In_ PEPROCESS Process,
-	_In_ PVOID Context
+	_Inout_ PVOID Context
 )
 {
 	NTSTATUS status;
@@ -134,7 +134,7 @@ VOID DetectAttachedThreadsProcessCallback(
 	_In_ PVOID Context
 )
 {
-	UNREFERENCED_PARAMTER( Context );
+	UNREFERENCED_PARAMETER( Context );
 
 	NTSTATUS status;
 	PLIST_ENTRY thread_list_head;
