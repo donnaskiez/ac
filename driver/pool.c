@@ -30,8 +30,12 @@ CHAR EXECUTIVE_OBJECT_POOL_TAGS[ EXECUTIVE_OBJECT_COUNT ][ POOL_TAG_LENGTH ] =
 	"\x4C\x69\x6E\x6B"		/* Symbolic links */
 };
 
-PVOID process_buffer = NULL;
-ULONG process_count = NULL;
+typedef struct _PROCESS_SCAN_CONTEXT
+{
+	PVOID process_buffer;
+	ULONG process_count;
+
+}PROCESS_SCAN_CONTEXT, *PPROCESS_SCAN_CONTEXT;
 
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
@@ -60,7 +64,8 @@ PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 		dump_header
 	);
 
-	debugger_data = ( PKDDEBUGGER_DATA64 )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KDDEBUGGER_DATA64 ), POOL_DEBUGGER_DATA_TAG );
+	debugger_data = 
+		( PKDDEBUGGER_DATA64 )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KDDEBUGGER_DATA64 ), POOL_DEBUGGER_DATA_TAG );
 
 	if ( !debugger_data )
 		goto end;
@@ -130,7 +135,7 @@ VOID ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ ULONG ObjectIndex,
-	_In_ PVOID AddressBuffer
+	_In_ PPROCESS_SCAN_CONTEXT Context
 )
 {
 	INT length = 0;
@@ -189,12 +194,12 @@ VOID ScanPageForKernelObjectAllocation(
 						break;
 					}
 
-					address_list = ( PUINT64 )AddressBuffer;
+					address_list = ( PUINT64 )Context->process_buffer;
 
 					/*
 					* Find the first free entry in the process address list and store the address.
 					*/
-					for ( INT i = 0; i < process_count; i++ )
+					for ( INT i = 0; i < Context->process_count; i++ )
 					{
 						if ( address_list[ i ] == NULL )
 						{
@@ -216,8 +221,8 @@ VOID ScanPageForKernelObjectAllocation(
 VOID EnumerateKernelLargePages(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
-	_In_ PVOID AddressBuffer,
-	_In_ ULONG ObjectIndex
+	_In_ ULONG ObjectIndex,
+	_In_ PPROCESS_SCAN_CONTEXT Context
 )
 {
 	for ( INT page_index = 0; page_index < PageSize; page_index++ )
@@ -226,7 +231,7 @@ VOID EnumerateKernelLargePages(
 			PageBase + ( page_index * PageSize ), 
 			PAGE_SIZE, 
 			ObjectIndex, 
-			AddressBuffer
+			Context
 		);
 	}
 }
@@ -284,7 +289,9 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 * and extract the physical address from the value at each virtual address page entry.
 */
 
-VOID WalkKernelPageTables(PVOID AddressBuffer)
+VOID WalkKernelPageTables(
+	_In_ PPROCESS_SCAN_CONTEXT Context
+)
 {
 	CR3 cr3;
 	PML4E pml4_base;
@@ -366,8 +373,8 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 				EnumerateKernelLargePages(
 					base_1gb_virtual_page,
 					LARGE_PAGE_1GB_ENTRIES,
-					AddressBuffer,
-					INDEX_PROCESS_POOL_TAG
+					INDEX_PROCESS_POOL_TAG,
+					Context
 				);
 
 				continue;
@@ -408,8 +415,8 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 					EnumerateKernelLargePages(
 						base_2mb_virtual_page,
 						LARGE_PAGE_2MB_ENTRIES,
-						AddressBuffer,
-						INDEX_PROCESS_POOL_TAG 
+						INDEX_PROCESS_POOL_TAG,
+						Context
 					);
 
 					continue;
@@ -451,7 +458,7 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 						base_virtual_page,
 						PAGE_BASE_SIZE,
 						INDEX_PROCESS_POOL_TAG,
-						AddressBuffer
+						Context
 					);
 				}
 			}
@@ -461,25 +468,31 @@ VOID WalkKernelPageTables(PVOID AddressBuffer)
 	DEBUG_LOG( "Finished scanning memory" );
 }
 
-VOID IncrementProcessCounter()
+VOID IncrementProcessCounter(
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
+)
 {
-	process_count++;
+	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
+	context->process_count += 1;
 }
 
 VOID CheckIfProcessAllocationIsInProcessList(
-	_In_ PEPROCESS Process
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
 )
 {
 	PUINT64 allocation_address;
+	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
 
-	for ( INT i = 0; i < process_count; i++ )
+	for ( INT i = 0; i < context->process_count; i++ )
 	{
-		allocation_address = ( PUINT64 )process_buffer;
+		allocation_address = ( PUINT64 )context->process_buffer;
 
 		if ( ( UINT64 )Process >= allocation_address[ i ] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
 			( UINT64 )Process <= allocation_address[ i ] + PROCESS_OBJECT_ALLOCATION_MARGIN )
 		{
-			RtlZeroMemory( ( UINT64 )process_buffer + i * sizeof( UINT64 ), sizeof( UINT64 ) );
+			RtlZeroMemory( ( UINT64 )context->process_buffer + i * sizeof( UINT64 ), sizeof( UINT64 ) );
 		}
 	}
 }
@@ -501,31 +514,35 @@ NTSTATUS FindUnlinkedProcesses(
 {
 	PUINT64 allocation_address;
 	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;
+	PROCESS_SCAN_CONTEXT context = { 0 };
 
 	EnumerateProcessListWithCallbackFunction(
-		IncrementProcessCounter
+		IncrementProcessCounter,
+		&context
 	);
 
-	if ( process_count == NULL )
+	if ( context.process_count == NULL )
 	{
 		DEBUG_ERROR( "Faield to get process count " );
 		return STATUS_ABANDONED;
 	}
 
-	process_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
+	context.process_buffer = 
+		ExAllocatePool2( POOL_FLAG_NON_PAGED, context.process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
 
-	if ( !process_buffer )
+	if ( !context.process_buffer )
 		return STATUS_ABANDONED;
 
-	WalkKernelPageTables( process_buffer );
+	WalkKernelPageTables( &context );
 
 	EnumerateProcessListWithCallbackFunction(
-		CheckIfProcessAllocationIsInProcessList
+		CheckIfProcessAllocationIsInProcessList,
+		&context
 	);
 
-	allocation_address = ( PUINT64 )process_buffer;
+	allocation_address = ( PUINT64 )context.process_buffer;
 
-	for ( INT i = 0; i < process_count; i++ )
+	for ( INT i = 0; i < context.process_count; i++ )
 	{
 		if ( allocation_address[ i ] == NULL )
 			continue;
@@ -537,7 +554,8 @@ NTSTATUS FindUnlinkedProcesses(
 		/* report / do some further analysis */
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
 
-		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
+		report_buffer = 
+			ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
 
 		if ( !report_buffer )
 			goto end;
@@ -562,11 +580,8 @@ end:
 	if (report_buffer )
 		ExFreePoolWithTag( report_buffer, INVALID_PROCESS_REPORT_TAG );
 
-	if (process_buffer )
-		ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
-
-	process_count = NULL;
-	process_buffer = NULL;
+	if (context.process_buffer )
+		ExFreePoolWithTag( context.process_buffer, PROCESS_ADDRESS_LIST_TAG );
 
 	return STATUS_SUCCESS;
 }

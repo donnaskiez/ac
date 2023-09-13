@@ -144,7 +144,8 @@ NTSTATUS DeviceControl(
 		
 		/* can maybe implement this better so we can extract a status value */
 		EnumerateProcessListWithCallbackFunction(
-			EnumerateProcessHandles
+			EnumerateProcessHandles,
+			NULL
 		);
 
 		break;

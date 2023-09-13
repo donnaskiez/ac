@@ -74,7 +74,8 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 //);
 
 VOID EnumerateProcessListWithCallbackFunction(
-	_In_ PVOID Function
+	_In_ PVOID Function,
+	_In_ PVOID Context
 );
 
 NTSTATUS EnumerateProcessHandles(

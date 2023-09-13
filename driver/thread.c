@@ -7,14 +7,18 @@
 
 #include <intrin.h>
 
-UINT8 thread_found_in_pspcidtable = FALSE;
-UINT8 thread_found_in_kthreadlist = FALSE;
-BOOLEAN finished = FALSE;
+typedef struct _KPRCB_THREAD_VALIDATION_CTX
+{
+	UINT64 current_kpcrb_thread;
+	UINT8 thread_found_in_pspcidtable;
+	UINT8 thread_found_in_kthreadlist;
+	BOOLEAN finished;
 
-UINT64 current_kpcrb_thread = NULL;
+}KPRCB_THREAD_VALIDATION_CTX, *PKPRCB_THREAD_VALIDATION_CTX;
 
 VOID KPRCBThreadValidationProcessCallback(
-	_In_ PEPROCESS Process
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
 )
 {
 	NTSTATUS status;
@@ -22,8 +26,9 @@ VOID KPRCBThreadValidationProcessCallback(
 	PLIST_ENTRY thread_list_entry;
 	PETHREAD current_thread;
 	UINT32 thread_id;
+	PKPRCB_THREAD_VALIDATION_CTX context = ( PKPRCB_THREAD_VALIDATION_CTX )Context;
 
-	if ( finished == TRUE )
+	if ( context->finished == TRUE )
 		return;
 
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
@@ -33,16 +38,16 @@ VOID KPRCBThreadValidationProcessCallback(
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
 
-		if ( current_thread == current_kpcrb_thread )
+		if ( current_thread == context->current_kpcrb_thread )
 		{
-			thread_found_in_kthreadlist = TRUE;
+			context->thread_found_in_kthreadlist = TRUE;
 
 			thread_id = PsGetThreadId( current_thread );
 
 			if ( thread_id != NULL )
 			{
-				thread_found_in_pspcidtable = TRUE;
-				finished = TRUE;
+				context->thread_found_in_pspcidtable = TRUE;
+				context->finished = TRUE;
 			}
 		}
 
@@ -80,6 +85,7 @@ VOID ValidateKPCRBThreads(
 	UINT64 kpcr;
 	UINT64 kprcb;
 	KAFFINITY old_affinity = { 0 };
+	KPRCB_THREAD_VALIDATION_CTX context = { 0 };
 
 	for ( LONG processor_index = 0; processor_index < KeQueryActiveProcessorCount( 0 ); processor_index++ )
 	{
@@ -87,26 +93,30 @@ VOID ValidateKPCRBThreads(
 
 		kpcr = __readmsr( IA32_GS_BASE );
 		kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
-		current_kpcrb_thread = *( UINT64* )( kprcb + KPCRB_CURRENT_THREAD );
+		context.current_kpcrb_thread = *( UINT64* )( kprcb + KPCRB_CURRENT_THREAD );
+
+		if (!context.current_kpcrb_thread )
+			continue;
 
 		EnumerateProcessListWithCallbackFunction(
-			KPRCBThreadValidationProcessCallback
+			KPRCBThreadValidationProcessCallback,
+			&context
 		);
 
-		if ( thread_found_in_kthreadlist == FALSE || thread_found_in_pspcidtable == FALSE )
+		if ( context.current_kpcrb_thread == FALSE || context.thread_found_in_pspcidtable == FALSE )
 		{
 			Irp->IoStatus.Information = sizeof( HIDDEN_SYSTEM_THREAD_REPORT );
 
 			HIDDEN_SYSTEM_THREAD_REPORT report;
 			report.report_code = REPORT_HIDDEN_SYSTEM_THREAD;
-			report.found_in_kthreadlist = thread_found_in_kthreadlist;
-			report.found_in_pspcidtable = thread_found_in_pspcidtable;
-			report.thread_id = PsGetThreadId( current_kpcrb_thread );
-			report.thread_address = current_kpcrb_thread;
+			report.found_in_kthreadlist = context.thread_found_in_kthreadlist;
+			report.found_in_pspcidtable = context.thread_found_in_pspcidtable;
+			report.thread_id = PsGetThreadId( context.current_kpcrb_thread );
+			report.thread_address = context.current_kpcrb_thread;
 
 			RtlCopyMemory(
 				report.thread,
-				current_kpcrb_thread,
+				context.current_kpcrb_thread,
 				sizeof( report.thread ));
 
 			RtlCopyMemory( 
@@ -115,19 +125,17 @@ VOID ValidateKPCRBThreads(
 				sizeof( HIDDEN_SYSTEM_THREAD_REPORT ) );
 		}
 
-		current_kpcrb_thread = NULL;
-		thread_found_in_pspcidtable = FALSE;
-		thread_found_in_kthreadlist = FALSE;
-		finished = FALSE;
-
 		KeRevertToUserAffinityThreadEx( old_affinity );
 	}
 }
 
 VOID DetectAttachedThreadsProcessCallback(
-	_In_ PEPROCESS Process
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
 )
 {
+	UNREFERENCED_PARAMTER( Context );
+
 	NTSTATUS status;
 	PLIST_ENTRY thread_list_head;
 	PLIST_ENTRY thread_list_entry;
@@ -186,7 +194,8 @@ VOID DetectAttachedThreadsProcessCallback(
 VOID DetectThreadsAttachedToProtectedProcess()
 {
 	EnumerateProcessListWithCallbackFunction(
-		DetectAttachedThreadsProcessCallback
+		DetectAttachedThreadsProcessCallback,
+		NULL
 	);
 }
  

@@ -354,9 +354,13 @@ NTSTATUS EnumerateProcessHandles(
 * cheat which is mass deployed and needs to ensure that it won't crash the system.
 * Since we have no access to the process structure locks it is definitely not
 * mass deployment safe lol.
+* 
+* The Context argument is simply a pointer to a user designed context structure
+* which is passed to the callback function.
 */
 VOID EnumerateProcessListWithCallbackFunction(
-	_In_ PVOID Function
+	_In_ PVOID Function,
+	_In_ PVOID Context
 )
 {
 	UINT64 current_process;
@@ -377,8 +381,8 @@ VOID EnumerateProcessListWithCallbackFunction(
 		if ( !current_process )
 			return;
 
-		VOID( *callback_function_ptr )( PEPROCESS ) = Function;
-		( *callback_function_ptr )( current_process );
+		VOID( *callback_function_ptr )( PEPROCESS, PVOID ) = Function;
+		( *callback_function_ptr )( current_process, Context );
 
 		process_list_entry = process_list_entry->Flink;
 
