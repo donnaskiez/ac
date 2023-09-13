@@ -41,7 +41,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
         srand( time( NULL ) );
-        int seed = ( rand() % 5 );
+        int seed = ( rand() % 6 );
 
         std::cout << "Seed: " << seed << std::endl;
 
@@ -61,6 +61,9 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
             break;
         case 4:
             kmanager.ValidateProcessModules();
+            break;
+        case 5:
+            kmanager.RunNmiCallbacks();
             break;
         }
 

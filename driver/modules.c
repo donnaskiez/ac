@@ -799,7 +799,7 @@ NTSTATUS HandleNmiIOCTL(
 	* We want to register and unregister our callback each time so it becomes harder
 	* for people to hook our callback and get up to some funny business
 	*/
-	callback_handle = KeRegisterNmiCallback( NmiCallback, nmi_context.nmi_core_context );
+	callback_handle = KeRegisterNmiCallback( NmiCallback, &nmi_context );
 
 	if ( !callback_handle )
 	{
