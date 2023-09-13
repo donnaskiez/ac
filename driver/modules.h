@@ -34,12 +34,6 @@ typedef struct NMI_CALLBACK_FAILURE
 
 }NMI_CALLBACK_FAILURE, * PNMI_CALLBACK_FAILURE;
 
-typedef struct _NMI_CONTEXT
-{
-	INT nmi_callbacks_run;
-
-}NMI_CONTEXT, * PNMI_CONTEXT;
-
 typedef struct _NMI_CALLBACK_DATA
 {
 	UINT64		kthread_address;
