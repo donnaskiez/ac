@@ -720,7 +720,6 @@ BOOLEAN NmiCallback(
 		( PNMI_CORE_CONTEXT )( ( uintptr_t )nmi_context->nmi_core_context + proc_num * sizeof( NMI_CORE_CONTEXT ) );
 
 	core_context->nmi_callbacks_run += 1;
-	DEBUG_LOG( "core number: %lx, num nmis run: %i", proc_num, core_context->nmi_callbacks_run );
 
 	return TRUE;
 }
