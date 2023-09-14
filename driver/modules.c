@@ -692,7 +692,7 @@ BOOLEAN NmiCallback(
 	*/
 	INT num_frames_captured = RtlCaptureStackBackTrace(
 		NULL,
-		STACK_FRAME_POOL_SIZE,
+		STACK_FRAME_POOL_SIZE / sizeof(UINT64),
 		( uintptr_t )nmi_context->stack_frames + proc_num * STACK_FRAME_POOL_SIZE,
 		NULL
 	);
