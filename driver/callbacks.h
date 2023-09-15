@@ -46,7 +46,6 @@ typedef struct _CALLBACKS_CONFIGURATION
 
 static const uintptr_t EPROCESS_IMAGE_FILE_NAME_OFFSET = 0x5a8;
 static const uintptr_t EPROCESS_HANDLE_TABLE_OFFSET = 0x570;
-static const uintptr_t OBJECT_HEADER_SIZE = 0x30;
 static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
 
 static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING( L"Process" );

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <Windows.h>
 #include <string>
+#include <WDBGEXTS.H>
 
 #include "common.h"
 
@@ -16,6 +17,13 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     FILE* file;
     freopen_s( &file, "CONOUT$", "w", stdout );
     freopen_s( &file, "CONIN$", "r", stdin );
+
+    GetKernelStructureOffsets();
+
+    while ( true )
+    {
+
+    }
 
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 
@@ -40,34 +48,35 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
-        srand( time( NULL ) );
-        int seed = ( rand() % 6 );
+        kmanager.ScanPoolsForUnlinkedProcesses();
+        //srand( time( NULL ) );
+        //int seed = ( rand() % 6 );
 
-        std::cout << "Seed: " << seed << std::endl;
+        //std::cout << "Seed: " << seed << std::endl;
 
-        switch ( seed )
-        {
-        case 0:
-            kmanager.EnumerateHandleTables();
-            break;
-        case 1:
-            kmanager.PerformIntegrityCheck();
-            break;
-        case 2:
-            kmanager.ScanPoolsForUnlinkedProcesses();
-            break;
-        case 3:
-            kmanager.VerifySystemModules();
-            break;
-        case 4:
-            kmanager.ValidateProcessModules();
-            break;
-        case 5:
-            kmanager.RunNmiCallbacks();
-            break;
-        }
+        //switch ( seed )
+        //{
+        //case 0:
+        //    kmanager.EnumerateHandleTables();
+        //    break;
+        //case 1:
+        //    kmanager.PerformIntegrityCheck();
+        //    break;
+        //case 2:
+        //    kmanager.ScanPoolsForUnlinkedProcesses();
+        //    break;
+        //case 3:
+        //    kmanager.VerifySystemModules();
+        //    break;
+        //case 4:
+        //    kmanager.ValidateProcessModules();
+        //    break;
+        //case 5:
+        //    kmanager.RunNmiCallbacks();
+        //    break;
+        //}
 
-        kmanager.MonitorCallbackReports();
+        //kmanager.MonitorCallbackReports();
 
         std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
     }

@@ -30,12 +30,8 @@ CHAR EXECUTIVE_OBJECT_POOL_TAGS[ EXECUTIVE_OBJECT_COUNT ][ POOL_TAG_LENGTH ] =
 	"\x4C\x69\x6E\x6B"		/* Symbolic links */
 };
 
-typedef struct _PROCESS_SCAN_CONTEXT
-{
-	PVOID process_buffer;
-	ULONG process_count;
-
-}PROCESS_SCAN_CONTEXT, *PPROCESS_SCAN_CONTEXT;
+PVOID process_buffer = NULL;
+ULONG process_count = NULL;
 
 PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 {
@@ -64,13 +60,12 @@ PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
 		dump_header
 	);
 
-	debugger_data = 
-		( PKDDEBUGGER_DATA64 )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KDDEBUGGER_DATA64 ), POOL_DEBUGGER_DATA_TAG );
+	debugger_data = ( PKDDEBUGGER_DATA64 )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KDDEBUGGER_DATA64 ), POOL_DEBUGGER_DATA_TAG );
 
 	if ( !debugger_data )
 		goto end;
 
-	RtlCopyMemory( debugger_data, dump_header->KdDebuggerDataBlock,  sizeof( KDDEBUGGER_DATA64 ));
+	RtlCopyMemory( debugger_data, dump_header->KdDebuggerDataBlock, sizeof( KDDEBUGGER_DATA64 ) );
 
 end:
 
@@ -80,23 +75,98 @@ end:
 	return debugger_data;
 }
 
-/*
-* This for some reason does not work on my main pc but works on the vm. The debugger
-* data it uses to get the list head may be providing different data based on whether
-* or not the machine is being debugged? Not sure. So need to look into this at somepoint.
-*/
 VOID GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 )
 {
+	/* TODO: have a global debugger pool here since shit aint really change */
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
 
-	if ( !debugger_data )
-		return;
-
-	*Address = *(UINT64*)( debugger_data->PsActiveProcessHead );
+	*Address = *( UINT64* )( debugger_data->PsActiveProcessHead );
 
 	ExFreePoolWithTag( debugger_data, POOL_DEBUGGER_DATA_TAG );
+}
+
+/*
+* Here we define a signature that can be used to find EPROCESS structures consistently across
+* major windows versions. The fields we test have proven to be consistent in the following study:
+* 
+* https://www.cise.ufl.edu/~traynor/papers/ccs09b.pdf
+* 
+* Aswell as some of my own additional research and testing. The following signature is used:
+* 
+* PeakVirtualSize must be greater then 0 for any valid process:
+*	-> EPROCESS->PeakVirtualSize > 0
+* 
+* The DirectoryTableBase must be 0x20 aligned:
+*	-> EPROCESS->DirectoryTableBase % 20 == 0
+* 
+* The pool allocation size must be greater then the size of an EPROCESS allocation and 
+* less then the size of a page. Allocation size can be found with the following formula:
+*	-> AllocationSize = POOL_HEADER->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER)
+*	-> AllocationSize > sizeof(EPROCESS) 
+*	-> AllocationSize < PAGE_SIZE (4096)
+* 
+* Pool type must be non-null:
+*	-> POOL_HEADER->PoolType != NULL
+* 
+* The process PEB must be a usermode address and 0x1000 aligned:
+*	-> EPROCESS->Peb & 0x7ffd0000 == 0x7ffd0000 && EPROCESS->Peb % 0x1000 == 0
+* 
+* The object table must have the following properties and be 0x8 aligned:
+*	-> EPROCESS->ObjectTable & 0xe0000000 == 0xe0000000 && EPROCESS->ObjectTable % 0x8 == 0
+* 
+* The allocation size, when AND'd with 0xfff0 must not equal 0xfff0:
+*	-> AllocationSize & 0xfff0 != 0xfff0
+* 
+* This signature will allow us to consistently and accurately determine if a given pool allocation is
+* indeed an executive process allocation across major versions of Windows.
+*/
+BOOLEAN ValidateIfAddressIsProcessStructure(
+	_In_ PVOID Address,
+	_In_ PPOOL_HEADER PoolHeader
+)
+{
+	UINT64 peak_virtual_size = NULL;
+	UINT64 dir_table_base = NULL;
+	UINT64 allocation_size = NULL;
+	UINT64 peb = NULL;
+	UINT64 object_table = NULL;
+	UINT32 pool_type = NULL;
+	BOOLEAN peb_test = FALSE;
+	BOOLEAN object_table_test = FALSE;
+	UINT64 allocation_size_test = NULL;
+
+	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) )
+		peak_virtual_size = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET );
+
+	if ( MmIsAddressValid( ( UINT64 )Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET ) )
+		dir_table_base = *( UINT64* )( ( UINT64 )Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET );
+
+	if ( MmIsAddressValid( ( UINT64 )PoolHeader + 0x02 ) )
+	{
+		allocation_size = PoolHeader->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER );
+		pool_type = PoolHeader->PoolType;
+	}
+
+	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEB_OFFSET ) )
+		peb = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEB_OFFSET );
+
+	if (MmIsAddressValid((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET ) )
+		object_table = *( UINT64* )( ( UINT64 )Address + EPROCESS_OBJECT_TABLE_OFFSET );
+
+	peb_test = peb == NULL || ( peb & 0x7ffd0000 == 0x7ffd0000 && peb % 0x1000 == NULL );
+	object_table_test = object_table == NULL || ( object_table & 0xe0000000 == 0xe0000000 && object_table % 0x8 == 0 );
+	allocation_size_test = allocation_size & 0xfff0;
+
+	if ( peak_virtual_size > 0 && ( dir_table_base & 0x20 ) == 0 && allocation_size > EPROCESS_SIZE && 
+		pool_type != NULL && !( allocation_size_test == 0xfff0 ) && !peb_test && !object_table_test )
+	{
+		DEBUG_LOG( "Virtual size: %llx, dir table base: %llx, allocation size: %llx", peak_virtual_size, dir_table_base, allocation_size );
+		return TRUE;
+	}
+
+	return FALSE;
 }
 
 /*
@@ -135,7 +205,7 @@ VOID ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ ULONG ObjectIndex,
-	_In_ PPROCESS_SCAN_CONTEXT Context
+	_In_ PVOID AddressBuffer
 )
 {
 	INT length = 0;
@@ -143,6 +213,8 @@ VOID ScanPageForKernelObjectAllocation(
 	CHAR current_sig_byte;
 	PPOOL_HEADER pool_header;
 	PEPROCESS process = NULL;
+	PEPROCESS process_size_one = NULL;
+	PEPROCESS process_size_two = NULL;
 	LPCSTR process_name;
 	PUINT64 address_list;
 	ULONG allocation_size;
@@ -164,48 +236,40 @@ VOID ScanPageForKernelObjectAllocation(
 			{
 				pool_header = ( UINT64 )PageBase + offset - 0x04;
 
-				if ( !MmIsAddressValid( (PVOID)pool_header ) )
+				if ( !MmIsAddressValid( ( PVOID )pool_header ) )
 					break;
 
 				/*
-				* This is some hard coded trash, need to figure out how we can differentiate different
-				* types of objects since they would each have a varying number of headers, object sizes etc.
+				* All EPROCESS allocations contain the following header objects:
 				* 
-				* For now we check 2 sizes, one of which is 0x10 smaller then the other (the unknown header?) 
-				* and make sure the pool is still allocated by checking the PoolType != 0.
+				* -> OBJECT_HEADER with size 0x30
+				* -> OBJECT_HEADER_HANDLE_TABLE with size 0x10
+				* -> OBJECT_HEADER_QUOTA_INFO with size 0x20
 				* 
-				* more: https://www.imf-conference.org/imf2006/23_Schuster-PoolAllocations.pdf
+				* And a small number may an unknown additional header with size 0x10
 				*/
-				allocation_size = pool_header->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER ); 
+				process_size_one = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + KPROCESS_OFFSET_FROM_POOL_HEADER_SIZE_1 );
+				process_size_two = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + KPROCESS_OFFSET_FROM_POOL_HEADER_SIZE_2 );
 
-				if ( ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE ||
-					allocation_size  == WIN_PROCESS_ALLOCATION_SIZE_2 ) &&
-					pool_header->PoolType != NULL )
+				if ( ValidateIfAddressIsProcessStructure( process_size_one, pool_header ) )
+					process = process_size_one;
+
+				if ( process == NULL )
 				{
-					if ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE )
-						process = process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x70 );
-
-					if ( allocation_size == WIN_PROCESS_ALLOCATION_SIZE_2 )
-						process = process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + 0x80 );
-
-					if ( process == NULL )
-					{
-						DEBUG_LOG( "Process size is different to expected cos we hardcoded dis trash" );
+					if ( ValidateIfAddressIsProcessStructure( process_size_two, pool_header ) )
+						process = process_size_two;
+					else
 						break;
-					}
+				}
 
-					address_list = ( PUINT64 )Context->process_buffer;
+				address_list = ( PUINT64 )AddressBuffer;
 
-					/*
-					* Find the first free entry in the process address list and store the address.
-					*/
-					for ( INT i = 0; i < Context->process_count; i++ )
+				for ( INT i = 0; i < process_count; i++ )
+				{
+					if ( address_list[ i ] == NULL )
 					{
-						if ( address_list[ i ] == NULL )
-						{
-							address_list[ i ] = ( UINT64 )process;
-							break;
-						}
+						address_list[ i ] = ( UINT64 )process;
+						break;
 					}
 				}
 
@@ -218,28 +282,10 @@ VOID ScanPageForKernelObjectAllocation(
 	}
 }
 
-VOID EnumerateKernelLargePages(
-	_In_ UINT64 PageBase,
-	_In_ ULONG PageSize,
-	_In_ ULONG ObjectIndex,
-	_In_ PPROCESS_SCAN_CONTEXT Context
-)
-{
-	for ( INT page_index = 0; page_index < PageSize; page_index++ )
-	{
-		ScanPageForKernelObjectAllocation( 
-			PageBase + ( page_index * PageSize ), 
-			PAGE_SIZE, 
-			ObjectIndex, 
-			Context
-		);
-	}
-}
-
 /*
 * Using MmGetPhysicalMemoryRangesEx2(), we can get a block of structures that
 * describe the physical memory layout. With each physical page base we are going
-* to enumerate, we want to make sure it lies within an appropriate region of 
+* to enumerate, we want to make sure it lies within an appropriate region of
 * physical memory, so this function is to check for exactly that.
 */
 BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
@@ -265,6 +311,24 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 	return FALSE;
 }
 
+VOID EnumerateKernelLargePages(
+	_In_ UINT64 PageBase,
+	_In_ ULONG PageSize,
+	_In_ PVOID AddressBuffer,
+	_In_ ULONG ObjectIndex
+)
+{
+	for ( INT page_index = 0; page_index < PageSize; page_index++ )
+	{
+		ScanPageForKernelObjectAllocation(
+			PageBase + ( page_index * PageSize ),
+			PAGE_SIZE,
+			ObjectIndex,
+			AddressBuffer
+		);
+	}
+}
+
 /*
 * This is your basic page table walk function. On intel systems, paging has 4 levels,
 * each table holds 512 entries with a total size of 0x1000 (512 * sizeof(QWORD)). Each entry
@@ -272,26 +336,24 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 * of the base of the next table in the structure. So for example, a PML4 entry contains
 * a physical address that points to the base of the PDPT table, it is the same for a PDPT
 * entry -> PD base and so on.
-* 
-* However, as with all good things Windows has implemented security features meaning 
-* we cannot use functions such as MmCopyMemory or MmMapIoSpace on paging structures, 
-* so we must find another way to walk the pages. Luckily for us, there exists 
+*
+* However, as with all good things Windows has implemented security features meaning
+* we cannot use functions such as MmCopyMemory or MmMapIoSpace on paging structures,
+* so we must find another way to walk the pages. Luckily for us, there exists
 * MmGetVirtualForPhysical. This function is self explanatory and returns the corresponding
 * virtual address given a physical address. What this means is that we can extract a page
 * entry physical address, pass it to MmGetVirtualForPhysical which returns us the virtual
-* address of the base of the next page structure. This is because page tables are still 
+* address of the base of the next page structure. This is because page tables are still
 * mapped by the kernel and exist in virtual memory just like everything else and hence
-* reading the value at all 512 entries from the virtual base will give us the equivalent 
+* reading the value at all 512 entries from the virtual base will give us the equivalent
 * value as directly reading the physical address.
-* 
+*
 * Using this, we essentially walk the page tables as any regular translation would
 * except instead of simply reading the physical we translate it to a virtual address
 * and extract the physical address from the value at each virtual address page entry.
 */
 
-VOID WalkKernelPageTables(
-	_In_ PPROCESS_SCAN_CONTEXT Context
-)
+VOID WalkKernelPageTables( PVOID AddressBuffer )
 {
 	CR3 cr3;
 	PML4E pml4_base;
@@ -310,6 +372,7 @@ VOID WalkKernelPageTables(
 	UINT64 base_1gb_virtual_page;
 	PHYSICAL_ADDRESS physical;
 	PPHYSICAL_MEMORY_RANGE physical_memory_ranges;
+	KIRQL irql;
 
 	physical_memory_ranges = MmGetPhysicalMemoryRangesEx2( NULL, NULL );
 
@@ -333,7 +396,7 @@ VOID WalkKernelPageTables(
 		if ( !MmIsAddressValid( pml4_base.BitAddress + pml4_index * sizeof( UINT64 ) ) )
 			continue;
 
-		pml4_entry.BitAddress = *(UINT64*)( pml4_base.BitAddress + pml4_index * sizeof( UINT64 ) );
+		pml4_entry.BitAddress = *( UINT64* )( pml4_base.BitAddress + pml4_index * sizeof( UINT64 ) );
 
 		if ( pml4_entry.Bits.Present == NULL )
 			continue;
@@ -367,14 +430,14 @@ VOID WalkKernelPageTables(
 
 				base_1gb_virtual_page = MmGetVirtualForPhysical( physical );
 
-				if (!base_1gb_virtual_page || !MmIsAddressValid( base_1gb_virtual_page ) )
+				if ( !base_1gb_virtual_page || !MmIsAddressValid( base_1gb_virtual_page ) )
 					continue;
 
 				EnumerateKernelLargePages(
 					base_1gb_virtual_page,
 					LARGE_PAGE_1GB_ENTRIES,
-					INDEX_PROCESS_POOL_TAG,
-					Context
+					AddressBuffer,
+					INDEX_PROCESS_POOL_TAG
 				);
 
 				continue;
@@ -415,17 +478,14 @@ VOID WalkKernelPageTables(
 					EnumerateKernelLargePages(
 						base_2mb_virtual_page,
 						LARGE_PAGE_2MB_ENTRIES,
-						INDEX_PROCESS_POOL_TAG,
-						Context
+						AddressBuffer,
+						INDEX_PROCESS_POOL_TAG
 					);
 
 					continue;
 				}
 
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
-
-				if ( !MmIsAddressValid( pd_entry.BitAddress ) )
-					continue;
 
 				pt_base = MmGetVirtualForPhysical( physical );
 
@@ -458,7 +518,7 @@ VOID WalkKernelPageTables(
 						base_virtual_page,
 						PAGE_BASE_SIZE,
 						INDEX_PROCESS_POOL_TAG,
-						Context
+						AddressBuffer
 					);
 				}
 			}
@@ -468,38 +528,25 @@ VOID WalkKernelPageTables(
 	DEBUG_LOG( "Finished scanning memory" );
 }
 
-VOID IncrementProcessCounter(
-	_In_ PEPROCESS Process,
-	_Inout_opt_ PVOID Context
-)
+VOID IncrementProcessCounter()
 {
-	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
-
-	if ( !context ) 
-		return;
-
-	context->process_count += 1;
+	process_count++;
 }
 
 VOID CheckIfProcessAllocationIsInProcessList(
-	_In_ PEPROCESS Process,
-	_Inout_opt_ PVOID Context
+	_In_ PEPROCESS Process
 )
 {
 	PUINT64 allocation_address;
-	PPROCESS_SCAN_CONTEXT context = ( PPROCESS_SCAN_CONTEXT )Context;
 
-	if ( !context )
-		return;
-
-	for ( INT i = 0; i < context->process_count; i++ )
+	for ( INT i = 0; i < process_count; i++ )
 	{
-		allocation_address = ( PUINT64 )context->process_buffer;
+		allocation_address = ( PUINT64 )process_buffer;
 
 		if ( ( UINT64 )Process >= allocation_address[ i ] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
 			( UINT64 )Process <= allocation_address[ i ] + PROCESS_OBJECT_ALLOCATION_MARGIN )
 		{
-			RtlZeroMemory( ( UINT64 )context->process_buffer + i * sizeof( UINT64 ), sizeof( UINT64 ) );
+			RtlZeroMemory( ( UINT64 )process_buffer + i * sizeof( UINT64 ), sizeof( UINT64 ) );
 		}
 	}
 }
@@ -521,74 +568,74 @@ NTSTATUS FindUnlinkedProcesses(
 {
 	PUINT64 allocation_address;
 	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;
-	PROCESS_SCAN_CONTEXT context = { 0 };
 
 	EnumerateProcessListWithCallbackFunction(
 		IncrementProcessCounter,
-		&context
+		NULL
 	);
 
-	if ( context.process_count == NULL )
+	if ( process_count == NULL )
 	{
 		DEBUG_ERROR( "Faield to get process count " );
 		return STATUS_ABANDONED;
 	}
 
-	context.process_buffer = 
-		ExAllocatePool2( POOL_FLAG_NON_PAGED, context.process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
+	process_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, process_count * 2 * sizeof( UINT64 ), PROCESS_ADDRESS_LIST_TAG );
 
-	if ( !context.process_buffer )
-		return STATUS_MEMORY_NOT_ALLOCATED;
+	if ( !process_buffer )
+		return STATUS_ABANDONED;
 
-	WalkKernelPageTables( &context );
+	WalkKernelPageTables( process_buffer );
 
 	EnumerateProcessListWithCallbackFunction(
 		CheckIfProcessAllocationIsInProcessList,
-		&context
+		NULL
 	);
 
-	allocation_address = ( PUINT64 )context.process_buffer;
+	allocation_address = ( PUINT64 )process_buffer;
 
-	for ( INT i = 0; i < context.process_count; i++ )
+	for ( INT i = 0; i < process_count; i++ )
 	{
 		if ( allocation_address[ i ] == NULL )
 			continue;
 
 		/* process has been deallocated yet the pool header hasnt been updated? */
-		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_VIRTUAL_SIZE_OFFSET ) == 0x00 )
+		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) == 0x00 )
 			continue;
 
 		/* report / do some further analysis */
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
 
-		report_buffer = 
-			ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
+		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
 
 		if ( !report_buffer )
 			goto end;
 
 		report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
 
-		RtlCopyMemory( 
+		RtlCopyMemory(
 			report_buffer->process,
-			allocation_address[i],
+			allocation_address[ i ],
 			REPORT_INVALID_PROCESS_BUFFER_SIZE );
 
 		Irp->IoStatus.Information = sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
 
-		RtlCopyMemory( 
-			Irp->AssociatedIrp.SystemBuffer, 
-			report_buffer, 
+		RtlCopyMemory(
+			Irp->AssociatedIrp.SystemBuffer,
+			report_buffer,
 			sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) );
 	}
 
 end:
 
-	if (report_buffer )
+	if ( report_buffer )
 		ExFreePoolWithTag( report_buffer, INVALID_PROCESS_REPORT_TAG );
 
-	if (context.process_buffer )
-		ExFreePoolWithTag( context.process_buffer, PROCESS_ADDRESS_LIST_TAG );
+	if ( process_buffer )
+		ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
+
+	process_count = NULL;
+	process_buffer = NULL;
 
 	return STATUS_SUCCESS;
 }

@@ -19,10 +19,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <VCProjectVersion>16.0</VCProjectVersion>
+    <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{3c8194c7-9f20-4ff8-8c4c-b26c3d053611}</ProjectGuid>
-    <RootNamespace>user</RootNamespace>
+    <ProjectGuid>{bd01b133-a4bf-4292-a261-6530cbc1a481}</ProjectGuid>
+    <RootNamespace>debuglib</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -40,13 +40,13 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -108,8 +108,6 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Imagehlp.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\lachuie\source\repos\ac\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -126,31 +124,13 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Imagehlp.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\lachuie\source\repos\ac\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="pipe.cpp" />
-    <ClCompile Include="km\driver.cpp" />
-    <ClCompile Include="km\kmanager.cpp" />
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="um\imports.cpp" />
-    <ClCompile Include="um\process.cpp" />
-    <ClCompile Include="threadpool.cpp" />
-    <ClCompile Include="um\umanager.cpp" />
-    <ClCompile Include="client.cpp" />
+    <ClCompile Include="symbols.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="pipe.h" />
-    <ClInclude Include="common.h" />
-    <ClInclude Include="km\driver.h" />
-    <ClInclude Include="km\kmanager.h" />
-    <ClInclude Include="client.h" />
-    <ClInclude Include="um\imports.h" />
-    <ClInclude Include="um\process.h" />
-    <ClInclude Include="threadpool.h" />
-    <ClInclude Include="um\umanager.h" />
+    <ClInclude Include="symbols.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -26,6 +26,8 @@
 
 #define MAX_MODULE_PATH 256
 
+void GetKernelStructureOffsets();
+
 namespace kernelmode
 {
 	class Driver
@@ -38,6 +40,7 @@ namespace kernelmode
 		VOID NotifyDriverOnProcessLaunch();
 		VOID CheckDriverHeartbeat();
 		VOID NotifyDriverOnProcessTermination();
+		//VOID GetKernelStructureOffsets();
 
 	public:
 
