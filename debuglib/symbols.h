@@ -111,29 +111,29 @@ typedef HRESULT( *DebugCreateFunction )( _In_ REFIID, _Out_ PVOID* );
 
 struct KERNEL_STRUCTURE_OFFSETS
 {
-	struct KPROCESS
-	{
-		ULONG thread_list_head;
-		ULONG directory_table_base;
-	}KPROCESS;
+    struct KPROCESS
+    {
+        ULONG thread_list_head;
+        ULONG directory_table_base;
+    }KPROCESS;
 
-	struct EPROCESS
-	{
-		ULONG peak_virtual_size;
-		ULONG vad_root;
-		ULONG object_table;
-		ULONG image_name;
-		ULONG process_environment_block;
-	}EPROCESS;
+    struct EPROCESS
+    {
+        ULONG peak_virtual_size;
+        ULONG vad_root;
+        ULONG object_table;
+        ULONG image_name;
+        ULONG process_environment_block;
+    }EPROCESS;
 
-	struct KTHREAD
-	{
-		ULONG stack_base;
-		ULONG stack_limit;
-		ULONG threadlist;
-		ULONG apc_state;
-		ULONG start_address;
-	}KTHREAD;
+    struct KTHREAD
+    {
+        ULONG stack_base;
+        ULONG stack_limit;
+        ULONG threadlist;
+        ULONG apc_state;
+        ULONG start_address;
+    }KTHREAD;
 };
 
 VOID GetKernelStructureOffsets( KERNEL_STRUCTURE_OFFSETS* KernelOffsets );

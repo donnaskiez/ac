@@ -18,13 +18,6 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
     freopen_s( &file, "CONOUT$", "w", stdout );
     freopen_s( &file, "CONIN$", "r", stdin );
 
-    GetKernelStructureOffsets();
-
-    while ( true )
-    {
-
-    }
-
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 
     LPTSTR pipe_name = (LPTSTR)L"\\\\.\\pipe\\DonnaACPipe";

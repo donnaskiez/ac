@@ -132,27 +132,23 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 	UINT64 allocation_size = NULL;
 	UINT64 peb = NULL;
 	UINT64 object_table = NULL;
-	UINT32 pool_type = NULL;
 	BOOLEAN peb_test = FALSE;
 	BOOLEAN object_table_test = FALSE;
 	UINT64 allocation_size_test = NULL;
 
-	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) )
-		peak_virtual_size = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET );
-
 	if ( MmIsAddressValid( ( UINT64 )Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET ) )
 		dir_table_base = *( UINT64* )( ( UINT64 )Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET );
 
+	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) )
+		peak_virtual_size = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET );
+
 	if ( MmIsAddressValid( ( UINT64 )PoolHeader + 0x02 ) )
-	{
 		allocation_size = PoolHeader->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER );
-		pool_type = PoolHeader->PoolType;
-	}
 
 	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEB_OFFSET ) )
 		peb = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEB_OFFSET );
 
-	if (MmIsAddressValid((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET ) )
+	if ( MmIsAddressValid((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET ) )
 		object_table = *( UINT64* )( ( UINT64 )Address + EPROCESS_OBJECT_TABLE_OFFSET );
 
 	peb_test = peb == NULL || ( peb & 0x7ffd0000 == 0x7ffd0000 && peb % 0x1000 == NULL );
@@ -160,9 +156,9 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 	allocation_size_test = allocation_size & 0xfff0;
 
 	if ( peak_virtual_size > 0 && ( dir_table_base & 0x20 ) == 0 && allocation_size > EPROCESS_SIZE && 
-		pool_type != NULL && !( allocation_size_test == 0xfff0 ) && !peb_test && !object_table_test )
+		PoolHeader->PoolType != NULL && !( allocation_size_test == 0xfff0 ) && !peb_test && !object_table_test )
 	{
-		DEBUG_LOG( "Virtual size: %llx, dir table base: %llx, allocation size: %llx", peak_virtual_size, dir_table_base, allocation_size );
+		DEBUG_LOG( "Virtual size: %llx, allocation size: %llx", peak_virtual_size, allocation_size );
 		return TRUE;
 	}
 
@@ -215,6 +211,7 @@ VOID ScanPageForKernelObjectAllocation(
 	PEPROCESS process = NULL;
 	PEPROCESS process_size_one = NULL;
 	PEPROCESS process_size_two = NULL;
+	PEPROCESS test_process = NULL;
 	LPCSTR process_name;
 	PUINT64 address_list;
 	ULONG allocation_size;
@@ -222,7 +219,7 @@ VOID ScanPageForKernelObjectAllocation(
 	if ( !PageBase || !PageSize )
 		return;
 
-	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH; offset++ )
+	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH - EPROCESS_SIZE; offset++ )
 	{
 		for ( INT sig_index = 0; sig_index < POOL_TAG_LENGTH + 1; sig_index++ )
 		{
@@ -239,28 +236,21 @@ VOID ScanPageForKernelObjectAllocation(
 				if ( !MmIsAddressValid( ( PVOID )pool_header ) )
 					break;
 
-				/*
-				* All EPROCESS allocations contain the following header objects:
-				* 
-				* -> OBJECT_HEADER with size 0x30
-				* -> OBJECT_HEADER_HANDLE_TABLE with size 0x10
-				* -> OBJECT_HEADER_QUOTA_INFO with size 0x20
-				* 
-				* And a small number may an unknown additional header with size 0x10
-				*/
-				process_size_one = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + KPROCESS_OFFSET_FROM_POOL_HEADER_SIZE_1 );
-				process_size_two = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + KPROCESS_OFFSET_FROM_POOL_HEADER_SIZE_2 );
+				for ( ULONG header_size = 0x00; header_size < 0xb0; header_size += 0x10 )
+				{
+					test_process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + header_size );
 
-				if ( ValidateIfAddressIsProcessStructure( process_size_one, pool_header ) )
-					process = process_size_one;
+					if ( ValidateIfAddressIsProcessStructure( test_process, pool_header ) )
+					{
+						process = test_process;
+						break;
+					}
+				}
 
 				if ( process == NULL )
-				{
-					if ( ValidateIfAddressIsProcessStructure( process_size_two, pool_header ) )
-						process = process_size_two;
-					else
-						break;
-				}
+					break;
+
+				DEBUG_LOG( "Process: %llx", (UINT64)process );
 
 				address_list = ( PUINT64 )AddressBuffer;
 
@@ -487,6 +477,9 @@ VOID WalkKernelPageTables( PVOID AddressBuffer )
 
 				physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
+				if ( !MmIsAddressValid( pd_base + pd_index * sizeof( UINT64 ) ) )
+					continue;
+
 				pt_base = MmGetVirtualForPhysical( physical );
 
 				if ( !pt_base || !MmIsAddressValid( pt_base ) )
@@ -611,19 +604,19 @@ NTSTATUS FindUnlinkedProcesses(
 		if ( !report_buffer )
 			goto end;
 
-		report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
+		//report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
 
-		RtlCopyMemory(
-			report_buffer->process,
-			allocation_address[ i ],
-			REPORT_INVALID_PROCESS_BUFFER_SIZE );
+		//RtlCopyMemory(
+		//	report_buffer->process,
+		//	allocation_address[ i ],
+		//	REPORT_INVALID_PROCESS_BUFFER_SIZE );
 
-		Irp->IoStatus.Information = sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
+		//Irp->IoStatus.Information = sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
 
-		RtlCopyMemory(
-			Irp->AssociatedIrp.SystemBuffer,
-			report_buffer,
-			sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) );
+		//RtlCopyMemory(
+		//	Irp->AssociatedIrp.SystemBuffer,
+		//	report_buffer,
+		//	sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) );
 	}
 
 end:

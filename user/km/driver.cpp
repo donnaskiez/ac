@@ -627,25 +627,6 @@ VOID kernelmode::Driver::SendClientHardwareInformation()
 		&system_information, sizeof( global::headers::SYSTEM_INFORMATION ), CLIENT_SEND_SYSTEM_INFORMATION );
 }
 
-#pragma comment(lib, "debuglib")
-
 VOID GetKernelStructureOffsets()
 {
-	KERNEL_STRUCTURE_OFFSETS offsets = { 0 };
-	GetKernelStructureOffsets( &offsets );
-
-	LOG_INFO( "KPROCESS->ThreadListHead: %lx", offsets.KPROCESS.thread_list_head );
-	LOG_INFO( "KPROCESS->DirectoryTableBase: %lx", offsets.KPROCESS.directory_table_base );
-
-	LOG_INFO( "EPROCESS->PeakVirtualSize: %lx", offsets.EPROCESS.peak_virtual_size );
-	LOG_INFO( "EPROCESS->VadRoot: %lx", offsets.EPROCESS.vad_root );
-	LOG_INFO( "EPROCESS->ObjectTable: %lx", offsets.EPROCESS.object_table );
-	LOG_INFO( "EPROCESS->ImageFileName: %lx", offsets.EPROCESS.image_name );
-	LOG_INFO( "EPROCESS->Peb: %lx", offsets.EPROCESS.process_environment_block );
-
-	LOG_INFO( "KTHREAD->StackBase: %lx", offsets.KTHREAD.stack_base );
-	LOG_INFO( "KTHREAD->StackLimit: %lx", offsets.KTHREAD.stack_limit );
-	LOG_INFO( "KTHREAD->ThreadListEntry: %lx", offsets.KTHREAD.threadlist );
-	LOG_INFO( "KTHREAD->ApcState: %lx", offsets.KTHREAD.apc_state );
-	LOG_INFO( "KTHREAD->StartAddress: %lx", offsets.KTHREAD.start_address );
 }

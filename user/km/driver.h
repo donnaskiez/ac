@@ -26,8 +26,6 @@
 
 #define MAX_MODULE_PATH 256
 
-void GetKernelStructureOffsets();
-
 namespace kernelmode
 {
 	class Driver
