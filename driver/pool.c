@@ -215,11 +215,12 @@ VOID ScanPageForKernelObjectAllocation(
 	LPCSTR process_name;
 	PUINT64 address_list;
 	ULONG allocation_size;
+	ULONG minimum_process_allocation_size = EPROCESS_SIZE - sizeof( POOL_HEADER ) - OBJECT_HEADER_SIZE;
 
 	if ( !PageBase || !PageSize )
 		return;
 
-	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH - EPROCESS_SIZE; offset++ )
+	for ( INT offset = 0; offset <= PageSize - POOL_TAG_LENGTH - minimum_process_allocation_size; offset++ )
 	{
 		for ( INT sig_index = 0; sig_index < POOL_TAG_LENGTH + 1; sig_index++ )
 		{
