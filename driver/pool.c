@@ -142,7 +142,7 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) )
 		peak_virtual_size = *( UINT64* )( ( UINT64 )Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET );
 
-	if ( MmIsAddressValid( ( UINT64 )PoolHeader + 0x02 ) )
+	if ( MmIsAddressValid( ( UINT64 )PoolHeader + POOL_HEADER_BLOCK_SIZE_OFFSET ) )
 		allocation_size = PoolHeader->BlockSize * CHUNK_SIZE - sizeof( POOL_HEADER );
 
 	if ( MmIsAddressValid( ( UINT64 )Address + EPROCESS_PEB_OFFSET ) )
@@ -155,10 +155,10 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 	object_table_test = object_table == NULL || ( object_table & 0xe0000000 == 0xe0000000 && object_table % 0x8 == 0 );
 	allocation_size_test = allocation_size & 0xfff0;
 
-	if ( peak_virtual_size > 0 && ( dir_table_base & 0x20 ) == 0 && allocation_size > EPROCESS_SIZE && 
+	if ( peak_virtual_size > 0 && ( dir_table_base & 0x20 ) == 0 && 
+		allocation_size > ( EPROCESS_SIZE + OBJECT_HEADER_SIZE + sizeof( POOL_HEADER ) ) &&
 		PoolHeader->PoolType != NULL && !( allocation_size_test == 0xfff0 ) && !peb_test && !object_table_test )
 	{
-		DEBUG_LOG( "Virtual size: %llx, allocation size: %llx", peak_virtual_size, allocation_size );
 		return TRUE;
 	}
 
@@ -237,7 +237,7 @@ VOID ScanPageForKernelObjectAllocation(
 				if ( !MmIsAddressValid( ( PVOID )pool_header ) )
 					break;
 
-				for ( ULONG header_size = 0x00; header_size < 0xb0; header_size += 0x10 )
+				for ( ULONG header_size = 0x30; header_size < 0xb0; header_size += 0x10 )
 				{
 					test_process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + header_size );
 
@@ -580,6 +580,8 @@ NTSTATUS FindUnlinkedProcesses(
 		return STATUS_ABANDONED;
 
 	WalkKernelPageTables( process_buffer );
+
+	__debugbreak();
 
 	EnumerateProcessListWithCallbackFunction(
 		CheckIfProcessAllocationIsInProcessList,
