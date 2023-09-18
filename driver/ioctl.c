@@ -290,6 +290,10 @@ NTSTATUS DeviceClose(
 {
 	DEBUG_LOG( "Handle closed to DonnaAC" );
 
+	/*
+	* For now its fine, but this will need to be moved to our process load callbacks
+	* since right now anyone can open a handle to our driver and then close it lol
+	*/
 	FreeGlobalReportQueueObjects();
 	ClearProcessConfigOnProcessTermination();
 	UnregisterCallbacksOnProcessTermination();
