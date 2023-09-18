@@ -2,6 +2,15 @@
 
 #include <iostream>
 
+/*
+* Massive WIP from which I have essentially just copied from these 2 repos:
+* 
+* https://github.com/yardenshafir/MitigationFlagsCliTool
+* https://github.com/lilhoser/livedump
+* 
+* just to help with leraning the windows debugger api
+*/
+
 static NtSystemDebugControl g_NtSystemDebugControl = NULL;
 
 BOOL

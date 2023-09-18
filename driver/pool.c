@@ -3,6 +3,7 @@
 #include "common.h"
 
 #include "callbacks.h"
+#include "queue.h"
 
 #include <intrin.h>
 
@@ -79,7 +80,6 @@ VOID GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 )
 {
-	/* TODO: have a global debugger pool here since shit aint really change */
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
 
 	*Address = *( UINT64* )( debugger_data->PsActiveProcessHead );
@@ -166,14 +166,6 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 }
 
 /*
-* For ~90% of EPROCESS structures the header layout is as follows:
-*
-* Pool base + 0x00 = ?? (not sure what structure lies here)
-* Pool base + 0x10 = OBJECT_HEADER_QUOTA_INFO
-* Pool base + 0x30 = OBJECT_HEADER_HANDLE_INFO
-* Pool base + 0x40 = OBJECT_HEADER
-* Pool base + 0x70 = EPROCESS
-*
 * OBJECT_HEADER->InfoMask is a bit mask that tells us which optional
 * headers the object has. The bits are as follows:
 *
@@ -232,12 +224,19 @@ VOID ScanPageForKernelObjectAllocation(
 
 			if ( sig_index == POOL_TAG_LENGTH )
 			{
-				pool_header = ( UINT64 )PageBase + offset - 0x04;
+				pool_header = ( UINT64 )PageBase + offset - POOL_HEADER_TAG_OFFSET;
 
 				if ( !MmIsAddressValid( ( PVOID )pool_header ) )
 					break;
 
-				for ( ULONG header_size = 0x30; header_size < 0xb0; header_size += 0x10 )
+				/* 
+				* Since every executive allocation is required to have an _OBJECT_HEADER, we start
+				* iterating from the size of this object header, then jump up in blocks of 0x10 since
+				* every object header is divisible by 0x10. We iterate up to 0xb0 which is equal to the following:
+				* 
+				* 0xb0 = sizeof(ALL_HEADER_OBJECTS) + 0x10 where the 0x10 is 16 bytes of padding.
+				*/
+				for ( ULONG header_size = OBJECT_HEADER_SIZE; header_size < 0xb0; header_size += 0x10 )
 				{
 					test_process = ( PEPROCESS )( ( UINT64 )pool_header + sizeof( POOL_HEADER ) + header_size );
 
@@ -309,10 +308,13 @@ VOID EnumerateKernelLargePages(
 	_In_ ULONG ObjectIndex
 )
 {
+	/*
+	* Split the large pages up into blocks of 0x1000 and scan each block
+	*/
 	for ( INT page_index = 0; page_index < PageSize; page_index++ )
 	{
 		ScanPageForKernelObjectAllocation(
-			PageBase + ( page_index * PageSize ),
+			PageBase + ( page_index * PAGE_SIZE ),
 			PAGE_SIZE,
 			ObjectIndex,
 			AddressBuffer
@@ -545,17 +547,6 @@ VOID CheckIfProcessAllocationIsInProcessList(
 	}
 }
 
-/*
-* Plan:
-* 1. Find number of running procs and allocate a pool equal to size 1.5 * num_procs.
-* 2. Walk the pages tables and store all found process allocation base addresses in this pool
-* 3. Enumerate the process allocation list and make sure that each allocation is within
-*    0x50 bytes of the EPROCESS base of one of the running processes.
-* 4. If there exists a process allocation that doesn't have a matching running process,
-*    make sure it hasnt been deallocated
-* 5. If it hasn't been deallocated, search for the .exe via the long string file name
-*    and report. Maybe do some further analysis can figure this out once we get there.
-*/
 NTSTATUS FindUnlinkedProcesses(
 	_In_ PIRP Irp
 )
@@ -581,8 +572,6 @@ NTSTATUS FindUnlinkedProcesses(
 
 	WalkKernelPageTables( process_buffer );
 
-	__debugbreak();
-
 	EnumerateProcessListWithCallbackFunction(
 		CheckIfProcessAllocationIsInProcessList,
 		NULL
@@ -595,41 +584,31 @@ NTSTATUS FindUnlinkedProcesses(
 		if ( allocation_address[ i ] == NULL )
 			continue;
 
-		/* process has been deallocated yet the pool header hasnt been updated? */
-		if ( *( UINT8* )( allocation_address[ i ] + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET ) == 0x00 )
-			continue;
-
-		/* report / do some further analysis */
+		/* report / do some further analysis etc. */
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
 
-		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), INVALID_PROCESS_REPORT_TAG );
+		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), REPORT_POOL_TAG );
 
 		if ( !report_buffer )
 			goto end;
 
-		//report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
+		report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
 
-		//RtlCopyMemory(
-		//	report_buffer->process,
-		//	allocation_address[ i ],
-		//	REPORT_INVALID_PROCESS_BUFFER_SIZE );
+		RtlCopyMemory(
+			report_buffer->process,
+		    (UINT64)allocation_address[ i ] - OBJECT_HEADER_SIZE,
+			REPORT_INVALID_PROCESS_BUFFER_SIZE 
+		);
 
-		//Irp->IoStatus.Information = sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
-
-		//RtlCopyMemory(
-		//	Irp->AssociatedIrp.SystemBuffer,
-		//	report_buffer,
-		//	sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) );
+		InsertReportToQueue( report_buffer );
 	}
 
 end:
 
-	if ( report_buffer )
-		ExFreePoolWithTag( report_buffer, INVALID_PROCESS_REPORT_TAG );
-
 	if ( process_buffer )
 		ExFreePoolWithTag( process_buffer, PROCESS_ADDRESS_LIST_TAG );
 
+	/* todo: make use of the new context variable in the enum proc func */
 	process_count = NULL;
 	process_buffer = NULL;
 

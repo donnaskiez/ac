@@ -249,14 +249,6 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
     }
 
     object_attributes.ObjectName = NULL;
-    
-    if ( !NT_SUCCESS( status ) )
-    {
-        DEBUG_ERROR( "NTSetInformationProcess failed with status %x", status );
-        ZwClose( file_handle );
-        //TerminateProtectedProcessOnViolation();
-        return status;
-    }
 
     /*
     * Its important that we set the SEC_IMAGE flag with the PAGE_READONLY

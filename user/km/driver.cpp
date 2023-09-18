@@ -174,8 +174,9 @@ VOID kernelmode::Driver::QueryReportQueue()
 	SIZE_T total_size = NULL;
 	global::report_structures::OPEN_HANDLE_FAILURE_REPORT* handle_report;
 	global::report_structures::ATTACH_PROCESS_REPORT* attach_report;
+	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT* allocation_report;
 
-	buffer_size = 1024 * 2;
+	buffer_size = sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP;
 	buffer = malloc( buffer_size );
 
 	status = DeviceIoControl(
@@ -196,8 +197,8 @@ VOID kernelmode::Driver::QueryReportQueue()
 		return;
 	}
 
-	global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* header =
-		( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER* )buffer;
+	global::report_structures::REPORT_QUEUE_HEADER* header =
+		( global::report_structures::REPORT_QUEUE_HEADER* )buffer;
 
 	if ( !header )
 		goto end;
@@ -209,15 +210,15 @@ VOID kernelmode::Driver::QueryReportQueue()
 
 	for ( INT i = 0; i < header->count; i++ )
 	{
-		report_header = (REPORT_ID*)( ( UINT64 )buffer + 
-			sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
+		report_header = ( REPORT_ID* )( ( UINT64 )buffer +
+			sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
 
 		LOG_INFO( "Report id: %d", report_header->report_id );
 
 		if ( report_header->report_id == REPORT_ILLEGAL_ATTACH_PROCESS )
 		{
 			attach_report = ( global::report_structures::ATTACH_PROCESS_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
+				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
 
 			this->report_interface->ReportViolation( attach_report );
 
@@ -225,15 +226,25 @@ VOID kernelmode::Driver::QueryReportQueue()
 
 			continue;
 		}
-		
-		if ( report_header->report_id == REPORT_ILLEGAL_HANDLE_OPERATION )
+		else if ( report_header->report_id == REPORT_ILLEGAL_HANDLE_OPERATION )
 		{
 			handle_report = ( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT_HEADER ) + total_size );
+				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
 
 			this->report_interface->ReportViolation( handle_report );
 
 			total_size += sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT );
+
+			continue;
+		}
+		else if ( report_header->report_id == REPORT_INVALID_PROCESS_ALLOCATION )
+		{
+			allocation_report = ( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT* )(
+				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
+
+			this->report_interface->ReportViolation( allocation_report );
+
+			total_size += sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT );
 
 			continue;
 		}

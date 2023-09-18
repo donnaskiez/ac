@@ -143,7 +143,7 @@ namespace global
 			CHAR driver_name[ 128 ];
 		};
 
-		struct OPEN_HANDLE_FAILURE_REPORT_HEADER
+		struct REPORT_QUEUE_HEADER
 		{
 			INT count;
 		};

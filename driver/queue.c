@@ -204,6 +204,17 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 
 			total_size += sizeof( ATTACH_PROCESS_REPORT );
 			break;
+
+		case REPORT_INVALID_PROCESS_ALLOCATION:
+
+			RtlCopyMemory(
+				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				report,
+				sizeof( INVALID_PROCESS_ALLOCATION_REPORT )
+			);
+
+			total_size += sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
+			break;
 		}
 
 		/* QueuePop frees the node, but we still need to free the returned data */
