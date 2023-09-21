@@ -592,7 +592,7 @@ VOID kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
 		{
 			/*TODO: copy module aswell from an anomaly offset */
 			global::report_structures::PROCESS_MODULES_INTEGRITY_CHECK_FAILURE report;
-			report.report_code = REPORT_CODE_MODULE_VERIFICATION;
+			report.report_code = REPORT_CODE_PROCESS_MODULE_VERIFICATION;
 			report.module_base_address = (UINT64)module_entry.modBaseAddr;
 			report.module_size = module_entry.modBaseSize;
 			std::wstring wstr( module_entry.szModule );

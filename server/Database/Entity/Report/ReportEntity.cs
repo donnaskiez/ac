@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace server.Database.Entity.Report
 {
-    public class IllegalHandleOperationEntity : ReportIllegalHandleOperation, IReportEntity
+    public class ReportEntity : Model.Report
     {
         private readonly ModelContext _modelContext;
-        public UserEntity UserEntity { get; set; }
+        private UserEntity UserEntity { get; set; }
 
-        public IllegalHandleOperationEntity(ModelContext modelContext)
+        public ReportEntity(ModelContext modelContext)
         {
             UserEntity = new UserEntity(modelContext);
             _modelContext = modelContext;
@@ -20,7 +20,7 @@ namespace server.Database.Entity.Report
 
         public void InsertReport()
         {
-            _modelContext.ReportIllegalHandleOperation.Add(this);
+            _modelContext.Reports.Add(this);
         }
     }
 }

@@ -41,7 +41,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
-        kmanager.ScanPoolsForUnlinkedProcesses();
+        kmanager.MonitorCallbackReports();
         //srand( time( NULL ) );
         //int seed = ( rand() % 6 );
 

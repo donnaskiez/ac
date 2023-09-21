@@ -1,6 +1,7 @@
 ﻿using Serilog;
 using server.Database.Entity;
 using server.Database.Entity.Report;
+using server.Database.Entity.Report.Types;
 using server.Database.Model;
 using server.Types.ClientReport;
 using System;
@@ -24,7 +25,7 @@ namespace server.Message
 
         private enum CLIENT_SEND_REPORT_ID
         {
-            MODULE_VERIFICATION = 10,
+            PROCESS_MODULE_VERIFICATION = 10,
             START_ADDRESS_VERIFICATION = 20,
             PAGE_PROTECTION_VERIFICATION = 30,
             PATTERN_SCAN_FAILURE = 40,
@@ -82,7 +83,7 @@ namespace server.Message
 
             switch (this._clientReportPacketHeader.reportCode)
             {
-                case (int)CLIENT_SEND_REPORT_ID.MODULE_VERIFICATION:
+                case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
                     _logger.Information("REPORT CODE: MODULE_VERIFICATION");
                     break;
                 case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
@@ -140,9 +141,17 @@ namespace server.Message
                  */
                 UserEntity user = new UserEntity(context);
 
-                var newReport = new IllegalHandleOperationEntity(context)
+                var newReport = new ReportEntity(context)
                 {
                     User = user.GetUserBySteamId(this._packetHeader.steam64_id),
+                    ReportCode = (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION
+                };
+
+                newReport.InsertReport();
+
+                var reportTypeIllegalHandleOperation = new ReportTypeIllegalHandleOperationEntity(context)
+                {
+                    Report = newReport,
                     IsKernelHandle = report.IsKernelHandle,
                     ProcessId = report.ProcessId,
                     ThreadId = report.ThreadId,
@@ -150,7 +159,8 @@ namespace server.Message
                     ProcessName = report.ProcessName
                 };
 
-                newReport.InsertReport();
+                reportTypeIllegalHandleOperation.InsertReport();
+
                 context.SaveChanges();
             }
         }

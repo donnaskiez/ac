@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 namespace server.Database.Entity.Report
 {
+    /// <summary>
+    /// Implements the IReport interface
+    /// </summary>
     public interface IReportEntity
     {   
         /// <summary>
