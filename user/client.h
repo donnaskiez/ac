@@ -178,7 +178,6 @@ namespace global
 			CHAR thread[ 4096 ];
 		};
 
-
 		struct ATTACH_PROCESS_REPORT
 		{
 			INT report_code;

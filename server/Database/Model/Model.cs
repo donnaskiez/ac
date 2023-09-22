@@ -38,6 +38,10 @@ namespace server.Database.Model
         public virtual ICollection<ReportTypePatternScan> ReportTypePatternScans { get; set; }
         public virtual ICollection<ReportTypeNmiCallback> ReportTypeNmiCallbacks { get; set; }
         public virtual ICollection<ReportTypeSystemModuleValidation> ReportTypeSystemModuleValidations { get; set; }
+        public virtual ICollection<ReportTypeHiddenSystemThread> ReportTypeHiddenSystemThreads { get; set; }
+        public virtual ICollection<ReportTypeAttachProcess> ReportTypeAttachProcesses { get; set; }
+        public virtual ICollection<ReportTypeInvalidProcessAllocation> ReportTypeInvalidProcessAllocations { get; set; }
+        public virtual ICollection<ReportTypeProcessModuleIntegrityCheck> ReportTypeProcessModuleIntegrityChecks { get; set; }
     }
 
     public class ReportTypeIllegalHandleOperation
@@ -93,6 +97,41 @@ namespace server.Database.Model
         public int ReportType { get; set; }
         public long DriverBaseAddress { get; set; }
         public long DriverSize { get; set; }
+        public string ModuleName { get; set; }
+    }
+
+    public class ReportTypeHiddenSystemThread
+    {
+        public virtual Report Report { get; set; }
+        public int ReportNumber { get; set; }
+        public int FoundInKThreadList { get; set; }
+        public int FoundInPspCidTable { get; set; }
+        public long ThreadAddress { get; set; }
+        public int ThreadId { get; set; }
+        public byte[] ThreadStructure { get; set; }
+    }
+
+    public class ReportTypeAttachProcess
+    {
+        public virtual Report Report { get; set; }
+        public int ReportNumber { get; set; }
+        public int ThreadId { get; set; }
+        public long ThreadAddress { get; set; }
+    }
+
+    public class ReportTypeInvalidProcessAllocation
+    {
+        public virtual Report Report { get; set; }
+        public int ReportNumber { get; set; }
+        public byte[] ProcessStructure { get; set; }
+    }
+
+    public class ReportTypeProcessModuleIntegrityCheck
+    {
+        public virtual Report Report { get; set; }
+        public int ReportNumber { get; set; }
+        public long ModuleBaseAddress { get; set; }
+        public int ModuleSize { get; set; }
         public string ModuleName { get; set; }
     }
 }

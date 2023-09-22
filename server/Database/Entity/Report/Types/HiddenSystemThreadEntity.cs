@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace server.Database.Entity.Report.Types
 {
-    public class SystemModuleValidationEntity : ReportTypeSystemModuleValidation, IReportEntity
+    public class HiddenSystemThreadEntity : ReportTypeHiddenSystemThread, IReportEntity
     {
         private readonly ModelContext _modelContext;
         public ReportEntity ReportEntity { get; set; }
 
-        public SystemModuleValidationEntity(ModelContext modelContext)
+        public HiddenSystemThreadEntity(ModelContext modelContext)
         {
             ReportEntity = new ReportEntity(modelContext);
             _modelContext = modelContext;
@@ -20,7 +20,7 @@ namespace server.Database.Entity.Report.Types
 
         public void InsertReport()
         {
-            _modelContext.ReportTypeSystemModuleValidation.Add(this);
+            _modelContext.ReportTypeHiddenSystemThread.Add(this);
         }
     }
 }

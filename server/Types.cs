@@ -43,7 +43,7 @@ namespace server
             {
                 public int ReportCode;
                 public UInt64 ModuleBaseAddress;
-                public UInt64 ModuleSize;
+                public int ModuleSize;
                 [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
                 public string ModuleName;
             }
@@ -51,8 +51,8 @@ namespace server
             public struct PROCESS_THREAD_START_FAILURE
             {
                 public int ReportCode;
-                public long ThreadId;
-                public UInt64 StartAddress;
+                public int ThreadId;
+                public long StartAddress;
             }
 
             public struct PAGE_PROTECTION_FAILURE
@@ -91,7 +91,7 @@ namespace server
             }
 
             [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-            public unsafe struct OPEN_HANDLE_FAILURE_REPORT
+            public unsafe struct OPEN_HANDLE_FAILURE
             {
                 public int ReportCode;
                 public int IsKernelHandle;
@@ -101,6 +101,29 @@ namespace server
                 [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
                 public string ProcessName;
 
+            }
+
+            public struct INVALID_PROCESS_ALLOCATION_FAILURE
+            {
+                public int ReportCode;
+                public byte[] ProcessStructure;
+            }
+
+            public struct HIDDEN_SYSTEM_THREAD_FAILURE
+            {
+                public int ReportCode;
+                public int FoundInKThreadList;
+                public int FoundInPspCidTable;
+                public long ThreadAddress;
+                public int ThreadId;
+                public byte[] ThreadStructure;
+            }
+
+            public struct ATTACH_PROCESS_FAILURE
+            {
+                public int ReportCode;
+                public int ThreadId;
+                public long ThreadAddress;
             }
         }
     }

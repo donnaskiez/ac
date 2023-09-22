@@ -21,6 +21,10 @@ namespace server.Database.Model
         public DbSet<ReportTypePatternScan> ReportTypePatternScan { get; set; }
         public DbSet<ReportTypeNmiCallback> ReportTypeNmiCallback { get; set; }
         public DbSet<ReportTypeSystemModuleValidation> ReportTypeSystemModuleValidation { get; set; }
+        public DbSet<ReportTypeHiddenSystemThread> ReportTypeHiddenSystemThread { get; set; }
+        public DbSet<ReportTypeAttachProcess> ReportTypeAttachProcess { get; set; }
+        public DbSet<ReportTypeInvalidProcessAllocation> ReportTypeInvalidProcessAllocation { get; set; }
+        public DbSet<ReportTypeProcessModuleIntegrityCheck> ReportTypeProcessModuleIntegrityCheck { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -200,6 +204,86 @@ namespace server.Database.Model
 
                 entity.HasOne(d => d.Report)
                     .WithMany(f => f.ReportTypeSystemModuleValidations);
+            });
+
+            modelBuilder.Entity<ReportTypeHiddenSystemThread>(entity =>
+            {
+                entity.HasKey(e => e.ReportNumber);
+
+                entity.Property(e => e.ReportNumber)
+                    .UseMySQLAutoIncrementColumn(entity.Property(e => e.ReportNumber).Metadata.Name);
+
+                entity.Property(e => e.FoundInKThreadList)
+                    .IsRequired();
+
+                entity.Property(e => e.FoundInPspCidTable)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadAddress)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadId)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadStructure)
+                    .IsRequired();
+
+                entity.HasOne(d => d.Report)
+                    .WithMany(f => f.ReportTypeHiddenSystemThreads);
+            });
+
+            modelBuilder.Entity<ReportTypeAttachProcess>(entity =>
+            {
+                entity.HasKey(e => e.ReportNumber);
+
+                entity.Property(e => e.ReportNumber)
+                    .UseMySQLAutoIncrementColumn(entity.Property(e => e.ReportNumber).Metadata.Name);
+
+                entity.Property(e => e.ThreadId)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadAddress)
+                    .IsRequired();
+
+                entity.Property(e => e.ThreadAddress)
+                    .IsRequired();
+
+                entity.HasOne(d => d.Report)
+                    .WithMany(f => f.ReportTypeAttachProcesses);
+            });
+
+            modelBuilder.Entity<ReportTypeInvalidProcessAllocation>(entity =>
+            {
+                entity.HasKey(e => e.ReportNumber);
+
+                entity.Property(e => e.ReportNumber)
+                    .UseMySQLAutoIncrementColumn(entity.Property(e => e.ReportNumber).Metadata.Name);
+
+                entity.Property(e => e.ProcessStructure)
+                    .IsRequired();
+
+                entity.HasOne(d => d.Report)
+                    .WithMany(f => f.ReportTypeInvalidProcessAllocations);
+            });
+
+            modelBuilder.Entity<ReportTypeProcessModuleIntegrityCheck>(entity =>
+            {
+                entity.HasKey(e => e.ReportNumber);
+
+                entity.Property(e => e.ReportNumber)
+                    .UseMySQLAutoIncrementColumn(entity.Property(e => e.ReportNumber).Metadata.Name);
+
+                entity.Property(e => e.ModuleBaseAddress)
+                    .IsRequired();
+
+                entity.Property(e => e.ModuleSize)
+                    .IsRequired();
+
+                entity.Property(e => e.ModuleName)
+                    .IsRequired();
+
+                entity.HasOne(d => d.Report)
+                    .WithMany(f => f.ReportTypeProcessModuleIntegrityChecks);
             });
         }
     }

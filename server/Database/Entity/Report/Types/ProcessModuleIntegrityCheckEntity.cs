@@ -7,12 +7,13 @@ using System.Threading.Tasks;
 
 namespace server.Database.Entity.Report.Types
 {
-    public class SystemModuleValidationEntity : ReportTypeSystemModuleValidation, IReportEntity
+    public class ProcessModuleIntegrityCheckEntity : ReportTypeProcessModuleIntegrityCheck, IReportEntity
     {
         private readonly ModelContext _modelContext;
+
         public ReportEntity ReportEntity { get; set; }
 
-        public SystemModuleValidationEntity(ModelContext modelContext)
+        public ProcessModuleIntegrityCheckEntity(ModelContext modelContext)
         {
             ReportEntity = new ReportEntity(modelContext);
             _modelContext = modelContext;
@@ -20,7 +21,7 @@ namespace server.Database.Entity.Report.Types
 
         public void InsertReport()
         {
-            _modelContext.ReportTypeSystemModuleValidation.Add(this);
+            _modelContext.ReportTypeProcessModuleIntegrityCheck.Add(this);
         }
     }
 }

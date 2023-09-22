@@ -10,7 +10,7 @@ namespace server.Database.Entity.Report.Types
     public class ReportTypeIllegalHandleOperationEntity : ReportTypeIllegalHandleOperation, IReportEntity
     {
         private readonly ModelContext _modelContext;
-        public Report.ReportEntity ReportEntity { get; set; }
+        public ReportEntity ReportEntity { get; set; }
 
         public ReportTypeIllegalHandleOperationEntity(ModelContext modelContext)
         {
