@@ -584,7 +584,11 @@ NTSTATUS FindUnlinkedProcesses(
 		if ( allocation_address[ i ] == NULL )
 			continue;
 
-		/* report / do some further analysis etc. */
+		/*
+		* It's important to remember that at this point it is still not guaranteed that we have found
+		* an unlinked process allocation. It is better to have a few false positives that can be later
+		* analysed rather then enforce a strict signature and potentially miss a real unlinked process.
+		*/
 		DEBUG_ERROR( "INVALID POOL proc OMGGG" );
 
 		report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( INVALID_PROCESS_ALLOCATION_REPORT ), REPORT_POOL_TAG );

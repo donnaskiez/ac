@@ -103,12 +103,15 @@ namespace server
 
             }
 
-            public struct INVALID_PROCESS_ALLOCATION_FAILURE
+            [StructLayout(LayoutKind.Sequential)]
+            public unsafe struct INVALID_PROCESS_ALLOCATION_FAILURE
             {
                 public int ReportCode;
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4096)]
                 public byte[] ProcessStructure;
             }
 
+            [StructLayout(LayoutKind.Sequential)]
             public struct HIDDEN_SYSTEM_THREAD_FAILURE
             {
                 public int ReportCode;
@@ -116,6 +119,7 @@ namespace server
                 public int FoundInPspCidTable;
                 public long ThreadAddress;
                 public int ThreadId;
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4096)]
                 public byte[] ThreadStructure;
             }
 

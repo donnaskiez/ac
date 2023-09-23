@@ -76,16 +76,6 @@ namespace server.Message
             this._responsePacket.success = success;
         }
 
-        private unsafe int GetPacketCount<T>()
-        {
-            return this._bufferSize / Marshal.SizeOf(typeof(T));
-        }
-
-        private unsafe T GetPacketData<T>(int index)
-        {
-            return Helper.BytesToStructure<T>(this._buffer, index * Marshal.SizeOf(typeof(T)));
-        }
-
         private unsafe int GetPacketCount(int reportCode)
         {
             switch (this._clientReportPacketHeader.reportCode)
@@ -106,7 +96,7 @@ namespace server.Message
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
                     return this._bufferSize / Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
-                    return 1;
+                    return this._bufferSize / Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
                     return this._bufferSize / Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
@@ -486,7 +476,8 @@ namespace server.Message
                     FoundInKThreadList = report.FoundInKThreadList,
                     FoundInPspCidTable = report.FoundInPspCidTable,
                     ThreadAddress = report.ThreadAddress,
-                    ThreadId = report.ThreadId
+                    ThreadId = report.ThreadId,
+                    ThreadStructure = report.ThreadStructure
                 };
 
                 reportTypeHiddenSystemThread.InsertReport();
@@ -531,12 +522,8 @@ namespace server.Message
 
         unsafe public void HandleInvalidProcessAllocation(int offset)
         {
-/*            INVALID_PROCESS_ALLOCATION_FAILURE report =
-                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);*/
-
-            byte[] processStructure = new byte[4096];
-
-            Helper.CopyMemory(ref _buffer, ref processStructure, 4096, sizeof(PACKET_HEADER) + offset);
+            INVALID_PROCESS_ALLOCATION_FAILURE report =
+                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("received invalid process allocation structure");
 
@@ -555,7 +542,7 @@ namespace server.Message
                 var reportTypeInvalidProcessAllocation = new InvalidProcessAllocationEntity(context)
                 {
                     Report = newReport,
-                    ProcessStructure = processStructure
+                    ProcessStructure = report.ProcessStructure
                 };
 
                 reportTypeInvalidProcessAllocation.InsertReport();
