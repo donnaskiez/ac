@@ -41,36 +41,38 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
     while ( !GetAsyncKeyState( VK_DELETE ) )
     {
-        srand( time( NULL ) );
-        int seed = ( rand() % 7 );
+        //srand( time( NULL ) );
+        //int seed = ( rand() % 7 );
 
-        std::cout << "Seed: " << seed << std::endl;
+        //std::cout << "Seed: " << seed << std::endl;
 
-        switch ( seed )
-        {
-        case 0:
-            kmanager.EnumerateHandleTables();
-            break;
-        case 1:
-            kmanager.PerformIntegrityCheck();
-            break;
-        case 2:
-            kmanager.ScanPoolsForUnlinkedProcesses();
-            break;
-        case 3:
-            kmanager.VerifySystemModules();
-            break;
-        case 4:
-            kmanager.ValidateProcessModules();
-            break;
-        case 5:
-            kmanager.RunNmiCallbacks();
-            break;
-        case 6:
-            kmanager.CheckForAttachedThreads();
-            break;
-        }
+        //switch ( seed )
+        //{
+        //case 0:
+        //    kmanager.EnumerateHandleTables();
+        //    break;
+        //case 1:
+        //    kmanager.PerformIntegrityCheck();
+        //    break;
+        //case 2:
+        //    kmanager.ScanPoolsForUnlinkedProcesses();
+        //    break;
+        //case 3:
+        //    kmanager.VerifySystemModules();
+        //    break;
+        //case 4:
+        //    kmanager.ValidateProcessModules();
+        //    break;
+        //case 5:
+        //    kmanager.RunNmiCallbacks();
+        //    break;
+        //case 6:
+        //    kmanager.CheckForAttachedThreads();
+        //    break;
+        //}
 
+        //kmanager.MonitorCallbackReports();
+        kmanager.ScanPoolsForUnlinkedProcesses();
         kmanager.MonitorCallbackReports();
         std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
     }

@@ -231,7 +231,10 @@ namespace server.Message
             OPEN_HANDLE_FAILURE report = 
                 Helper.BytesToStructure<OPEN_HANDLE_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
-            if (report.ThreadId == 0)
+            if (report.DesiredAccess == 0 &&
+                report.ProcessId == 0 &&
+                report.IsKernelHandle == 0 &&
+                report.ProcessId == 0)
             {
                 return;
             }
@@ -528,10 +531,15 @@ namespace server.Message
 
         unsafe public void HandleInvalidProcessAllocation(int offset)
         {
-            INVALID_PROCESS_ALLOCATION_FAILURE report =
-                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+/*            INVALID_PROCESS_ALLOCATION_FAILURE report =
+                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);*/
 
-            report.ProcessStructure = new byte[4096];
+            byte[] processStructure = new byte[4096];
+
+            for (int i=0;i<4096;i++)
+            {
+                processStructure[i] = _buffer[sizeof(PACKET_HEADER) + offset + i];
+            }
 
             _logger.Information("received invalid process allocation structure");
 
@@ -550,7 +558,7 @@ namespace server.Message
                 var reportTypeInvalidProcessAllocation = new InvalidProcessAllocationEntity(context)
                 {
                     Report = newReport,
-                    ProcessStructure = report.ProcessStructure
+                    ProcessStructure = processStructure
                 };
 
                 reportTypeInvalidProcessAllocation.InsertReport();

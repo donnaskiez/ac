@@ -406,13 +406,11 @@ VOID kernelmode::Driver::ScanForUnlinkedProcess()
 		NULL
 	);
 
-	if ( status == NULL || bytes_returned == NULL)
+	if ( status == NULL)
 	{
 		LOG_ERROR( "failed to scan for unlinked processes %x", GetLastError() );
 		return;
 	}
-
-	this->report_interface->ServerSend( &report, bytes_returned, CLIENT_REQUEST_MODULE_INTEGRITY_CHECK );
 }
 
 VOID kernelmode::Driver::PerformIntegrityCheck()
