@@ -4,7 +4,7 @@
 #include <ntifs.h>
 #include "common.h"
 
-#define REPORT_INVALID_PROCESS_BUFFER_SIZE 4000	// we want to make sure this allocation fits on a page
+#define REPORT_INVALID_PROCESS_BUFFER_SIZE 4096
 
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE 0x004
