@@ -502,11 +502,21 @@ NTSTATUS HandleValidateDriversIOCTL(
 	{
 		DEBUG_LOG( "found INVALID drivers with count: %i", head->count );
 
+		PVOID buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
+			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE ), MODULES_REPORT_POOL_TAG );
+
+		if (!buffer )
+		{
+			ExFreePoolWithTag( head, INVALID_DRIVER_LIST_HEAD_POOL );
+			ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
+			return STATUS_MEMORY_NOT_ALLOCATED;
+		}
+
 		Irp->IoStatus.Information = sizeof( MODULE_VALIDATION_FAILURE_HEADER ) +
 			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE );
 
 		RtlCopyMemory(
-			Irp->AssociatedIrp.SystemBuffer,
+			buffer,
 			&header,
 			sizeof( MODULE_VALIDATION_FAILURE_HEADER )
 		);
@@ -542,12 +552,20 @@ NTSTATUS HandleValidateDriversIOCTL(
 				DEBUG_ERROR( "RtlUnicodeStringToAnsiString failed with statsu %x", status );
 
 			RtlCopyMemory(
-				( UINT64 )Irp->AssociatedIrp.SystemBuffer + sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + i * sizeof( MODULE_VALIDATION_FAILURE ),
+				( UINT64 )buffer + sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + i * sizeof( MODULE_VALIDATION_FAILURE ),
 				&report,
 				sizeof( MODULE_VALIDATION_FAILURE ) );
 
 			RemoveInvalidDriverFromList( head );
 		}
+
+		RtlCopyMemory(
+			Irp->AssociatedIrp.SystemBuffer,
+			buffer,
+			sizeof( MODULE_VALIDATION_FAILURE_HEADER ) + MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof( MODULE_VALIDATION_FAILURE )
+		);
+
+		ExFreePoolWithTag( buffer, MODULES_REPORT_POOL_TAG );
 	}
 	else
 	{

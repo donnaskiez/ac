@@ -27,7 +27,16 @@ namespace service
         public Worker(Serilog.ILogger logger)
         {
             _logger = logger;
-            _pipeServer = new NamedPipeServerStream("DonnaACPipe", PipeDirection.InOut, 1, 0, PipeOptions.Asynchronous);
+
+            _pipeServer = new NamedPipeServerStream(
+                "DonnaACPipe", 
+                PipeDirection.InOut, 
+                1, 
+                0, 
+                PipeOptions.Asynchronous, 
+                MAX_BUFFER_SIZE, 
+                MAX_BUFFER_SIZE);
+
             _bufferSize = MAX_BUFFER_SIZE;
             _buffer = new byte[_bufferSize];
         }

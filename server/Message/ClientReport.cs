@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing.Printing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using static server.Message.MessageHandler;
@@ -55,6 +56,8 @@ namespace server.Message
             this._packetHeader = packetHeader;
             this._responsePacket = new CLIENT_REPORT_PACKET_RESPONSE();
             this.GetPacketHeader();
+
+            _logger.Information("buffer size: {0}", bufferSize);
         }
 
         unsafe public void GetPacketHeader()
@@ -73,6 +76,46 @@ namespace server.Message
             this._responsePacket.success = success;
         }
 
+        private unsafe int GetPacketCount<T>()
+        {
+            return this._bufferSize / Marshal.SizeOf(typeof(T));
+        }
+
+        private unsafe T GetPacketData<T>(int index)
+        {
+            return Helper.BytesToStructure<T>(this._buffer, index * Marshal.SizeOf(typeof(T)));
+        }
+
+        private unsafe int GetPacketCount(int reportCode)
+        {
+            switch (this._clientReportPacketHeader.reportCode)
+            {
+                case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
+                    //return this._bufferSize / Marshal.SizeOf(typeof(PROCESS_MODULE_VERIFICATION));
+                    return 0;
+                case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
+                    return this._bufferSize / Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
+                    return this._bufferSize / Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
+                    return this._bufferSize / Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
+                    return this._bufferSize / Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
+                    return this._bufferSize / Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
+                    return this._bufferSize / Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
+                    return this._bufferSize / Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
+                    return this._bufferSize / Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
+                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
+                    return this._bufferSize / Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
+                default:
+                    return 0;
+            }
+        }
+
         public bool HandleMessage()
         {
             if (this._clientReportPacketHeader.reportCode == 0)
@@ -81,59 +124,112 @@ namespace server.Message
                 return false;
             }
 
-            switch (this._clientReportPacketHeader.reportCode)
+            int reportCount = GetPacketCount(this._clientReportPacketHeader.reportCode) - 2;
+
+            _logger.Information("Packet count: {0}", reportCount);
+
+            for (int index = 0 ; index < reportCount; index++)
             {
-                case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
-                    _logger.Information("REPORT CODE: MODULE_VERIFICATION");
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
-                    _logger.Information("REPORT CODE: START_ADDRESS_VERIFICATION");
-                    HandleReportStartAddressVerification();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
-                    _logger.Information("REPORT CODE: PAGE_PROTECTION_VERIFICATION");
-                    HandleReportPageProtection();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
-                    _logger.Information("REPORT_PATTERN_SCAN_FAILURE");
-                    HandleReportPatternScan();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
-                    _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
-                    HandleReportNmiCallback();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
-                    _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
-                    HandleReportSystemModuleValidation();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
-                    HandleReportIllegalHandleOperation();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
-                    _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
-                    HandleInvalidProcessAllocation();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
-                    _logger.Information("REPORT_HIDDEN_SYSTEM_THREAD");
-                    HandleReportHiddenSystemThread();
-                    break;
-                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
-                    _logger.Information("REPORT_ILLEGAL_ATTACH_PROCESS");
-                    HandleReportAttachProcess();
-                    break;
-                default:
-                    _logger.Information("Report code not handled yet");
-                    break;
+                switch (this._clientReportPacketHeader.reportCode)
+                {
+                    case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
+                        _logger.Information("REPORT CODE: MODULE_VERIFICATION");
+                        break;
+                    case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
+
+                        _logger.Information("REPORT CODE: START_ADDRESS_VERIFICATION");
+
+                        HandleReportStartAddressVerification(
+                            index * Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
+
+                        _logger.Information("REPORT CODE: PAGE_PROTECTION_VERIFICATION");
+
+                        HandleReportPageProtection(
+                            index * Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
+
+                        _logger.Information("REPORT_PATTERN_SCAN_FAILURE");
+
+                        HandleReportPatternScan(
+                            index * Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
+
+                        _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
+
+                        HandleReportNmiCallback(
+                            index * Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
+
+                        _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
+
+                        HandleReportSystemModuleValidation(
+                            index * Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
+
+                        _logger.Information("REPORT_ILLEGAL_HANDLE_OPERATION");
+
+                        HandleReportIllegalHandleOperation(
+                            index * Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
+
+                        _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
+
+                        HandleInvalidProcessAllocation(
+                            index * Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
+
+                        _logger.Information("REPORT_HIDDEN_SYSTEM_THREAD");
+
+                        HandleReportHiddenSystemThread(
+                            index * Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
+
+                        _logger.Information("REPORT_ILLEGAL_ATTACH_PROCESS");
+
+                        HandleReportAttachProcess(
+                            index * Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE)) + 
+                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        break;
+
+                    default:
+                        _logger.Information("Report code not handled yet");
+                        break;
+                }
             }
 
             SetResponsePacketData(1);
             return true;
         }
 
-        unsafe public void HandleReportIllegalHandleOperation()
+        unsafe public void HandleReportIllegalHandleOperation(int offset)
         {
             OPEN_HANDLE_FAILURE report = 
-                Helper.BytesToStructure<OPEN_HANDLE_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<OPEN_HANDLE_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("ProcessName: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 report.ProcessName,
@@ -173,10 +269,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportStartAddressVerification()
+        unsafe public void HandleReportStartAddressVerification(int offset)
         {
             PROCESS_THREAD_START_FAILURE report = 
-                Helper.BytesToStructure<PROCESS_THREAD_START_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<PROCESS_THREAD_START_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("ThreadId: {0}, ThreadStartAddress: {1:x}",
                 report.ThreadId,
@@ -207,10 +303,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportPageProtection()
+        unsafe public void HandleReportPageProtection(int offset)
         {
             PAGE_PROTECTION_FAILURE report =
-                Helper.BytesToStructure<PAGE_PROTECTION_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<PAGE_PROTECTION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("Page base address: {0:x}, allocation protection: {1:x}, allocation state: {2:x}, allocationtype: {3:x}",
                 report.PageBaseAddress,
@@ -245,10 +341,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportPatternScan()
+        unsafe public void HandleReportPatternScan(int offset)
         {
             PATTERN_SCAN_FAILURE report =
-                Helper.BytesToStructure<PATTERN_SCAN_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<PATTERN_SCAN_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("signature id: {0}, address: {1:x}",
                 report.SignatureId,
@@ -279,10 +375,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportNmiCallback()
+        unsafe public void HandleReportNmiCallback(int offset)
         {
             NMI_CALLBACK_FAILURE report =
-                Helper.BytesToStructure<NMI_CALLBACK_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<NMI_CALLBACK_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("were nmis disabled: {0}, kthread: {1:x}, invalid rip: {2:x}",
                 report.WereNmisDisabled,
@@ -315,10 +411,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportSystemModuleValidation()
+        unsafe public void HandleReportSystemModuleValidation(int offset)
         {
             MODULE_VALIDATION_FAILURE report =
-                Helper.BytesToStructure<MODULE_VALIDATION_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<MODULE_VALIDATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("report type: {0}, driver base: {1:x}, size: {2}, module name: {3}",
                 report.ReportType,
@@ -353,10 +449,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportHiddenSystemThread()
+        unsafe public void HandleReportHiddenSystemThread(int offset)
         {
             HIDDEN_SYSTEM_THREAD_FAILURE report =
-                Helper.BytesToStructure<HIDDEN_SYSTEM_THREAD_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<HIDDEN_SYSTEM_THREAD_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("found in kthread list: {0}, found in pspcidtable: {1}, thread address: {2:x}, thread id: {3:x}",
                 report.FoundInKThreadList,
@@ -391,10 +487,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleReportAttachProcess()
+        unsafe public void HandleReportAttachProcess(int offset)
         {
             ATTACH_PROCESS_FAILURE report =
-                Helper.BytesToStructure<ATTACH_PROCESS_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<ATTACH_PROCESS_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("thread id: {0:x}, thread address: {1:x}",
                 report.ThreadId,
@@ -425,10 +521,10 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleInvalidProcessAllocation()
+        unsafe public void HandleInvalidProcessAllocation(int offset)
         {
             INVALID_PROCESS_ALLOCATION_FAILURE report =
-                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER));
+                Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("received invalid process allocation structure");
 

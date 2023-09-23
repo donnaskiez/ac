@@ -131,6 +131,8 @@ VOID kernelmode::Driver::VerifySystemModules()
 	global::report_structures::MODULE_VALIDATION_FAILURE_HEADER* header =
 		( global::report_structures::MODULE_VALIDATION_FAILURE_HEADER* )buffer;
 
+	LOG_INFO( "Module count: %lx", header->module_count );
+
 	for ( int i = 0; i < header->module_count; i++ )
 	{
 		global::report_structures::MODULE_VALIDATION_FAILURE* report =

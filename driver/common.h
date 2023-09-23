@@ -30,6 +30,7 @@
 #define QUEUE_POOL_TAG 'qqqq'
 #define REPORT_QUEUE_TEMP_BUFFER_TAG 'temp'
 #define REPORT_POOL_TAG 'repo'
+#define MODULES_REPORT_POOL_TAG 'modu'
 
 #define ERROR -1
 #define STACK_FRAME_POOL_SIZE 0x200
