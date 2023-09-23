@@ -106,7 +106,7 @@ namespace server.Message
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
                     return this._bufferSize / Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
-                    return this._bufferSize / Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
+                    return 1;
                 case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
                     return this._bufferSize / Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
@@ -124,7 +124,7 @@ namespace server.Message
                 return false;
             }
 
-            int reportCount = GetPacketCount(this._clientReportPacketHeader.reportCode) - 2;
+            int reportCount = GetPacketCount(this._clientReportPacketHeader.reportCode);
 
             _logger.Information("Packet count: {0}", reportCount);
 
@@ -230,6 +230,11 @@ namespace server.Message
         {
             OPEN_HANDLE_FAILURE report = 
                 Helper.BytesToStructure<OPEN_HANDLE_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.ThreadId == 0)
+            {
+                return;
+            }
 
             _logger.Information("ProcessName: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 report.ProcessName,
@@ -525,6 +530,8 @@ namespace server.Message
         {
             INVALID_PROCESS_ALLOCATION_FAILURE report =
                 Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            report.ProcessStructure = new byte[4096];
 
             _logger.Information("received invalid process allocation structure");
 
