@@ -536,10 +536,7 @@ namespace server.Message
 
             byte[] processStructure = new byte[4096];
 
-            for (int i=0;i<4096;i++)
-            {
-                processStructure[i] = _buffer[sizeof(PACKET_HEADER) + offset + i];
-            }
+            Helper.CopyMemory(ref _buffer, ref processStructure, 4096, sizeof(PACKET_HEADER) + offset);
 
             _logger.Information("received invalid process allocation structure");
 

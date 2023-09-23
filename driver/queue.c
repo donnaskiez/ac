@@ -160,7 +160,11 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 	KeAcquireGuardedMutex( &report_queue_config.lock );
 	report = QueuePop( &report_queue_config.head );
 
-	report_buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 1024 * 2, REPORT_QUEUE_TEMP_BUFFER_TAG );
+	report_buffer = ExAllocatePool2( 
+		POOL_FLAG_NON_PAGED, 
+		sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP + sizeof( GLOBAL_REPORT_QUEUE_HEADER ),
+		REPORT_QUEUE_TEMP_BUFFER_TAG
+	);
 
 	if ( !report_buffer )
 	{

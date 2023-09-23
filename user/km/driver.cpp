@@ -178,7 +178,10 @@ VOID kernelmode::Driver::QueryReportQueue()
 	global::report_structures::ATTACH_PROCESS_REPORT* attach_report;
 	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT* allocation_report;
 
-	buffer_size = sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP;
+	buffer_size = 
+		sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP + 
+		sizeof( global::report_structures::REPORT_QUEUE_HEADER );
+
 	buffer = malloc( buffer_size );
 
 	status = DeviceIoControl(

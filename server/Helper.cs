@@ -71,7 +71,17 @@ namespace server
 
             return new string(stringBuffer);
         }
-            
+        
+        unsafe public static void CopyMemory(ref byte[] source, ref byte[] destination, int size, int offset)
+        {
+            if (size > destination.Length)
+                return;
+
+            for (int i=0; i < size; i++)
+            {
+                destination[i] = source[i + offset];
+            }
+        }
     }
 }
 
