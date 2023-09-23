@@ -221,14 +221,13 @@ namespace server.Message
             OPEN_HANDLE_FAILURE report = 
                 Helper.BytesToStructure<OPEN_HANDLE_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
-            if (report.DesiredAccess == 0 &&
+            if (report.IsKernelHandle == 0 &&
                 report.ProcessId == 0 &&
-                report.IsKernelHandle == 0 &&
-                report.ProcessId == 0)
+                report.DesiredAccess == 0)
             {
                 return;
             }
-
+                
             _logger.Information("ProcessName: {0}, ProcessID: {1:x}, ThreadId: {2:x}, DesiredAccess{3:x}",
                 report.ProcessName,
                 report.ProcessId,
@@ -272,6 +271,12 @@ namespace server.Message
             PROCESS_THREAD_START_FAILURE report = 
                 Helper.BytesToStructure<PROCESS_THREAD_START_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
+            if (report.ThreadId == 0 &&
+                report.StartAddress == 0)
+            { 
+               return;
+            }
+
             _logger.Information("ThreadId: {0}, ThreadStartAddress: {1:x}",
                 report.ThreadId,
                 report.StartAddress);
@@ -305,6 +310,14 @@ namespace server.Message
         {
             PAGE_PROTECTION_FAILURE report =
                 Helper.BytesToStructure<PAGE_PROTECTION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.AllocationProtection == 0 &&
+                report.PageBaseAddress == 0 &&
+                report.AllocationState == 0 &&
+                report.AllocationType == 0 )
+            {
+                return;
+            }
 
             _logger.Information("Page base address: {0:x}, allocation protection: {1:x}, allocation state: {2:x}, allocationtype: {3:x}",
                 report.PageBaseAddress,
@@ -344,6 +357,12 @@ namespace server.Message
             PATTERN_SCAN_FAILURE report =
                 Helper.BytesToStructure<PATTERN_SCAN_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
+            if (report.Address == 0 &&
+                report.SignatureId == 0)
+            {
+                return;
+            }
+
             _logger.Information("signature id: {0}, address: {1:x}",
                 report.SignatureId,
                 report.Address);
@@ -377,6 +396,13 @@ namespace server.Message
         {
             NMI_CALLBACK_FAILURE report =
                 Helper.BytesToStructure<NMI_CALLBACK_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.InvalidRip == 0 &&
+                report.WereNmisDisabled == 0 &&
+                report.KThreadAddress == 0)
+            {
+                return;
+            }
 
             _logger.Information("were nmis disabled: {0}, kthread: {1:x}, invalid rip: {2:x}",
                 report.WereNmisDisabled,
@@ -413,6 +439,14 @@ namespace server.Message
         {
             MODULE_VALIDATION_FAILURE report =
                 Helper.BytesToStructure<MODULE_VALIDATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.ReportType == 0 &&
+                report.ReportCode == 0 &&
+                report.DriverSize == 0 &&
+                report.DriverBaseAddress == 0)
+            {
+                return;
+            }
 
             _logger.Information("report type: {0}, driver base: {1:x}, size: {2}, module name: {3}",
                 report.ReportType,
@@ -452,6 +486,14 @@ namespace server.Message
             HIDDEN_SYSTEM_THREAD_FAILURE report =
                 Helper.BytesToStructure<HIDDEN_SYSTEM_THREAD_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
+            if (report.FoundInPspCidTable == 0 &&
+                report.FoundInKThreadList == 0 &&
+                report.ThreadId == 0 &&
+                report.ThreadAddress == 0)
+            {
+                return;
+            }
+
             _logger.Information("found in kthread list: {0}, found in pspcidtable: {1}, thread address: {2:x}, thread id: {3:x}",
                 report.FoundInKThreadList,
                 report.FoundInPspCidTable,
@@ -490,6 +532,12 @@ namespace server.Message
         {
             ATTACH_PROCESS_FAILURE report =
                 Helper.BytesToStructure<ATTACH_PROCESS_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.ThreadAddress == 0 &&
+                report.ThreadId == 0)
+            {
+                return;
+            }
 
             _logger.Information("thread id: {0:x}, thread address: {1:x}",
                 report.ThreadId,
