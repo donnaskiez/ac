@@ -78,47 +78,20 @@ namespace server.Message
             this._responsePacket.success = success;
         }
 
-        private unsafe int GetPacketSize(int reportCode)
-        {
-            switch (reportCode)
-            {
-                case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
-                    //return Marshal.SizeOf(typeof(PROCESS_MODULE_VERIFICATION));
-                    return 0;
-                case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
-                    return Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
-                    return Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
-                    return Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
-                    return Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
-                    return Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
-                    return Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
-                    return Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
-                    return Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
-                case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
-                    return Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
-                default:
-                    return 0;
-            }
-        }
-
         unsafe public bool HandleMessage()
         {
             if (this._currentReportHeader.reportCode == 0)
             {
                 _logger.Error("Failed to get the report packet code");
+                SetResponsePacketData(1);
                 return false;
             }
 
             while (this._bytesRead < this._bufferSize)
             {
                 this.GetPacketHeader();
+
+                _logger.Information("Report code: {0}", this._currentReportHeader.reportCode);
 
                 switch (this._currentReportHeader.reportCode)
                 {

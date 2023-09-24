@@ -104,4 +104,6 @@ NTSTATUS HandleNmiIOCTL(
 	_In_ PIRP Irp
 );
 
+NTSTATUS ValidateThreadsViaKernelApc();
+
 #endif

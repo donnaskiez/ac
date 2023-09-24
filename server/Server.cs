@@ -6,6 +6,8 @@ using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using Serilog;
 using server.Message;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using K4os.Compression.LZ4.Streams.Adapters;
 
 namespace server
 {
@@ -43,10 +45,19 @@ namespace server
                     while (_stream.DataAvailable)
                     {
                         bytesRead = _stream.Read(buffer, 0, buffer.Length);
+
+                        _logger.Information("bytes read: {0}", bytesRead);
+
                         stream.Write(buffer, 0, bytesRead);
                     }
 
                     byte[] message = stream.ToArray();
+
+                    if (message.Length == 0)
+                    {
+                        _logger.Error("Null message received at server");
+                        continue;
+                    }
 
                     ThreadPool.QueueUserWorkItem(state => DispatchMessage(state, clientReference, message, message.Length));
                 }

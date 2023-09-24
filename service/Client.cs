@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using Serilog;
 using Microsoft.AspNetCore.Http;
+using System.Linq.Expressions;
 
 namespace service
 {
@@ -29,20 +30,35 @@ namespace service
 
         public void SendMessageToServer()
         {
-            _stream.BeginWrite(_buffer, 0, _bufferSize, null, null);
+            try
+            {
+                _stream.Write(_buffer, 0, _bufferSize);
+            }
+            catch(Exception ex)
+            {
+                _logger.Error("{0}", ex.Message);
+            }
         }
 
-        public byte[] GetResponseFromServer()
+        public byte[]? GetResponseFromServer()
         {
             byte[] buffer = new byte[1024];
 
-            using (MemoryStream memoryStream = new MemoryStream())
+            try
             {
-                int bytesRead = _stream.Read(buffer, 0, 1024);
+                using (MemoryStream memoryStream = new MemoryStream())
+                {
+                    int bytesRead = _stream.Read(buffer, 0, 1024);
 
-                memoryStream.Write(buffer, 0, bytesRead);
+                    memoryStream.Write(buffer, 0, bytesRead);
 
-                return memoryStream.ToArray();
+                    return memoryStream.ToArray();
+                }
+            }
+            catch(Exception ex)
+            {
+                _logger.Error("{0}", ex.Message);
+                return null;
             }
         }
     }

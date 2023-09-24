@@ -79,7 +79,7 @@ namespace server.Message
                 return;
             }
 
-            _logger.Error("Failed to handle the report message.");
+            _logger.Warning("Failed to handle client sent report");
         }
 
         private void HandleClientSendMessage()
@@ -92,6 +92,8 @@ namespace server.Message
                 this.SendResponsePacketToClient(responsePacket);
                 return;
             }
+
+            _logger.Warning("Failed to handle client send message");
         }
         private PACKET_HEADER GetMessageHeader()
         {

@@ -80,8 +80,11 @@ namespace service
         {
             byte[] responseMessage = message.GetResponseFromServer();
 
-            if (responseMessage.Length == OK_RESPONSE_SIZE)
+            if (responseMessage == null)
+            {
+                _logger.Warning("Response message is null");
                 return;
+            }
 
             _logger.Information("Sending response message to client with size: {0}", responseMessage.Length);
 

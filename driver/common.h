@@ -11,6 +11,7 @@
 #define STACK_FRAMES_POOL 'loop'
 #define INVALID_DRIVER_LIST_HEAD_POOL 'rwar'
 #define INVALID_DRIVER_LIST_ENTRY_POOL 'gaah'
+#define POOL_TAG_APC 'apcc'
 #define SYSTEM_MODULES_POOL 'halb'
 #define THREAD_DATA_POOL 'doof'
 #define PROC_AFFINITY_POOL 'eeee'
@@ -1194,6 +1195,77 @@ BOOLEAN NTAPI RtlDosPathNameToRelativeNtPathName_U(
     _Out_      PUNICODE_STRING NtFileName,
     _Out_opt_  PWSTR* FilePath,
     _Out_opt_  PRTL_RELATIVE_NAME RelativeName
+);
+
+typedef
+_Function_class_( KNORMAL_ROUTINE )
+_IRQL_requires_( PASSIVE_LEVEL )
+_IRQL_requires_same_
+VOID
+NTAPI
+KNORMAL_ROUTINE(
+    _In_opt_ PVOID NormalContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2
+);
+typedef KNORMAL_ROUTINE* PKNORMAL_ROUTINE;
+
+typedef
+_Function_class_( KRUNDOWN_ROUTINE )
+_IRQL_requires_( PASSIVE_LEVEL )
+_IRQL_requires_same_
+VOID
+NTAPI
+KRUNDOWN_ROUTINE(
+    _In_ PRKAPC Apc
+);
+typedef KRUNDOWN_ROUTINE* PKRUNDOWN_ROUTINE;
+
+typedef
+_Function_class_( KKERNEL_ROUTINE )
+_IRQL_requires_( APC_LEVEL )
+_IRQL_requires_same_
+VOID
+NTAPI
+KKERNEL_ROUTINE(
+    _In_ PRKAPC Apc,
+    _Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+    _Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
+    _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
+    _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
+);
+typedef KKERNEL_ROUTINE* PKKERNEL_ROUTINE;
+
+typedef enum _KAPC_ENVIRONMENT
+{
+    OriginalApcEnvironment,
+    AttachedApcEnvironment,
+    CurrentApcEnvironment,
+    InsertApcEnvironment
+} KAPC_ENVIRONMENT, * PKAPC_ENVIRONMENT;
+
+NTKERNELAPI
+VOID
+NTAPI
+KeInitializeApc(
+    _Out_ PRKAPC Apc,
+    _In_ PRKTHREAD Thread,
+    _In_ KAPC_ENVIRONMENT Environment,
+    _In_ PKKERNEL_ROUTINE KernelRoutine,
+    _In_opt_ PKRUNDOWN_ROUTINE RundownRoutine,
+    _In_opt_ PKNORMAL_ROUTINE NormalRoutine,
+    _In_ KPROCESSOR_MODE Mode,
+    _In_opt_ PVOID NormalContext
+);
+
+NTKERNELAPI
+BOOLEAN
+NTAPI
+KeInsertQueueApc(
+    _Inout_ PRKAPC Apc,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2,
+    _In_ KPRIORITY Increment
 );
 
 C_ASSERT( FIELD_OFFSET( DUMP_HEADER, Signature ) == 0 );

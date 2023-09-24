@@ -34,10 +34,10 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
     global::report_structures::SYSTEM_INFORMATION_REQUEST_RESPONSE response;
 
-    client_interface->ServerReceive( &response, sizeof( response ) );
+    //client_interface->ServerReceive( &response, sizeof( response ) );
 
-    std::cout << "RequestID: " << response.RequestId << " CanUserProceed: " << 
-        response.CanUserProceed << " Reason: " << response.reason << std::endl;
+    //std::cout << "RequestID: " << response.RequestId << " CanUserProceed: " << 
+    //    response.CanUserProceed << " Reason: " << response.reason << std::endl;
 
     srand( time( NULL ) );
 

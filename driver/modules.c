@@ -1,5 +1,7 @@
 #include "modules.h"
 
+#include "callbacks.h"
+
 #define WHITELISTED_MODULE_TAG 'whte'
 
 #define NMI_DELAY 200 * 10000
@@ -861,4 +863,112 @@ NTSTATUS HandleNmiIOCTL(
 	KeDeregisterNmiCallback( callback_handle );
 
 	return status;
+}
+
+/*
+* The RundownRoutine is executed if the thread terminates before the APC was delivered to
+* user mode.
+*/
+VOID ApcRundownRoutine(
+	_In_ PRKAPC Apc
+)
+{
+	DEBUG_LOG( "Thread discarding APC queue, freeing APC object" );
+	ExFreePoolWithTag( Apc, POOL_TAG_APC );
+}
+
+/*
+* The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered.
+*/
+VOID ApcKernelRoutine(
+	_In_ PRKAPC Apc,
+	_Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
+	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
+	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
+)
+{
+	DEBUG_LOG( "Hello from apc routine! ThreadId: %lx", (LONG)PsGetCurrentThreadId() );
+}
+
+/*
+* The NormalRoutine is executed in user mode when the APC is delivered.
+*/
+VOID ApcNormalRoutine(
+	_In_opt_ PVOID NormalContext,
+	_In_opt_ PVOID SystemArgument1,
+	_In_opt_ PVOID SystemArgument2
+)
+{
+
+}
+
+VOID ValidateThreadViaKernelApcCallback(
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
+)
+{
+	UNREFERENCED_PARAMETER( Context );
+
+	NTSTATUS status;
+	PLIST_ENTRY thread_list_head;
+	PLIST_ENTRY thread_list_entry;
+	PETHREAD current_thread;
+	PKAPC apc = NULL;
+	BOOLEAN apc_status;
+
+	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
+	thread_list_entry = thread_list_head->Flink;
+
+	while ( thread_list_entry != thread_list_head )
+	{
+		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
+
+		/* sanity check */
+		if ( PsGetThreadId( current_thread ) == NULL )
+			goto increment;
+
+		apc = ( PKAPC )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KAPC ), POOL_TAG_APC );
+
+		if ( !apc )
+			goto increment;
+
+		KeInitializeApc(
+			apc,
+			current_thread,
+			OriginalApcEnvironment,
+			ApcKernelRoutine,
+			ApcRundownRoutine,
+			ApcNormalRoutine,
+			KernelMode,
+			NULL
+		);
+
+		apc_status = KeInsertQueueApc(
+			apc,
+			NULL,
+			NULL,
+			IO_NO_INCREMENT
+		);
+
+		if ( !apc_status )
+			DEBUG_ERROR( "KeInsertQueueApc failed" );
+
+	increment:
+		thread_list_entry = thread_list_entry->Flink;
+	}
+}
+
+/*
+* Since NMIs are only executed on the thread that is running on each logical core, it makes
+* sense to make use of APCs that, while can be masked off, provide us to easily issue a callback
+* routine to threads we want a stack trace of. Hence by utilising both APCs and NMIs we get 
+* excellent coverage of the entire system.
+*/
+NTSTATUS ValidateThreadsViaKernelApc()
+{
+	EnumerateProcessListWithCallbackFunction(
+		ValidateThreadViaKernelApcCallback,
+		NULL
+	);
 }
