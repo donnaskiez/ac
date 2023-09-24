@@ -57,6 +57,7 @@ namespace server.Message
             this._packetHeader = packetHeader;
             this._bytesRead = 0;
             this._responsePacket = new CLIENT_REPORT_PACKET_RESPONSE();
+            this.GetPacketHeader();
 
             _logger.Information("buffer size: {0}", bufferSize);
         }
@@ -64,7 +65,7 @@ namespace server.Message
         unsafe public void GetPacketHeader()
         {
             this._currentReportHeader = 
-                Helper.BytesToStructure<CLIENT_REPORT_PACKET_HEADER>(_buffer, sizeof(PACKET_HEADER) + this._bytesRead);
+                Helper.BytesToStructure<CLIENT_REPORT_PACKET_HEADER>(this._buffer, Marshal.SizeOf(typeof(PACKET_HEADER)) + this._bytesRead);
         }
 
         public byte[] GetResponsePacket()
@@ -115,7 +116,7 @@ namespace server.Message
                 return false;
             }
 
-            while (this._bytesRead <= this._bufferSize)
+            while (this._bytesRead < this._bufferSize)
             {
                 this.GetPacketHeader();
 
@@ -130,7 +131,8 @@ namespace server.Message
 
                         HandleReportStartAddressVerification(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -138,9 +140,10 @@ namespace server.Message
 
                         _logger.Information("REPORT CODE: PAGE_PROTECTION_VERIFICATION");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportPageProtection(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -148,9 +151,11 @@ namespace server.Message
 
                         _logger.Information("REPORT_PATTERN_SCAN_FAILURE");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportPatternScan(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
+
 
                         break;
 
@@ -158,9 +163,11 @@ namespace server.Message
 
                         _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportNmiCallback(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE)) + 
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
+
 
                         break;
 
@@ -168,9 +175,10 @@ namespace server.Message
 
                         _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportSystemModuleValidation(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE)) + 
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -178,9 +186,10 @@ namespace server.Message
 
                         _logger.Information("REPORT_ILLEGAL_HANDLE_OPERATION");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportIllegalHandleOperation(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -188,9 +197,10 @@ namespace server.Message
 
                         _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportInvalidProcessAllocation(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -198,9 +208,10 @@ namespace server.Message
 
                         _logger.Information("REPORT_HIDDEN_SYSTEM_THREAD");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportHiddenSystemThread(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE)) + 
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
 
                         break;
 
@@ -208,15 +219,18 @@ namespace server.Message
 
                         _logger.Information("REPORT_ILLEGAL_ATTACH_PROCESS");
 
-                        HandleReportStartAddressVerification(this._bytesRead);
+                        HandleReportAttachProcess(this._bytesRead);
 
-                        this._bytesRead += Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
+                        this._bytesRead += Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE)) +
+                                           Marshal.SizeOf(typeof(PACKET_HEADER));
+
 
                         break;
 
                     default:
                         _logger.Information("Report code not handled yet");
-                        break;
+                        SetResponsePacketData(0);
+                        return false;
                 }
             }
 
@@ -576,7 +590,7 @@ namespace server.Message
             }
         }
 
-        unsafe public void HandleInvalidProcessAllocation(int offset)
+        unsafe public void HandleReportInvalidProcessAllocation(int offset)
         {
             INVALID_PROCESS_ALLOCATION_FAILURE report =
                 Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
