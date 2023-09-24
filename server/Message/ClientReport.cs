@@ -20,8 +20,9 @@ namespace server.Message
         private readonly ILogger _logger;
         private byte[] _buffer;
         private int _bufferSize;
+        private int _bytesRead;
         private PACKET_HEADER _packetHeader;
-        private CLIENT_REPORT_PACKET_HEADER _clientReportPacketHeader;
+        CLIENT_REPORT_PACKET_HEADER _currentReportHeader;
         private CLIENT_REPORT_PACKET_RESPONSE _responsePacket;
 
         private enum CLIENT_SEND_REPORT_ID
@@ -54,16 +55,16 @@ namespace server.Message
             this._buffer = buffer;
             this._bufferSize = bufferSize;
             this._packetHeader = packetHeader;
+            this._bytesRead = 0;
             this._responsePacket = new CLIENT_REPORT_PACKET_RESPONSE();
-            this.GetPacketHeader();
 
             _logger.Information("buffer size: {0}", bufferSize);
         }
 
         unsafe public void GetPacketHeader()
         {
-            this._clientReportPacketHeader = 
-                Helper.BytesToStructure<CLIENT_REPORT_PACKET_HEADER>(_buffer, sizeof(PACKET_HEADER));
+            this._currentReportHeader = 
+                Helper.BytesToStructure<CLIENT_REPORT_PACKET_HEADER>(_buffer, sizeof(PACKET_HEADER) + this._bytesRead);
         }
 
         public byte[] GetResponsePacket()
@@ -76,51 +77,49 @@ namespace server.Message
             this._responsePacket.success = success;
         }
 
-        private unsafe int GetPacketCount(int reportCode)
+        private unsafe int GetPacketSize(int reportCode)
         {
-            switch (this._clientReportPacketHeader.reportCode)
+            switch (reportCode)
             {
                 case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
-                    //return this._bufferSize / Marshal.SizeOf(typeof(PROCESS_MODULE_VERIFICATION));
+                    //return Marshal.SizeOf(typeof(PROCESS_MODULE_VERIFICATION));
                     return 0;
                 case (int)CLIENT_SEND_REPORT_ID.START_ADDRESS_VERIFICATION:
-                    return this._bufferSize / Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
+                    return Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
-                    return this._bufferSize / Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
+                    return Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
-                    return this._bufferSize / Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
+                    return Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
-                    return this._bufferSize / Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
+                    return Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
-                    return this._bufferSize / Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
+                    return Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
-                    return this._bufferSize / Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
+                    return Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
-                    return this._bufferSize / Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
+                    return Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
-                    return this._bufferSize / Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
+                    return Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
                 case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
-                    return this._bufferSize / Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
+                    return Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
                 default:
                     return 0;
             }
         }
 
-        public bool HandleMessage()
+        unsafe public bool HandleMessage()
         {
-            if (this._clientReportPacketHeader.reportCode == 0)
+            if (this._currentReportHeader.reportCode == 0)
             {
                 _logger.Error("Failed to get the report packet code");
                 return false;
             }
 
-            int reportCount = GetPacketCount(this._clientReportPacketHeader.reportCode);
-
-            _logger.Information("Packet count: {0}", reportCount);
-
-            for (int index = 0 ; index < reportCount; index++)
+            while (this._bytesRead <= this._bufferSize)
             {
-                switch (this._clientReportPacketHeader.reportCode)
+                this.GetPacketHeader();
+
+                switch (this._currentReportHeader.reportCode)
                 {
                     case (int)CLIENT_SEND_REPORT_ID.PROCESS_MODULE_VERIFICATION:
                         _logger.Information("REPORT CODE: MODULE_VERIFICATION");
@@ -129,81 +128,90 @@ namespace server.Message
 
                         _logger.Information("REPORT CODE: START_ADDRESS_VERIFICATION");
 
-                        HandleReportStartAddressVerification(
-                            index * Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(PROCESS_THREAD_START_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.PAGE_PROTECTION_VERIFICATION:
 
                         _logger.Information("REPORT CODE: PAGE_PROTECTION_VERIFICATION");
 
-                        HandleReportPageProtection(
-                            index * Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(PAGE_PROTECTION_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.PATTERN_SCAN_FAILURE:
 
                         _logger.Information("REPORT_PATTERN_SCAN_FAILURE");
 
-                        HandleReportPatternScan(
-                            index * Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(PATTERN_SCAN_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.NMI_CALLBACK_FAILURE:
 
                         _logger.Information("REPORT_NMI_CALLBACK_FAILURE");
 
-                        HandleReportNmiCallback(
-                            index * Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(NMI_CALLBACK_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.MODULE_VALIDATION_FAILURE:
 
                         _logger.Information("REPORT_MODULE_VALIDATION_FAILURE");
 
-                        HandleReportSystemModuleValidation(
-                            index * Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(MODULE_VALIDATION_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_HANDLE_OPERATION:
 
                         _logger.Information("REPORT_ILLEGAL_HANDLE_OPERATION");
 
-                        HandleReportIllegalHandleOperation(
-                            index * Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(OPEN_HANDLE_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.INVALID_PROCESS_ALLOCATION:
 
                         _logger.Information("REPORT_INVALID_PROCESS_ALLOCATION");
 
-                        HandleInvalidProcessAllocation(
-                            index * Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(INVALID_PROCESS_ALLOCATION_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.HIDDEN_SYSTEM_THREAD:
 
                         _logger.Information("REPORT_HIDDEN_SYSTEM_THREAD");
 
-                        HandleReportHiddenSystemThread(
-                            index * Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(HIDDEN_SYSTEM_THREAD_FAILURE));
+
                         break;
 
                     case (int)CLIENT_SEND_REPORT_ID.ILLEGAL_ATTACH_PROCESS:
 
                         _logger.Information("REPORT_ILLEGAL_ATTACH_PROCESS");
 
-                        HandleReportAttachProcess(
-                            index * Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE)) + 
-                            index * Marshal.SizeOf(typeof(PACKET_HEADER)));
+                        HandleReportStartAddressVerification(this._bytesRead);
+
+                        this._bytesRead += Marshal.SizeOf(typeof(ATTACH_PROCESS_FAILURE));
+
                         break;
 
                     default:
