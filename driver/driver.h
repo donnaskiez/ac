@@ -4,7 +4,10 @@
 #include <ntifs.h>
 #include <wdftypes.h>
 #include <wdf.h>
+
 #include "common.h"
+#include "queue.h"
+#include "modules.h"
 
 #define DRIVER_PATH_MAX_LENGTH 512
 #define MOTHERBOARD_SERIAL_CODE_LENGTH 64
@@ -30,6 +33,7 @@ typedef struct _SYSTEM_INFORMATION
 * Note that the lock isnt really needed here but Im using one
 * just in case c:
 */
+
 typedef struct _DRIVER_CONFIG
 {
 	UNICODE_STRING unicode_driver_name;
@@ -39,6 +43,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING driver_path;
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
+	PLIST_HEAD apc_contexts;
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, *PDRIVER_CONFIG;
@@ -80,6 +85,25 @@ VOID GetDriverPath(
 
 VOID GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
+);
+
+VOID GetApcContext(
+	_Inout_ PVOID* Context,
+	_In_ LONG ContextIdentifier
+);
+
+VOID InsertApcContext(
+	_In_ PVOID Context
+);
+
+VOID RemoveApcFromApcContextList(
+	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM ListEntry
+);
+
+VOID InsertApcIntoApcContextList(
+	_In_ PLIST_HEAD ListHead,
+	_In_ PAPC_STATUS ApcStatus
 );
 
 VOID TerminateProtectedProcessOnViolation();

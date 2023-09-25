@@ -34,6 +34,22 @@ typedef struct _REPORT_HEADER
 
 }REPORT_HEADER, * PREPORT_HEADER;
 
+typedef struct _LIST_ITEM
+{
+	struct _LIST_ITEM* next;
+	PVOID data;
+
+}LIST_ITEM, * PLIST_ITEM;
+
+typedef struct _LIST_HEAD
+{
+	PLIST_ITEM start;
+	KSPIN_LOCK lock;
+
+}LIST_HEAD, * PLIST_HEAD;
+
+#define LIST_POOL_TAG 'list'
+
 VOID QueuePush(
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
@@ -56,5 +72,23 @@ NTSTATUS HandlePeriodicGlobalReportQueueQuery(
 );
 
 VOID FreeGlobalReportQueueObjects();
+
+VOID ListInit(
+	_In_ PLIST_HEAD ListHead
+);
+
+PLIST_ITEM ListInsert(
+	_In_ PLIST_HEAD ListHead,
+	_In_ PVOID Data
+);
+
+PVOID ListRemoveFirst(
+	_In_ PLIST_HEAD ListHead
+);
+
+PVOID ListRemoveItem(
+	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM ListItem
+);
 
 #endif

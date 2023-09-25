@@ -10,10 +10,139 @@
 #include "modules.h"
 #include "integrity.h"
 
-#include "queue.h"
-
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
+
+VOID InitApcContextsList()
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	driver_config.apc_contexts = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_HEAD ), POOL_TAG_APC );
+
+	if ( !driver_config.apc_contexts )
+		return;
+
+	ListInit( driver_config.apc_contexts );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID FreeApcContextStructures()
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+
+	PLIST_ITEM entry = driver_config.apc_contexts->start;
+
+	if ( !entry )
+		goto unlock;
+
+	while ( entry )
+	{
+		FreeApcContextStructure( entry->data );
+		entry = entry->next;
+		ListRemoveItem( driver_config.apc_contexts, entry );
+	}
+
+unlock:
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID InsertApcIntoApcContextList(
+	_In_ PLIST_HEAD ListHead,
+	_In_ PAPC_STATUS ApcStatus
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	ListInsert( ListHead, ApcStatus );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID RemoveApcContext(
+	_In_ LONG ContextIdentifier,
+	_In_ PKAPC Apc
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+
+	PLIST_ITEM entry = driver_config.apc_contexts->start;
+
+	while ( entry )
+	{
+		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
+
+		if ( header->context_id == ContextIdentifier )
+		{
+			ListRemoveItem( driver_config.apc_contexts, entry );
+			ExFreePoolWithTag( entry->data, POOL_TAG_APC );
+			ExFreePoolWithTag( entry, LIST_POOL_TAG );
+			break;
+		}
+	}
+
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID InsertApcContext(
+	_In_ PVOID Context
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+
+	if ( Context )
+	{
+		PLIST_ITEM entry = ListInsert( driver_config.apc_contexts, Context );
+
+		if ( !entry )
+			goto end;
+
+		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
+
+		header->head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_HEAD ), POOL_TAG_APC );
+
+		if ( !header->head )
+			goto end;
+	}
+
+end:
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID RemoveApcFromApcContextList(
+	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM ListEntry
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	ListRemoveItem( ListHead, ListEntry );
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID GetApcContext(
+	_Inout_ PVOID* Context,
+	_In_ LONG ContextIdentifier
+)
+{
+	if ( !Context )
+		return;
+
+	KeAcquireGuardedMutex( &driver_config.lock );
+
+	PLIST_ITEM entry = driver_config.apc_contexts->start;
+
+	while ( entry )
+	{
+		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
+
+		if ( header->context_id == ContextIdentifier )
+		{
+			*Context = header;
+			KeReleaseGuardedMutex( &driver_config.lock );
+			return;
+		}
+
+		entry = entry->next;
+	}
+
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
 
 VOID ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
@@ -275,6 +404,8 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
+	InitApcContextsList();
+
 	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_serial );
 	DEBUG_LOG( "Drive 0 serial: %s", driver_config.system_information.drive_0_serial );
 
@@ -330,6 +461,7 @@ VOID DriverUnload(
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	CleanupDriverConfigOnUnload();
+	FreeApcContextStructures();
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
 

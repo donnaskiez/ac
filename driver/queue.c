@@ -253,3 +253,86 @@ end:
 	DEBUG_LOG( "Moved all reports into the IRP, sending !" );
 	return STATUS_SUCCESS;
 }
+
+VOID ListInit(
+	_In_ PLIST_HEAD ListHead
+)
+{
+	KeInitializeSpinLock( &ListHead->lock );
+	ListHead->start = NULL;
+}
+
+PLIST_ITEM ListInsert(
+	_In_ PLIST_HEAD ListHead,
+	_In_ PVOID Data
+)
+{
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock( &ListHead->lock, &irql );
+
+	PLIST_ITEM entry = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_ITEM ), POOL_TAG_APC );
+
+	if ( !entry )
+		return;
+
+	entry->data = Data;
+	entry->next = ListHead->start;
+	ListHead->start = entry;
+
+	KeReleaseSpinLock( &ListHead->lock, irql );
+
+	return entry;
+}
+
+PVOID ListRemoveFirst(
+	_In_ PLIST_HEAD ListHead
+)
+{
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock( &ListHead->lock, &irql );
+
+	if ( ListHead->start )
+	{
+		PLIST_ITEM entry = ListHead->start;
+		ListHead->start = ListHead->start->next;
+		ExFreePoolWithTag( entry, POOL_TAG_APC );
+	}
+
+	KeReleaseSpinLock( &ListHead->lock, irql );
+}
+
+PVOID ListRemoveItem(
+	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM ListItem
+)
+{
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock( &ListHead->lock, &irql );
+
+	PLIST_ITEM entry = ListHead->start;
+
+	if ( !entry )
+		goto unlock;
+
+	if ( entry == ListItem )
+	{
+		ListHead->start = entry->next;
+		ExFreePoolWithTag( ListItem, POOL_TAG_APC );
+		goto unlock;
+	}
+
+	while ( entry->next )
+	{
+		if ( entry->next == ListItem )
+		{
+			entry->next = entry->next->next;
+			ExFreePoolWithTag( ListItem, POOL_TAG_APC );
+			goto unlock;
+		}
+
+		entry = entry->next;
+	}
+
+unlock:
+	KeReleaseSpinLock( &ListHead->lock, irql);
+}

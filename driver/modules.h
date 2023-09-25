@@ -3,7 +3,9 @@
 
 #include <ntifs.h>
 #include <intrin.h>
+
 #include "common.h"
+#include "queue.h"
 
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
 
@@ -87,6 +89,32 @@ typedef struct _SYSTEM_MODULES
 
 }SYSTEM_MODULES, * PSYSTEM_MODULES;
 
+typedef struct _APC_STATUS
+{
+	PKAPC apc;
+	BOOLEAN apc_complete;
+
+}APC_STATUS, * PAPC_STATUS;
+
+typedef struct _APC_STACKWALK_CONTEXT
+{
+	LONG context_id;
+	PLIST_HEAD head;
+	KGUARDED_MUTEX lock;
+	PSYSTEM_MODULES modules;
+
+}APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
+
+#define APC_CONTEXT_ID_STACKWALK 0x1
+
+typedef struct _APC_CONTEXT_HEADER
+{
+	LONG context_id;
+	PLIST_HEAD head;
+	KGUARDED_MUTEX lock;
+
+}APC_CONTEXT_HEADER, *PAPC_CONTEXT_HEADER;
+
 NTSTATUS GetSystemModuleInformation(
 	_Out_ PSYSTEM_MODULES ModuleInformation
 );
@@ -102,6 +130,10 @@ PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
 
 NTSTATUS HandleNmiIOCTL(
 	_In_ PIRP Irp
+);
+
+VOID FreeApcContextStructure(
+	_Inout_ PVOID Context
 );
 
 NTSTATUS ValidateThreadsViaKernelApc();

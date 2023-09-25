@@ -1,6 +1,7 @@
 #include "modules.h"
 
 #include "callbacks.h"
+#include "driver.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -873,22 +874,173 @@ VOID ApcRundownRoutine(
 	_In_ PRKAPC Apc
 )
 {
-	DEBUG_LOG( "Thread discarding APC queue, freeing APC object" );
-	ExFreePoolWithTag( Apc, POOL_TAG_APC );
+
+}
+
+VOID InsertApcToContextList(
+	_In_ PKAPC Apc,
+	_In_ LONG ContextId
+)
+{
+	PAPC_CONTEXT_HEADER header = NULL;
+
+	GetApcContext( &header, ContextId );
+
+	if ( !header )
+		return;
+
+	KeAcquireGuardedMutex( &header->lock );
+
+	switch ( header->context_id )
+	{
+	case APC_CONTEXT_ID_STACKWALK:;
+
+		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
+
+		PAPC_STATUS apc_status = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( APC_STATUS ), POOL_TAG_APC );
+
+		if ( !apc_status )
+			goto unlock;
+
+		apc_status->apc = Apc;
+		apc_status->apc_complete = FALSE;
+
+		InsertApcIntoApcContextList( context->head, apc_status );
+		break;
+	}
+
+unlock:
+
+	KeReleaseGuardedMutex( &header->lock );
+}
+
+VOID FreeApcContextStructure(
+	_Inout_ PVOID Context
+)
+{
+	PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )Context;
+
+	KeAcquireGuardedMutex( &header->lock );
+
+	switch ( header->context_id )
+	{
+	case APC_CONTEXT_ID_STACKWALK:;
+
+		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
+
+		ExFreePoolWithTag( context->head, POOL_TAG_APC );
+		ExFreePoolWithTag( context->modules, POOL_TAG_APC );
+		break;
+	}
+
+	KeReleaseGuardedMutex( &header->lock );
+}
+
+VOID FreeApcAndStatusStructure(
+	_Inout_ PKAPC Apc,
+	_In_ LONG ContextId
+)
+{
+	PAPC_CONTEXT_HEADER header = NULL;
+
+	GetApcContext( &header, ContextId );
+
+	if ( !header )
+		return;
+
+	KeAcquireGuardedMutex( &header->lock );
+
+	switch ( header->context_id )
+	{
+	case APC_CONTEXT_ID_STACKWALK:;
+
+		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
+
+		PLIST_ITEM entry = ( PLIST_ITEM )context->head->start;
+
+		while ( entry != NULL )
+		{
+			PAPC_STATUS apc_entry = ( PAPC_STATUS )entry->data;
+
+			if ( apc_entry->apc == Apc )
+			{
+				ExFreePoolWithTag( apc_entry->apc, POOL_TAG_APC );
+				ExFreePoolWithTag( entry->data, POOL_TAG_APC );
+				RemoveApcFromApcContextList( context->head, entry );
+				KeReleaseGuardedMutex( &header->lock );
+				return;
+			}
+
+			entry = entry->next;
+		}
+
+		break;
+	}
+
+	KeReleaseGuardedMutex( &header->lock );
 }
 
 /*
-* The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered.
+* The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered. This
+* is also where we want to free our APC object.
 */
 VOID ApcKernelRoutine(
 	_In_ PRKAPC Apc,
-	_Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+	_Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine, 
 	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
 )
 {
-	DEBUG_LOG( "Hello from apc routine! ThreadId: %lx", (LONG)PsGetCurrentThreadId() );
+	PVOID buffer = NULL;
+	INT frames_captured = 0;
+	UINT64 stack_frame = 0;
+	NTSTATUS status;
+	BOOLEAN flag = FALSE;
+	PAPC_STACKWALK_CONTEXT context;
+
+	context = ( PAPC_STACKWALK_CONTEXT )Apc->NormalContext;
+
+	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
+
+	if ( !buffer )
+		return;
+
+	frames_captured = RtlCaptureStackBackTrace(
+		NULL,
+		STACK_FRAME_POOL_SIZE / sizeof(UINT64),
+		buffer,
+		NULL
+	);
+
+	if ( frames_captured == NULL )
+		goto free;
+
+	for ( INT index = 0; index < frames_captured; index++ )
+	{
+		stack_frame = *( UINT64* )( ( UINT64 )buffer + index * sizeof(UINT64) );
+
+		/*
+		* Apc->NormalContext holds the address of our context data structure that we passed into
+		* KeInitializeApc as the last argument.
+		*/
+		status = IsInstructionPointerInInvalidRegion(
+			stack_frame,
+			context->modules,
+			&flag
+		);
+
+		if ( !NT_SUCCESS( status ) )
+		{
+			DEBUG_ERROR( "IsInstructionPointerInInvalidRegion failed with status %x", status );
+			goto free;
+		}
+	}
+
+free:
+
+	ExFreePoolWithTag( buffer, POOL_TAG_APC );
+	FreeApcAndStatusStructure( Apc, APC_CONTEXT_ID_STACKWALK );
 }
 
 /*
@@ -908,8 +1060,6 @@ VOID ValidateThreadViaKernelApcCallback(
 	_In_ PVOID Context
 )
 {
-	UNREFERENCED_PARAMETER( Context );
-
 	NTSTATUS status;
 	PLIST_ENTRY thread_list_head;
 	PLIST_ENTRY thread_list_entry;
@@ -924,8 +1074,11 @@ VOID ValidateThreadViaKernelApcCallback(
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
 
-		/* sanity check */
+		/* ensure thread has a valid cid entry */
 		if ( PsGetThreadId( current_thread ) == NULL )
+			goto increment;
+
+		if (current_thread == KeGetCurrentThread())
 			goto increment;
 
 		apc = ( PKAPC )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KAPC ), POOL_TAG_APC );
@@ -941,7 +1094,7 @@ VOID ValidateThreadViaKernelApcCallback(
 			ApcRundownRoutine,
 			ApcNormalRoutine,
 			KernelMode,
-			NULL
+			Context
 		);
 
 		apc_status = KeInsertQueueApc(
@@ -952,7 +1105,12 @@ VOID ValidateThreadViaKernelApcCallback(
 		);
 
 		if ( !apc_status )
+		{
 			DEBUG_ERROR( "KeInsertQueueApc failed" );
+			goto increment;
+		}
+
+		InsertApcToContextList( apc, APC_CONTEXT_ID_STACKWALK );
 
 	increment:
 		thread_list_entry = thread_list_entry->Flink;
@@ -967,8 +1125,43 @@ VOID ValidateThreadViaKernelApcCallback(
 */
 NTSTATUS ValidateThreadsViaKernelApc()
 {
+	NTSTATUS status;
+	PAPC_STACKWALK_CONTEXT context = NULL;
+
+	context = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( APC_STACKWALK_CONTEXT ), POOL_TAG_APC );
+
+	if ( !context )
+		return STATUS_MEMORY_NOT_ALLOCATED;
+
+	context->context_id = APC_CONTEXT_ID_STACKWALK;
+	context->modules = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SYSTEM_MODULES ), POOL_TAG_APC );
+
+	KeInitializeGuardedMutex( &context->lock );
+
+	if ( !context->modules )
+	{
+		ExFreePoolWithTag( context, POOL_TAG_APC );
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	status = GetSystemModuleInformation( context->modules );
+
+	if ( !NT_SUCCESS( status ) )
+	{
+		ExFreePoolWithTag( context->modules, POOL_TAG_APC );
+		ExFreePoolWithTag( context, POOL_TAG_APC );
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	InsertApcContext( context );
+
 	EnumerateProcessListWithCallbackFunction(
 		ValidateThreadViaKernelApcCallback,
-		NULL
+		context
 	);
+}
+
+NTSTATUS QueryApcListToCheckForCompletion()
+{
+
 }
