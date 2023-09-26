@@ -112,8 +112,24 @@ GetApcContextByIndex(
 	_In_ INT Index
 );
 
+VOID
+IncrementApcCount(
+	_In_ LONG ContextId
+);
+
+VOID
+FreeApcAndDecrementApcCount(
+	_In_ PRKAPC Apc,
+	_In_ LONG ContextId
+);
+
 VOID TerminateProtectedProcessOnViolation();
 
 VOID ClearProcessConfigOnProcessTermination();
+
+NTSTATUS
+QueryActiveApcContextForCompletion(
+	_In_ LONG ContextId
+);
 
 #endif

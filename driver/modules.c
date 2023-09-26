@@ -902,27 +902,7 @@ ApcRundownRoutine(
 	_In_ PRKAPC Apc
 )
 {
-	//FreeApcAndStatusStructure( Apc, APC_CONTEXT_ID_STACKWALK );
-}
-
-STATIC
-VOID 
-FreeApcAndDecrementApcCount(
-	_In_ PRKAPC Apc,
-	_In_ LONG ContextId
-)
-{
-	PAPC_CONTEXT_HEADER header = NULL;
-
-	ExFreePoolWithTag( Apc, POOL_TAG_APC );
-	GetApcContext( &header, ContextId );
-
-	if ( !header )
-		return;
-
-	KeAcquireGuardedMutex( &header->lock );
-	header->count -= 1;
-	KeReleaseGuardedMutex( &header->lock );
+	FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
 }
 
 /*
@@ -951,7 +931,7 @@ ApcKernelRoutine(
 	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
 
 	if ( !buffer )
-		return;
+		goto free;
 
 	frames_captured = RtlCaptureStackBackTrace(
 		NULL,
@@ -986,7 +966,9 @@ ApcKernelRoutine(
 
 free:
 
-	ExFreePoolWithTag( buffer, POOL_TAG_APC );
+	if (buffer )
+		ExFreePoolWithTag( buffer, POOL_TAG_APC );
+
 	FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
 }
 
@@ -1004,23 +986,6 @@ ApcNormalRoutine(
 
 }
 
-STATIC 
-VOID 
-IncrementApcCount(
-	_In_ LONG ContextId
-)
-{
-	PAPC_CONTEXT_HEADER header = NULL;
-	GetApcContext( &header, ContextId );
-
-	if ( !header )
-		return;
-
-	KeAcquireGuardedMutex( &header->lock );
-	header->count += 1;
-	KeReleaseGuardedMutex( &header->lock );
-}
-
 STATIC
 VOID 
 ValidateThreadViaKernelApcCallback(
@@ -1034,6 +999,8 @@ ValidateThreadViaKernelApcCallback(
 	PETHREAD current_thread;
 	PKAPC apc = NULL;
 	BOOLEAN apc_status;
+
+	HANDLE id = PsGetProcessId( Process );
 
 	/* we dont want to schedule an apc to threads owned by the kernel */
 	if ( Process == PsInitialSystemProcess )
@@ -1109,8 +1076,6 @@ ValidateThreadsViaKernelApc()
 	context->header.context_id = APC_CONTEXT_ID_STACKWALK;
 	context->modules = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SYSTEM_MODULES ), POOL_TAG_APC );
 
-	KeInitializeGuardedMutex( &context->header.lock );
-
 	if ( !context->modules )
 	{
 		ExFreePoolWithTag( context, POOL_TAG_APC );
@@ -1139,40 +1104,8 @@ FreeApcStackwalkApcContextInformation(
 	_In_ PAPC_STACKWALK_CONTEXT Context
 )
 {
+	if (Context->modules->address )
+		ExFreePoolWithTag( Context->modules->address, SYSTEM_MODULES_POOL );
 	if ( Context->modules )
-		ExFreePoolWithTag( Context->modules, SYSTEM_MODULES_POOL );
-}
-
-NTSTATUS 
-QueryActiveApcContextsForCompletion()
-{
-	for ( INT index = 0; index < 10; index++ )
-	{
-		PAPC_CONTEXT_HEADER entry = NULL;
-		GetApcContextByIndex( &entry, index );
-
-		/* ensure we dont try to unlock a null entry */
-		if ( entry == NULL )
-			continue;
-
-		KeAcquireGuardedMutex( &entry->lock );
-
-		DEBUG_LOG( "APC Context id: %lx", entry->context_id );
-		DEBUG_LOG( "Actice Apc Count: %i", entry->count );
-
-		if ( entry->count > 0 )
-			goto unlock;
-
-		switch ( entry->context_id )
-		{
-		case APC_CONTEXT_ID_STACKWALK:
-			FreeApcStackwalkApcContextInformation( entry);
-			break;
-		}
-
-	unlock:
-		KeReleaseGuardedMutex( &entry->lock );
-	}
-
-	return STATUS_SUCCESS;
+		ExFreePoolWithTag( Context->modules, POOL_TAG_APC );
 }

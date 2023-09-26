@@ -124,11 +124,6 @@ NTSTATUS DeviceControl(
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
 
-		status = QueryActiveApcContextsForCompletion();
-
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "QueryActiveApcContextsForCompletion failed with status %x", status );
-
 		status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
 		if ( !NT_SUCCESS( status ) )

@@ -102,7 +102,6 @@ typedef struct _APC_CONTEXT_HEADER
 {
 	LONG context_id;
 	volatile INT count;
-	KGUARDED_MUTEX lock;
 
 }APC_CONTEXT_HEADER, * PAPC_CONTEXT_HEADER;
 
@@ -130,13 +129,16 @@ NTSTATUS HandleNmiIOCTL(
 	_In_ PIRP Irp
 );
 
-VOID FreeApcContextStructure(
-	_Inout_ PVOID Context
+BOOLEAN
+FreeApcContextStructure(
+	_Inout_ PAPC_CONTEXT_HEADER Context
 );
 
 NTSTATUS ValidateThreadsViaKernelApc();
 
-NTSTATUS
-QueryActiveApcContextsForCompletion();
+VOID
+FreeApcStackwalkApcContextInformation(
+	_In_ PAPC_STACKWALK_CONTEXT Context
+);
 
 #endif

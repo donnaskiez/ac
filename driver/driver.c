@@ -33,13 +33,21 @@ unlock:
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
+/*
+* No need to hold the lock here as it thread freeing the APCs will
+* already hold the configuration lock. We also dont want to release and
+* reclaim the lock before calling this function since we need to ensure
+* we hold the lock during the entire free process.
+*/
+STATIC
 BOOLEAN
 FreeApcContextStructure(
 	_Inout_ PAPC_CONTEXT_HEADER Context
 )
 {
 	BOOLEAN result = FALSE;
-	KeAcquireGuardedMutex( &driver_config.lock );
+
+	DEBUG_LOG( "All APCs executed, freeing context structure" );
 
 	for ( INT index = 0; index < 10; index++ )
 	{
@@ -58,9 +66,98 @@ FreeApcContextStructure(
 	}
 
 unlock:
-	KeReleaseGuardedMutex( &driver_config.lock );
 	return result;
 }
+
+VOID
+IncrementApcCount(
+	_In_ LONG ContextId
+)
+{
+	PAPC_CONTEXT_HEADER header = NULL;
+	GetApcContext( &header, ContextId );
+
+	if ( !header )
+		return;
+
+	KeAcquireGuardedMutex( &driver_config.lock );
+	header->count += 1;
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID
+FreeApcAndDecrementApcCount(
+	_In_ PRKAPC Apc,
+	_In_ LONG ContextId
+)
+{
+	PAPC_CONTEXT_HEADER context = NULL;
+
+	ExFreePoolWithTag( Apc, POOL_TAG_APC );
+
+	GetApcContext( &context, ContextId );
+
+	if ( !context )
+		goto end;
+
+	KeAcquireGuardedMutex( &driver_config.lock );
+
+	context->count -= 1;
+
+	switch ( ContextId )
+	{
+	case APC_CONTEXT_ID_STACKWALK:
+
+		if ( context->count > 0 )
+			goto end;
+
+		PAPC_STACKWALK_CONTEXT stackwalk_context = ( PAPC_STACKWALK_CONTEXT )context;
+
+		FreeApcStackwalkApcContextInformation( stackwalk_context );
+		FreeApcContextStructure( stackwalk_context );
+
+		break;
+	}
+
+end:
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+//NTSTATUS
+//QueryActiveApcContextsForCompletion()
+//{
+//	DEBUG_LOG( "Querying active apc contexts" );
+//
+//	KeAcquireGuardedMutex( &driver_config.lock );
+//
+//	for ( INT index = 0; index < 10; index++ )
+//	{
+//		PAPC_CONTEXT_HEADER entry = NULL;
+//		GetApcContextByIndex( &entry, index );
+//
+//		/* ensure we dont try to unlock a null entry */
+//		if ( entry == NULL )
+//			continue;
+//
+//		DEBUG_LOG( "APC Context id: %lx", entry->context_id );
+//		DEBUG_LOG( "Actice Apc Count: %i", entry->count );
+//
+//		if ( entry->count > 0 )
+//			goto end;
+//
+//		switch ( entry->context_id )
+//		{
+//		case APC_CONTEXT_ID_STACKWALK:
+//			FreeApcStackwalkApcContextInformation( entry );
+//			FreeApcContextStructure( entry );
+//			break;
+//		}
+//	}
+//end:
+//
+//	KeReleaseGuardedMutex( &driver_config.lock );
+//	return STATUS_SUCCESS;
+//}
 
 VOID 
 InsertApcContext(
@@ -460,6 +557,7 @@ DriverUnload(
 )
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
+	//QueryActiveApcContextsForCompletion();
 	FreeAllApcContextStructures();
 	CleanupDriverConfigOnUnload();
 	IoDeleteDevice( DriverObject->DeviceObject );
