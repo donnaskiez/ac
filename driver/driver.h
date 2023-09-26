@@ -43,7 +43,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING driver_path;
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
-	PLIST_HEAD apc_contexts;
+	PVOID apc_contexts[ 10 ];
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, *PDRIVER_CONFIG;
@@ -103,7 +103,13 @@ VOID RemoveApcFromApcContextList(
 
 VOID InsertApcIntoApcContextList(
 	_In_ PLIST_HEAD ListHead,
-	_In_ PAPC_STATUS ApcStatus
+	_In_ PAPC_ENTRY ApcStatus
+);
+
+VOID
+GetApcContextByIndex(
+	_Inout_ PVOID* Context,
+	_In_ INT Index
 );
 
 VOID TerminateProtectedProcessOnViolation();

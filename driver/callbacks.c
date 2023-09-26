@@ -48,9 +48,15 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 	GetProtectedProcessId( &protected_process_id );
 	GetProtectedProcessEProcess( &protected_process );
 
+	if ( !protected_process_id || !protected_process )
+		goto end;
+
 	process_creator_name = PsGetProcessImageFileName( process_creator );
 	target_process_name = PsGetProcessImageFileName( target_process );
 	protected_process_name = PsGetProcessImageFileName( protected_process );
+
+	if ( !protected_process_name || !target_process_name )
+		goto end;
 
 	if ( !strcmp( protected_process_name, target_process_name) )
 	{

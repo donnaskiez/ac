@@ -13,138 +13,118 @@
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
 
-VOID InitApcContextsList()
-{
-	KeAcquireGuardedMutex( &driver_config.lock );
-	driver_config.apc_contexts = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_HEAD ), POOL_TAG_APC );
-
-	if ( !driver_config.apc_contexts )
-		return;
-
-	ListInit( driver_config.apc_contexts );
-	KeReleaseGuardedMutex( &driver_config.lock );
-}
-
-VOID FreeApcContextStructures()
+STATIC
+VOID 
+FreeAllApcContextStructures()
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	PLIST_ITEM entry = driver_config.apc_contexts->start;
-
-	if ( !entry )
-		goto unlock;
-
-	while ( entry )
+	for ( INT index = 0; index < 10; index++ )
 	{
-		FreeApcContextStructure( entry->data );
-		entry = entry->next;
-		ListRemoveItem( driver_config.apc_contexts, entry );
+		PUINT64 entry = driver_config.apc_contexts;
+
+		if ( entry[ index ] != NULL )
+		{
+			ExFreePoolWithTag( entry, POOL_TAG_APC );
+		}
 	}
 
 unlock:
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID InsertApcIntoApcContextList(
-	_In_ PLIST_HEAD ListHead,
-	_In_ PAPC_STATUS ApcStatus
+BOOLEAN
+FreeApcContextStructure(
+	_Inout_ PAPC_CONTEXT_HEADER Context
 )
 {
-	KeAcquireGuardedMutex( &driver_config.lock );
-	ListInsert( ListHead, ApcStatus );
-	KeReleaseGuardedMutex( &driver_config.lock );
-}
-
-VOID RemoveApcContext(
-	_In_ LONG ContextIdentifier,
-	_In_ PKAPC Apc
-)
-{
+	BOOLEAN result = FALSE;
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	PLIST_ITEM entry = driver_config.apc_contexts->start;
-
-	while ( entry )
+	for ( INT index = 0; index < 10; index++ )
 	{
-		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
+		PUINT64 entry = driver_config.apc_contexts;
 
-		if ( header->context_id == ContextIdentifier )
+		if ( entry[ index ] == Context )
 		{
-			ListRemoveItem( driver_config.apc_contexts, entry );
-			ExFreePoolWithTag( entry->data, POOL_TAG_APC );
-			ExFreePoolWithTag( entry, LIST_POOL_TAG );
-			break;
+			if ( Context->count != 0 )
+				goto unlock;
+
+			ExFreePoolWithTag( Context, POOL_TAG_APC );
+			entry[ index ] = NULL;
+			result = TRUE;
+			goto unlock;
 		}
 	}
 
+unlock:
 	KeReleaseGuardedMutex( &driver_config.lock );
+	return result;
 }
 
-VOID InsertApcContext(
+VOID 
+InsertApcContext(
 	_In_ PVOID Context
 )
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	if ( Context )
+	PAPC_CONTEXT_HEADER header = Context;
+
+	for ( INT index = 0; index < 10; index++ )
 	{
-		PLIST_ITEM entry = ListInsert( driver_config.apc_contexts, Context );
+		PUINT64 entry = driver_config.apc_contexts;
 
-		if ( !entry )
+		if ( entry[ index ] == NULL )
+		{
+			entry[ index ] = Context;
 			goto end;
-
-		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
-
-		header->head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_HEAD ), POOL_TAG_APC );
-
-		if ( !header->head )
-			goto end;
+		}
 	}
 
 end:
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID RemoveApcFromApcContextList(
-	_In_ PLIST_HEAD ListHead,
-	_Inout_ PLIST_ITEM ListEntry
-)
-{
-	KeAcquireGuardedMutex( &driver_config.lock );
-	ListRemoveItem( ListHead, ListEntry );
-	KeReleaseGuardedMutex( &driver_config.lock );
-}
-
-VOID GetApcContext(
+VOID 
+GetApcContext(
 	_Inout_ PVOID* Context,
 	_In_ LONG ContextIdentifier
 )
 {
-	if ( !Context )
-		return;
-
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	PLIST_ITEM entry = driver_config.apc_contexts->start;
-
-	while ( entry )
+	for ( INT index = 0; index < 10; index++ )
 	{
-		PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )entry->data;
+		PAPC_CONTEXT_HEADER header = driver_config.apc_contexts[ index ];
+
+		if ( header == NULL )
+			continue;
 
 		if ( header->context_id == ContextIdentifier )
 		{
 			*Context = header;
-			KeReleaseGuardedMutex( &driver_config.lock );
-			return;
+			goto unlock;
 		}
-
-		entry = entry->next;
 	}
 
+unlock:
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID ReadProcessInitialisedConfigFlag(
+VOID
+GetApcContextByIndex(
+	_Inout_ PVOID* Context,
+	_In_ INT Index
+)
+{
+	KeAcquireGuardedMutex( &driver_config.lock );
+	*Context = driver_config.apc_contexts[ Index ];
+	KeReleaseGuardedMutex( &driver_config.lock );
+}
+
+VOID 
+ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
 {
@@ -156,7 +136,8 @@ VOID ReadProcessInitialisedConfigFlag(
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID GetProtectedProcessEProcess( 
+VOID 
+GetProtectedProcessEProcess( 
 	_Out_ PEPROCESS* Process 
 )
 {
@@ -168,7 +149,8 @@ VOID GetProtectedProcessEProcess(
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID GetProtectedProcessId(
+VOID 
+GetProtectedProcessId(
 	_Out_ PLONG ProcessId
 )
 {
@@ -178,7 +160,8 @@ VOID GetProtectedProcessId(
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID ClearProcessConfigOnProcessTermination()
+VOID 
+ClearProcessConfigOnProcessTermination()
 {
 	DEBUG_LOG( "Process closed, clearing driver process_configuration" );
 	KeAcquireGuardedMutex( &process_config.lock );
@@ -189,7 +172,8 @@ VOID ClearProcessConfigOnProcessTermination()
 	KeReleaseGuardedMutex( &process_config.lock );
 }
 
-VOID GetDriverName(
+VOID 
+GetDriverName(
 	_Out_ LPCSTR* DriverName
 )
 {
@@ -201,7 +185,8 @@ VOID GetDriverName(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID GetDriverPath(
+VOID 
+GetDriverPath(
 	_Out_ PUNICODE_STRING DriverPath
 )
 {
@@ -211,7 +196,8 @@ VOID GetDriverPath(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID GetDriverRegistryPath(
+VOID 
+GetDriverRegistryPath(
 	_Out_ PUNICODE_STRING RegistryPath
 )
 {
@@ -221,7 +207,8 @@ VOID GetDriverRegistryPath(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID GetDriverDeviceName(
+VOID 
+GetDriverDeviceName(
 	_Out_ PUNICODE_STRING DeviceName
 )
 {
@@ -231,7 +218,8 @@ VOID GetDriverDeviceName(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID GetDriverSymbolicLink(
+VOID 
+GetDriverSymbolicLink(
 	_Out_ PUNICODE_STRING DeviceSymbolicLink
 )
 {
@@ -241,7 +229,8 @@ VOID GetDriverSymbolicLink(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-VOID GetDriverConfigSystemInformation(
+VOID 
+GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
 )
 {
@@ -253,7 +242,9 @@ VOID GetDriverConfigSystemInformation(
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-NTSTATUS RegistryPathQueryCallbackRoutine(
+STATIC
+NTSTATUS 
+RegistryPathQueryCallbackRoutine(
 	IN PWSTR ValueName,
 	IN ULONG ValueType,
 	IN PVOID ValueData,
@@ -309,7 +300,9 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 	return STATUS_SUCCESS;
 }
 
-VOID FreeDriverConfigurationStringBuffers()
+STATIC
+VOID 
+FreeDriverConfigurationStringBuffers()
 {
 	if ( driver_config.unicode_driver_name.Buffer )
 		ExFreePoolWithTag( driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS );
@@ -321,7 +314,9 @@ VOID FreeDriverConfigurationStringBuffers()
 		RtlFreeAnsiString( &driver_config.ansi_driver_name );
 }
 
-NTSTATUS InitialiseDriverConfigOnDriverEntry(
+STATIC
+NTSTATUS 
+InitialiseDriverConfigOnDriverEntry(
 	_In_ PUNICODE_STRING RegistryPath
 )
 {
@@ -404,15 +399,14 @@ NTSTATUS InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
-	InitApcContextsList();
-
 	DEBUG_LOG( "Motherboard serial: %s", driver_config.system_information.motherboard_serial );
 	DEBUG_LOG( "Drive 0 serial: %s", driver_config.system_information.drive_0_serial );
 
 	return status;
 }
 
-NTSTATUS InitialiseProcessConfigOnProcessLaunch(
+NTSTATUS 
+InitialiseProcessConfigOnProcessLaunch(
 	_In_ PIRP Irp
 )
 {
@@ -443,29 +437,36 @@ NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	return status;
 }
 
-VOID InitialiseProcessConfigOnDriverEntry()
+STATIC
+VOID 
+InitialiseProcessConfigOnDriverEntry()
 {
 	KeInitializeGuardedMutex( &process_config.lock );
 }
 
-VOID CleanupDriverConfigOnUnload()
+STATIC
+VOID 
+CleanupDriverConfigOnUnload()
 {
 	FreeDriverConfigurationStringBuffers();
 	FreeGlobalReportQueueObjects();
 	IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 }
 
-VOID DriverUnload(
+STATIC
+VOID 
+DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
+	FreeAllApcContextStructures();
 	CleanupDriverConfigOnUnload();
-	FreeApcContextStructures();
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
 
-VOID TerminateProtectedProcessOnViolation()
+VOID 
+TerminateProtectedProcessOnViolation()
 {
 	NTSTATUS status;
 	ULONG process_id;
@@ -496,7 +497,8 @@ VOID TerminateProtectedProcessOnViolation()
 	ClearProcessConfigOnProcessTermination();
 }
 
-NTSTATUS DriverEntry(
+NTSTATUS 
+DriverEntry(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PUNICODE_STRING RegistryPath
 )

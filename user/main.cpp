@@ -71,7 +71,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
         //    kmanager.CheckForAttachedThreads();
         //    break;
         //}
-        kmanager.VerifySystemModules();
+        //kmanager.VerifySystemModules();
         kmanager.MonitorCallbackReports();
         std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
     }

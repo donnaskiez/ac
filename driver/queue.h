@@ -37,7 +37,6 @@ typedef struct _REPORT_HEADER
 typedef struct _LIST_ITEM
 {
 	struct _LIST_ITEM* next;
-	PVOID data;
 
 }LIST_ITEM, * PLIST_ITEM;
 
@@ -79,7 +78,7 @@ VOID ListInit(
 
 PLIST_ITEM ListInsert(
 	_In_ PLIST_HEAD ListHead,
-	_In_ PVOID Data
+	_In_ PLIST_ITEM Data
 );
 
 PVOID ListRemoveFirst(

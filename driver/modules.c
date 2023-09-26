@@ -39,7 +39,8 @@ typedef struct _NMI_CONTEXT
 /*
 * TODO: this needs to be refactored to just return the entry not the whole fukin thing
 */
-PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
+PRTL_MODULE_EXTENDED_INFO 
+FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
 	_In_ PSYSTEM_MODULES SystemModules
 )
@@ -59,7 +60,9 @@ PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
 	}
 }
 
-NTSTATUS PopulateWhitelistedModuleBuffer(
+STATIC
+NTSTATUS 
+PopulateWhitelistedModuleBuffer(
 	_In_ PVOID Buffer,
 	_In_ PSYSTEM_MODULES SystemModules
 )
@@ -87,7 +90,9 @@ NTSTATUS PopulateWhitelistedModuleBuffer(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS ValidateDriverIOCTLDispatchRegion(
+STATIC
+NTSTATUS 
+ValidateDriverIOCTLDispatchRegion(
 	_In_ PDRIVER_OBJECT Driver,
 	_In_ PSYSTEM_MODULES Modules,
 	_In_ PWHITELISTED_REGIONS WhitelistedRegions,
@@ -160,7 +165,9 @@ NTSTATUS ValidateDriverIOCTLDispatchRegion(
 	return STATUS_SUCCESS;
 }
 
-VOID InitDriverList(
+STATIC
+VOID 
+InitDriverList(
 	_In_ PINVALID_DRIVERS_HEAD ListHead
 )
 {
@@ -168,7 +175,9 @@ VOID InitDriverList(
 	ListHead->first_entry = NULL;
 }
 
-VOID AddDriverToList(
+STATIC
+VOID 
+AddDriverToList(
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
 	_In_ PDRIVER_OBJECT Driver,
 	_In_ INT Reason
@@ -189,7 +198,9 @@ VOID AddDriverToList(
 	InvalidDriversHead->first_entry = new_entry;
 }
 
-VOID RemoveInvalidDriverFromList(
+STATIC
+VOID 
+RemoveInvalidDriverFromList(
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead
 )
 {
@@ -201,7 +212,9 @@ VOID RemoveInvalidDriverFromList(
 	}
 }
 
-VOID EnumerateInvalidDrivers(
+STATIC
+VOID 
+EnumerateInvalidDrivers(
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead
 )
 {
@@ -214,7 +227,9 @@ VOID EnumerateInvalidDrivers(
 	}
 }
 
-NTSTATUS ValidateDriverObjectHasBackingModule(
+STATIC
+NTSTATUS 
+ValidateDriverObjectHasBackingModule(
 	_In_ PSYSTEM_MODULES ModuleInformation,
 	_In_ PDRIVER_OBJECT DriverObject,
 	_Out_ PBOOLEAN Result
@@ -242,7 +257,8 @@ NTSTATUS ValidateDriverObjectHasBackingModule(
 }
 
 //https://imphash.medium.com/windows-process-internals-a-few-concepts-to-know-before-jumping-on-memory-forensics-part-3-4a0e195d947b
-NTSTATUS GetSystemModuleInformation(
+NTSTATUS 
+GetSystemModuleInformation(
 	_Out_ PSYSTEM_MODULES ModuleInformation
 )
 {
@@ -296,7 +312,9 @@ NTSTATUS GetSystemModuleInformation(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS ValidateDriverObjects(
+STATIC
+NTSTATUS 
+ValidateDriverObjects(
 	_In_ PSYSTEM_MODULES SystemModules,
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriverListHead
 )
@@ -453,7 +471,8 @@ end:
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS HandleValidateDriversIOCTL(
+NTSTATUS 
+HandleValidateDriversIOCTL(
 	_In_ PIRP Irp
 )
 {
@@ -581,7 +600,8 @@ NTSTATUS HandleValidateDriversIOCTL(
 	return status;
 }
 
-NTSTATUS IsInstructionPointerInInvalidRegion(
+NTSTATUS 
+IsInstructionPointerInInvalidRegion(
 	_In_ UINT64 RIP,
 	_In_ PSYSTEM_MODULES SystemModules,
 	_Out_ PBOOLEAN Result
@@ -610,7 +630,9 @@ NTSTATUS IsInstructionPointerInInvalidRegion(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS AnalyseNmiData(
+STATIC
+NTSTATUS 
+AnalyseNmiData(
 	_In_ PNMI_CONTEXT NmiContext,
 	_In_ PSYSTEM_MODULES SystemModules,
 	_In_ PIRP Irp
@@ -695,7 +717,9 @@ NTSTATUS AnalyseNmiData(
 	return STATUS_SUCCESS;
 }
 
-BOOLEAN NmiCallback(
+STATIC
+BOOLEAN 
+NmiCallback(
 	_In_ PVOID Context,
 	_In_ BOOLEAN Handled
 )
@@ -745,7 +769,9 @@ BOOLEAN NmiCallback(
 	return TRUE;
 }
 
-NTSTATUS LaunchNonMaskableInterrupt(
+STATIC
+NTSTATUS 
+LaunchNonMaskableInterrupt(
 	_In_ PNMI_CONTEXT NmiContext
 )
 {
@@ -870,113 +896,32 @@ NTSTATUS HandleNmiIOCTL(
 * The RundownRoutine is executed if the thread terminates before the APC was delivered to
 * user mode.
 */
-VOID ApcRundownRoutine(
+STATIC
+VOID 
+ApcRundownRoutine(
 	_In_ PRKAPC Apc
 )
 {
-
+	//FreeApcAndStatusStructure( Apc, APC_CONTEXT_ID_STACKWALK );
 }
 
-VOID InsertApcToContextList(
-	_In_ PKAPC Apc,
+STATIC
+VOID 
+FreeApcAndDecrementApcCount(
+	_In_ PRKAPC Apc,
 	_In_ LONG ContextId
 )
 {
 	PAPC_CONTEXT_HEADER header = NULL;
 
+	ExFreePoolWithTag( Apc, POOL_TAG_APC );
 	GetApcContext( &header, ContextId );
 
 	if ( !header )
 		return;
 
 	KeAcquireGuardedMutex( &header->lock );
-
-	switch ( header->context_id )
-	{
-	case APC_CONTEXT_ID_STACKWALK:;
-
-		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
-
-		PAPC_STATUS apc_status = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( APC_STATUS ), POOL_TAG_APC );
-
-		if ( !apc_status )
-			goto unlock;
-
-		apc_status->apc = Apc;
-		apc_status->apc_complete = FALSE;
-
-		InsertApcIntoApcContextList( context->head, apc_status );
-		break;
-	}
-
-unlock:
-
-	KeReleaseGuardedMutex( &header->lock );
-}
-
-VOID FreeApcContextStructure(
-	_Inout_ PVOID Context
-)
-{
-	PAPC_CONTEXT_HEADER header = ( PAPC_CONTEXT_HEADER )Context;
-
-	KeAcquireGuardedMutex( &header->lock );
-
-	switch ( header->context_id )
-	{
-	case APC_CONTEXT_ID_STACKWALK:;
-
-		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
-
-		ExFreePoolWithTag( context->head, POOL_TAG_APC );
-		ExFreePoolWithTag( context->modules, POOL_TAG_APC );
-		break;
-	}
-
-	KeReleaseGuardedMutex( &header->lock );
-}
-
-VOID FreeApcAndStatusStructure(
-	_Inout_ PKAPC Apc,
-	_In_ LONG ContextId
-)
-{
-	PAPC_CONTEXT_HEADER header = NULL;
-
-	GetApcContext( &header, ContextId );
-
-	if ( !header )
-		return;
-
-	KeAcquireGuardedMutex( &header->lock );
-
-	switch ( header->context_id )
-	{
-	case APC_CONTEXT_ID_STACKWALK:;
-
-		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )header;
-
-		PLIST_ITEM entry = ( PLIST_ITEM )context->head->start;
-
-		while ( entry != NULL )
-		{
-			PAPC_STATUS apc_entry = ( PAPC_STATUS )entry->data;
-
-			if ( apc_entry->apc == Apc )
-			{
-				ExFreePoolWithTag( apc_entry->apc, POOL_TAG_APC );
-				ExFreePoolWithTag( entry->data, POOL_TAG_APC );
-				RemoveApcFromApcContextList( context->head, entry );
-				KeReleaseGuardedMutex( &header->lock );
-				return;
-			}
-
-			entry = entry->next;
-		}
-
-		break;
-	}
-
+	header->count -= 1;
 	KeReleaseGuardedMutex( &header->lock );
 }
 
@@ -984,7 +929,9 @@ VOID FreeApcAndStatusStructure(
 * The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered. This
 * is also where we want to free our APC object.
 */
-VOID ApcKernelRoutine(
+STATIC
+VOID 
+ApcKernelRoutine(
 	_In_ PRKAPC Apc,
 	_Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine, 
 	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
@@ -1040,13 +987,15 @@ VOID ApcKernelRoutine(
 free:
 
 	ExFreePoolWithTag( buffer, POOL_TAG_APC );
-	FreeApcAndStatusStructure( Apc, APC_CONTEXT_ID_STACKWALK );
+	FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
 }
 
 /*
 * The NormalRoutine is executed in user mode when the APC is delivered.
 */
-VOID ApcNormalRoutine(
+STATIC
+VOID 
+ApcNormalRoutine(
 	_In_opt_ PVOID NormalContext,
 	_In_opt_ PVOID SystemArgument1,
 	_In_opt_ PVOID SystemArgument2
@@ -1055,7 +1004,26 @@ VOID ApcNormalRoutine(
 
 }
 
-VOID ValidateThreadViaKernelApcCallback(
+STATIC 
+VOID 
+IncrementApcCount(
+	_In_ LONG ContextId
+)
+{
+	PAPC_CONTEXT_HEADER header = NULL;
+	GetApcContext( &header, ContextId );
+
+	if ( !header )
+		return;
+
+	KeAcquireGuardedMutex( &header->lock );
+	header->count += 1;
+	KeReleaseGuardedMutex( &header->lock );
+}
+
+STATIC
+VOID 
+ValidateThreadViaKernelApcCallback(
 	_In_ PEPROCESS Process,
 	_In_ PVOID Context
 )
@@ -1066,6 +1034,10 @@ VOID ValidateThreadViaKernelApcCallback(
 	PETHREAD current_thread;
 	PKAPC apc = NULL;
 	BOOLEAN apc_status;
+
+	/* we dont want to schedule an apc to threads owned by the kernel */
+	if ( Process == PsInitialSystemProcess )
+		return;
 
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
 	thread_list_entry = thread_list_head->Flink;
@@ -1110,7 +1082,7 @@ VOID ValidateThreadViaKernelApcCallback(
 			goto increment;
 		}
 
-		InsertApcToContextList( apc, APC_CONTEXT_ID_STACKWALK );
+		IncrementApcCount( APC_CONTEXT_ID_STACKWALK );
 
 	increment:
 		thread_list_entry = thread_list_entry->Flink;
@@ -1123,7 +1095,8 @@ VOID ValidateThreadViaKernelApcCallback(
 * routine to threads we want a stack trace of. Hence by utilising both APCs and NMIs we get 
 * excellent coverage of the entire system.
 */
-NTSTATUS ValidateThreadsViaKernelApc()
+NTSTATUS 
+ValidateThreadsViaKernelApc()
 {
 	NTSTATUS status;
 	PAPC_STACKWALK_CONTEXT context = NULL;
@@ -1133,10 +1106,10 @@ NTSTATUS ValidateThreadsViaKernelApc()
 	if ( !context )
 		return STATUS_MEMORY_NOT_ALLOCATED;
 
-	context->context_id = APC_CONTEXT_ID_STACKWALK;
+	context->header.context_id = APC_CONTEXT_ID_STACKWALK;
 	context->modules = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( SYSTEM_MODULES ), POOL_TAG_APC );
 
-	KeInitializeGuardedMutex( &context->lock );
+	KeInitializeGuardedMutex( &context->header.lock );
 
 	if ( !context->modules )
 	{
@@ -1161,7 +1134,45 @@ NTSTATUS ValidateThreadsViaKernelApc()
 	);
 }
 
-NTSTATUS QueryApcListToCheckForCompletion()
+VOID 
+FreeApcStackwalkApcContextInformation(
+	_In_ PAPC_STACKWALK_CONTEXT Context
+)
 {
+	if ( Context->modules )
+		ExFreePoolWithTag( Context->modules, SYSTEM_MODULES_POOL );
+}
 
+NTSTATUS 
+QueryActiveApcContextsForCompletion()
+{
+	for ( INT index = 0; index < 10; index++ )
+	{
+		PAPC_CONTEXT_HEADER entry = NULL;
+		GetApcContextByIndex( &entry, index );
+
+		/* ensure we dont try to unlock a null entry */
+		if ( entry == NULL )
+			continue;
+
+		KeAcquireGuardedMutex( &entry->lock );
+
+		DEBUG_LOG( "APC Context id: %lx", entry->context_id );
+		DEBUG_LOG( "Actice Apc Count: %i", entry->count );
+
+		if ( entry->count > 0 )
+			goto unlock;
+
+		switch ( entry->context_id )
+		{
+		case APC_CONTEXT_ID_STACKWALK:
+			FreeApcStackwalkApcContextInformation( entry);
+			break;
+		}
+
+	unlock:
+		KeReleaseGuardedMutex( &entry->lock );
+	}
+
+	return STATUS_SUCCESS;
 }

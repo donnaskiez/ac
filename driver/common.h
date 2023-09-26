@@ -7,6 +7,8 @@
 #define DEBUG_LOG(fmt, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, "[+] " fmt "\n", ##__VA_ARGS__)
 #define DEBUG_ERROR(fmt, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, "[-] " fmt "\n", ##__VA_ARGS__)
 
+#define STATIC static
+
 #define NMI_CONTEXT_POOL '7331'
 #define STACK_FRAMES_POOL 'loop'
 #define INVALID_DRIVER_LIST_HEAD_POOL 'rwar'
@@ -32,6 +34,7 @@
 #define REPORT_QUEUE_TEMP_BUFFER_TAG 'temp'
 #define REPORT_POOL_TAG 'repo'
 #define MODULES_REPORT_POOL_TAG 'modu'
+#define POOL_TAG_LIST_ITEM 'tsil'
 
 #define ERROR -1
 #define STACK_FRAME_POOL_SIZE 0x200

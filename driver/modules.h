@@ -89,31 +89,29 @@ typedef struct _SYSTEM_MODULES
 
 }SYSTEM_MODULES, * PSYSTEM_MODULES;
 
-typedef struct _APC_STATUS
+typedef struct _APC_ENTRY
 {
+	struct _LIST_ITEM* next;
 	PKAPC apc;
-	BOOLEAN apc_complete;
 
-}APC_STATUS, * PAPC_STATUS;
-
-typedef struct _APC_STACKWALK_CONTEXT
-{
-	LONG context_id;
-	PLIST_HEAD head;
-	KGUARDED_MUTEX lock;
-	PSYSTEM_MODULES modules;
-
-}APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
+}APC_ENTRY, * PAPC_ENTRY;
 
 #define APC_CONTEXT_ID_STACKWALK 0x1
 
 typedef struct _APC_CONTEXT_HEADER
 {
 	LONG context_id;
-	PLIST_HEAD head;
+	volatile INT count;
 	KGUARDED_MUTEX lock;
 
-}APC_CONTEXT_HEADER, *PAPC_CONTEXT_HEADER;
+}APC_CONTEXT_HEADER, * PAPC_CONTEXT_HEADER;
+
+typedef struct _APC_STACKWALK_CONTEXT
+{
+	APC_CONTEXT_HEADER header;
+	PSYSTEM_MODULES modules;
+
+}APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
 
 NTSTATUS GetSystemModuleInformation(
 	_Out_ PSYSTEM_MODULES ModuleInformation
@@ -137,5 +135,8 @@ VOID FreeApcContextStructure(
 );
 
 NTSTATUS ValidateThreadsViaKernelApc();
+
+NTSTATUS
+QueryActiveApcContextsForCompletion();
 
 #endif

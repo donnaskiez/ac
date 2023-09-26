@@ -264,24 +264,18 @@ VOID ListInit(
 
 PLIST_ITEM ListInsert(
 	_In_ PLIST_HEAD ListHead,
-	_In_ PVOID Data
+	_In_ PLIST_ITEM NewEntry
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
 	KeAcquireSpinLock( &ListHead->lock, &irql );
 
-	PLIST_ITEM entry = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( LIST_ITEM ), POOL_TAG_APC );
+	PLIST_ITEM old_entry = ListHead->start;
 
-	if ( !entry )
-		return;
-
-	entry->data = Data;
-	entry->next = ListHead->start;
-	ListHead->start = entry;
+	ListHead->start = NewEntry;
+	NewEntry->next = old_entry;
 
 	KeReleaseSpinLock( &ListHead->lock, irql );
-
-	return entry;
 }
 
 PVOID ListRemoveFirst(
@@ -325,7 +319,7 @@ PVOID ListRemoveItem(
 	{
 		if ( entry->next == ListItem )
 		{
-			entry->next = entry->next->next;
+			entry->next = ListItem->next;
 			ExFreePoolWithTag( ListItem, POOL_TAG_APC );
 			goto unlock;
 		}
