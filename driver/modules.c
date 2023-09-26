@@ -259,7 +259,7 @@ ValidateDriverObjectHasBackingModule(
 //https://imphash.medium.com/windows-process-internals-a-few-concepts-to-know-before-jumping-on-memory-forensics-part-3-4a0e195d947b
 NTSTATUS 
 GetSystemModuleInformation(
-	_Out_ PSYSTEM_MODULES ModuleInformation
+	_Inout_ PSYSTEM_MODULES ModuleInformation
 )
 {
 	if ( !ModuleInformation )
@@ -825,7 +825,8 @@ LaunchNonMaskableInterrupt(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS HandleNmiIOCTL(
+NTSTATUS 
+HandleNmiIOCTL(
 	_In_ PIRP Irp
 )
 {
@@ -1106,6 +1107,7 @@ FreeApcStackwalkApcContextInformation(
 {
 	if (Context->modules->address )
 		ExFreePoolWithTag( Context->modules->address, SYSTEM_MODULES_POOL );
+
 	if ( Context->modules )
 		ExFreePoolWithTag( Context->modules, POOL_TAG_APC );
 }

@@ -34,6 +34,8 @@ typedef struct _SYSTEM_INFORMATION
 * just in case c:
 */
 
+#define MAXIMUM_APC_CONTEXTS 10
+
 typedef struct _DRIVER_CONFIG
 {
 	UNICODE_STRING unicode_driver_name;
@@ -43,7 +45,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING driver_path;
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
-	PVOID apc_contexts[ 10 ];
+	PVOID apc_contexts[ MAXIMUM_APC_CONTEXTS ];
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, *PDRIVER_CONFIG;

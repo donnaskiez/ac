@@ -13,13 +13,37 @@
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
 
+/*
+* The driver config structure holds an array of pointers to APC context structures. These 
+* APC context structures are unique to each APC operation that this driver will perform. For 
+* example, a single context will manage all APCs that are used to stackwalk, whilst another
+* context will be used to manage all APCs used to query a threads memory for example.
+* 
+* Due to the nature of APCs, its important to keep a total or count of the number of APCs we
+* have allocated and queued to threads. This information is stored in the APC_CONTEXT_HEADER which
+* all APC context structures will contain as the first entry in their structure. It holds the ContextId
+* which is a unique identifier for the type of APC operation it is managing aswell as the number of
+* currently queued APCs. 
+* 
+* When an APC is allocated a queued, we increment this count. When an APC is completed and freed, we 
+* decrement this counter and free the APC itself. If all APCs have been freed and the counter is 0,the 
+* following objects will be freed:
+* 
+* 1. Any additional allocations used by the APC stored in the context structure
+* 2. The APC context structure for the given APC operation
+* 3. The APC context entry in driver_config->apc_contexts will be zero'd.
+* 
+* It's important to remember that the driver can unload when pending APC's have not been freed due to the
+* limitations windows places on APCs, however I am in the process of finding a solution for this. 
+*/
+
 STATIC
 VOID 
 FreeAllApcContextStructures()
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	for ( INT index = 0; index < 10; index++ )
+	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
 	{
 		PUINT64 entry = driver_config.apc_contexts;
 
@@ -37,7 +61,7 @@ unlock:
 * No need to hold the lock here as it thread freeing the APCs will
 * already hold the configuration lock. We also dont want to release and
 * reclaim the lock before calling this function since we need to ensure
-* we hold the lock during the entire free process.
+* we hold the lock during the entire decrement and free process.
 */
 STATIC
 BOOLEAN
@@ -49,7 +73,7 @@ FreeApcContextStructure(
 
 	DEBUG_LOG( "All APCs executed, freeing context structure" );
 
-	for ( INT index = 0; index < 10; index++ )
+	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
 	{
 		PUINT64 entry = driver_config.apc_contexts;
 
@@ -168,7 +192,7 @@ InsertApcContext(
 
 	PAPC_CONTEXT_HEADER header = Context;
 
-	for ( INT index = 0; index < 10; index++ )
+	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
 	{
 		PUINT64 entry = driver_config.apc_contexts;
 
@@ -191,7 +215,7 @@ GetApcContext(
 {
 	KeAcquireGuardedMutex( &driver_config.lock );
 
-	for ( INT index = 0; index < 10; index++ )
+	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
 	{
 		PAPC_CONTEXT_HEADER header = driver_config.apc_contexts[ index ];
 

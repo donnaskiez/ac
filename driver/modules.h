@@ -113,7 +113,7 @@ typedef struct _APC_STACKWALK_CONTEXT
 }APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
 
 NTSTATUS GetSystemModuleInformation(
-	_Out_ PSYSTEM_MODULES ModuleInformation
+	_Inout_ PSYSTEM_MODULES ModuleInformation
 );
 
 NTSTATUS HandleValidateDriversIOCTL(
