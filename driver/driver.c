@@ -58,7 +58,7 @@ unlock:
 }
 
 /*
-* No need to hold the lock here as it thread freeing the APCs will
+* No need to hold the lock here as the thread freeing the APCs will
 * already hold the configuration lock. We also dont want to release and
 * reclaim the lock before calling this function since we need to ensure
 * we hold the lock during the entire decrement and free process.
@@ -128,60 +128,56 @@ FreeApcAndDecrementApcCount(
 
 	context->count -= 1;
 
-	switch ( ContextId )
-	{
-	case APC_CONTEXT_ID_STACKWALK:
-
-		if ( context->count > 0 )
-			goto end;
-
-		PAPC_STACKWALK_CONTEXT stackwalk_context = ( PAPC_STACKWALK_CONTEXT )context;
-
-		FreeApcStackwalkApcContextInformation( stackwalk_context );
-		FreeApcContextStructure( stackwalk_context );
-
-		break;
-	}
-
 end:
 	KeReleaseGuardedMutex( &driver_config.lock );
 }
 
-//NTSTATUS
-//QueryActiveApcContextsForCompletion()
-//{
-//	DEBUG_LOG( "Querying active apc contexts" );
-//
-//	KeAcquireGuardedMutex( &driver_config.lock );
-//
-//	for ( INT index = 0; index < 10; index++ )
-//	{
-//		PAPC_CONTEXT_HEADER entry = NULL;
-//		GetApcContextByIndex( &entry, index );
-//
-//		/* ensure we dont try to unlock a null entry */
-//		if ( entry == NULL )
-//			continue;
-//
-//		DEBUG_LOG( "APC Context id: %lx", entry->context_id );
-//		DEBUG_LOG( "Actice Apc Count: %i", entry->count );
-//
-//		if ( entry->count > 0 )
-//			goto end;
-//
-//		switch ( entry->context_id )
-//		{
-//		case APC_CONTEXT_ID_STACKWALK:
-//			FreeApcStackwalkApcContextInformation( entry );
-//			FreeApcContextStructure( entry );
-//			break;
-//		}
-//	}
-//end:
-//
-//	KeReleaseGuardedMutex( &driver_config.lock );
-//	return STATUS_SUCCESS;
-//}
+/*
+* The reason we use a query model rather then checking the count of queued APCs 
+* after each APC free and decrement is that the lock can get acquired by more freeing
+* threads then active APCs at the time meaning the context structures will be freed
+* while APCs are still in the progress of being queued or executed as those creational
+* threads dont hold the lock therefore cannot increase the count.
+*/
+NTSTATUS
+QueryActiveApcContextsForCompletion()
+{
+	for ( INT index = 0; index < 10; index++ )
+	{
+		PAPC_CONTEXT_HEADER entry = NULL;
+		GetApcContextByIndex( &entry, index );
+
+		/* acquire mutex after we get the context to prevent thread deadlock */
+		KeAcquireGuardedMutex( &driver_config.lock );
+
+		if ( entry == NULL )
+		{
+			KeReleaseGuardedMutex( &driver_config.lock );
+			continue;
+		}
+
+		DEBUG_LOG( "APC Context Id: %lx", entry->context_id );
+		DEBUG_LOG( "Active APC Count: %i", entry->count );
+
+		if ( entry->count > 0 || entry->allocation_in_progress == TRUE )
+		{
+			KeReleaseGuardedMutex( &driver_config.lock );
+			continue;
+		}
+
+		switch ( entry->context_id )
+		{
+		case APC_CONTEXT_ID_STACKWALK:
+			FreeApcStackwalkApcContextInformation( entry );
+			FreeApcContextStructure( entry );
+			break;
+		}
+
+		KeReleaseGuardedMutex( &driver_config.lock );
+
+	}
+	return STATUS_SUCCESS;
+}
 
 VOID 
 InsertApcContext(
@@ -582,7 +578,7 @@ DriverUnload(
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	//QueryActiveApcContextsForCompletion();
-	FreeAllApcContextStructures();
+	//FreeAllApcContextStructures();
 	CleanupDriverConfigOnUnload();
 	IoDeleteDevice( DriverObject->DeviceObject );
 }

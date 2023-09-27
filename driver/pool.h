@@ -32,14 +32,17 @@ typedef struct _INVALID_PROCESS_ALLOCATION_REPORT
 
 }INVALID_PROCESS_ALLOCATION_REPORT, *PINVALID_PROCESS_ALLOCATION_REPORT;
 
-NTSTATUS FindUnlinkedProcesses(
+NTSTATUS 
+FindUnlinkedProcesses(
 	_In_ PIRP Irp
 );
 
-VOID GetPsActiveProcessHead(
+VOID 
+GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 );
 
-PKDDEBUGGER_DATA64 GetGlobalDebuggerData();
+PKDDEBUGGER_DATA64 
+GetGlobalDebuggerData();
 
 #endif

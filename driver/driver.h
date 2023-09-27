@@ -125,6 +125,9 @@ FreeApcAndDecrementApcCount(
 	_In_ LONG ContextId
 );
 
+NTSTATUS
+QueryActiveApcContextsForCompletion();
+
 VOID TerminateProtectedProcessOnViolation();
 
 VOID ClearProcessConfigOnProcessTermination();

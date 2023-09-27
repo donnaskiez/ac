@@ -34,7 +34,8 @@ CHAR EXECUTIVE_OBJECT_POOL_TAGS[ EXECUTIVE_OBJECT_COUNT ][ POOL_TAG_LENGTH ] =
 PVOID process_buffer = NULL;
 ULONG process_count = NULL;
 
-PKDDEBUGGER_DATA64 GetGlobalDebuggerData()
+PKDDEBUGGER_DATA64 
+GetGlobalDebuggerData()
 {
 	CONTEXT context = { 0 };
 	PDUMP_HEADER dump_header = { 0 };
@@ -76,7 +77,8 @@ end:
 	return debugger_data;
 }
 
-VOID GetPsActiveProcessHead(
+VOID 
+GetPsActiveProcessHead(
 	_In_ PUINT64 Address
 )
 {
@@ -122,7 +124,9 @@ VOID GetPsActiveProcessHead(
 * This signature will allow us to consistently and accurately determine if a given pool allocation is
 * indeed an executive process allocation across major versions of Windows.
 */
-BOOLEAN ValidateIfAddressIsProcessStructure(
+STATIC
+BOOLEAN 
+ValidateIfAddressIsProcessStructure(
 	_In_ PVOID Address,
 	_In_ PPOOL_HEADER PoolHeader
 )
@@ -188,8 +192,9 @@ BOOLEAN ValidateIfAddressIsProcessStructure(
 *
 * Also use the full name so we get the file extension and path not the 15 char long one
 */
-
-VOID ScanPageForKernelObjectAllocation(
+STATIC
+VOID 
+ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ ULONG ObjectIndex,
@@ -278,7 +283,9 @@ VOID ScanPageForKernelObjectAllocation(
 * to enumerate, we want to make sure it lies within an appropriate region of
 * physical memory, so this function is to check for exactly that.
 */
-BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
+STATIC
+BOOLEAN 
+IsPhysicalAddressInPhysicalMemoryRange(
 	_In_ UINT64 PhysicalAddress,
 	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges
 )
@@ -301,7 +308,9 @@ BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(
 	return FALSE;
 }
 
-VOID EnumerateKernelLargePages(
+STATIC
+VOID 
+EnumerateKernelLargePages(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ PVOID AddressBuffer,
@@ -345,8 +354,9 @@ VOID EnumerateKernelLargePages(
 * except instead of simply reading the physical we translate it to a virtual address
 * and extract the physical address from the value at each virtual address page entry.
 */
-
-VOID WalkKernelPageTables( PVOID AddressBuffer )
+STATIC
+VOID 
+WalkKernelPageTables( PVOID AddressBuffer )
 {
 	CR3 cr3;
 	PML4E pml4_base;
@@ -524,12 +534,16 @@ VOID WalkKernelPageTables( PVOID AddressBuffer )
 	DEBUG_LOG( "Finished scanning memory" );
 }
 
-VOID IncrementProcessCounter()
+STATIC
+VOID 
+IncrementProcessCounter()
 {
 	process_count++;
 }
 
-VOID CheckIfProcessAllocationIsInProcessList(
+STATIC
+VOID 
+CheckIfProcessAllocationIsInProcessList(
 	_In_ PEPROCESS Process
 )
 {
@@ -547,7 +561,8 @@ VOID CheckIfProcessAllocationIsInProcessList(
 	}
 }
 
-NTSTATUS FindUnlinkedProcesses(
+NTSTATUS 
+FindUnlinkedProcesses(
 	_In_ PIRP Irp
 )
 {

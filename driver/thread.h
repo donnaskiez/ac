@@ -24,10 +24,12 @@ typedef struct _ATTACH_PROCESS_REPORT
 
 }ATTACH_PROCESS_REPORT, *PATTACH_PROCESS_REPORT;
 
-VOID ValidateKPCRBThreads(
+VOID 
+ValidateKPCRBThreads(
 	_In_ PIRP Irp
 );
 
-VOID DetectThreadsAttachedToProtectedProcess();
+VOID 
+DetectThreadsAttachedToProtectedProcess();
 
 #endif

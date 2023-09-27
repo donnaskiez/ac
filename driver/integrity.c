@@ -17,7 +17,8 @@ typedef struct _INTEGRITY_CHECK_HEADER
 * note: this can be put into its own function wihtout an IRP as argument then it can be used 
 * in both the get driver image ioctl handler and the CopyDriverExecvutableRegions func
 */
-NTSTATUS GetDriverImageSize(
+NTSTATUS 
+GetDriverImageSize(
     _In_ PIRP Irp
 )
 {
@@ -47,7 +48,9 @@ NTSTATUS GetDriverImageSize(
     return status;
 }
 
-NTSTATUS GetModuleInformationByName(
+STATIC
+NTSTATUS 
+GetModuleInformationByName(
     _In_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
     _In_ LPCSTR ModuleName
 )
@@ -86,7 +89,9 @@ NTSTATUS GetModuleInformationByName(
     return status;
 }
 
-NTSTATUS StoreModuleExecutableRegionsInBuffer(
+STATIC
+NTSTATUS 
+StoreModuleExecutableRegionsInBuffer(
     _In_ PVOID* Buffer,
     _In_ PVOID ModuleBase,
     _In_ SIZE_T ModuleSize,
@@ -209,7 +214,9 @@ NTSTATUS StoreModuleExecutableRegionsInBuffer(
     return status;
 }
 
-NTSTATUS MapDiskImageIntoVirtualAddressSpace(
+STATIC
+NTSTATUS 
+MapDiskImageIntoVirtualAddressSpace(
     _In_ PHANDLE SectionHandle,
     _In_ PVOID* Section,
     _In_ PUNICODE_STRING Path,
@@ -314,7 +321,9 @@ NTSTATUS MapDiskImageIntoVirtualAddressSpace(
     return status;
 }
 
-NTSTATUS ComputeHashOfBuffer(
+STATIC
+NTSTATUS 
+ComputeHashOfBuffer(
     _In_ PVOID Buffer,
     _In_ ULONG BufferSize,
     _In_ PVOID* HashResult,
@@ -495,7 +504,8 @@ end:
 * 4. hash both buffers 
 * 5. compare
 */
-NTSTATUS VerifyInMemoryImageVsDiskImage(
+NTSTATUS 
+VerifyInMemoryImageVsDiskImage(
     //_In_ PIRP Irp
 )
 {
@@ -672,7 +682,8 @@ end:
     return status;
 }
 
-NTSTATUS RetrieveInMemoryModuleExecutableSections(
+NTSTATUS 
+RetrieveInMemoryModuleExecutableSections(
     _In_ PIRP Irp
 )
 {
@@ -732,7 +743,9 @@ NTSTATUS RetrieveInMemoryModuleExecutableSections(
 * 
 * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
 */
-VOID GetNextSMBIOSStructureInTable(
+STATIC
+VOID 
+GetNextSMBIOSStructureInTable(
     _In_ PSMBIOS_TABLE_HEADER* CurrentStructure
 )
 {
@@ -763,7 +776,9 @@ VOID GetNextSMBIOSStructureInTable(
 * Here we count the number of strings by incrementing the string_count each time we pass a null terminator
 * so we know when we're at the beginning of the target string.
 */
-NTSTATUS GetStringAtIndexFromSMBIOSTable(
+STATIC
+NTSTATUS 
+GetStringAtIndexFromSMBIOSTable(
     _In_ PSMBIOS_TABLE_HEADER Table,
     _In_ INT Index,
     _In_ PVOID Buffer,
@@ -808,7 +823,8 @@ NTSTATUS GetStringAtIndexFromSMBIOSTable(
     return STATUS_NOT_FOUND;
 }
 
-NTSTATUS ParseSMBIOSTable(
+NTSTATUS 
+ParseSMBIOSTable(
     _In_ PVOID ConfigMotherboardSerialNumber,
     _In_ SIZE_T ConfigMotherboardSerialNumberMaxSize
 )
@@ -906,7 +922,8 @@ end:
 * 5. With the 2 buffers that contain both images executable regions, we hash them and compare
 *    for anomalies.
 */
-NTSTATUS ValidateProcessLoadedModule(
+NTSTATUS 
+ValidateProcessLoadedModule(
     _In_ PIRP Irp
 )
 {
@@ -1054,7 +1071,8 @@ end:
 * TODO: Query PhysicalDrive%n to get the serial numbers for all harddrives, can use the command
 * "wmic diskdrive" check in console.
 */
-NTSTATUS GetHardDiskDriveSerialNumber(
+NTSTATUS 
+GetHardDiskDriveSerialNumber(
     _In_ PVOID ConfigDrive0Serial,
     _In_ SIZE_T ConfigDrive0MaxSize
 ) 

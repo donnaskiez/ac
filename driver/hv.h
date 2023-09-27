@@ -11,10 +11,13 @@ typedef struct _HYPERVISOR_DETECTION_REPORT
 
 }HYPERVISOR_DETECTION_REPORT, *PHYPERVISOR_DETECTION_REPORT;
 
-NTSTATUS PerformVirtualizationDetection(
+NTSTATUS 
+PerformVirtualizationDetection(
 	_In_ PIRP Irp
 );
 
-extern INT TestINVDEmulation();
+extern 
+INT 
+TestINVDEmulation();
 
 #endif

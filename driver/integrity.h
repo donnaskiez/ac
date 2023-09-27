@@ -29,34 +29,36 @@ typedef struct _PROCESS_MODULE_VALIDATION_RESULT
 
 }PROCESS_MODULE_VALIDATION_RESULT, *PPROCESS_MODULE_VALIDATION_RESULT;
 
-NTSTATUS CopyDriverExecutableRegions(
+NTSTATUS 
+GetDriverImageSize(
 	_In_ PIRP Irp
 );
 
-NTSTATUS GetDriverImageSize(
-	_In_ PIRP Irp
-);
-
-NTSTATUS VerifyInMemoryImageVsDiskImage(
+NTSTATUS 
+VerifyInMemoryImageVsDiskImage(
     //_In_ PIRP Irp
 );
 
-NTSTATUS RetrieveInMemoryModuleExecutableSections(
+NTSTATUS 
+RetrieveInMemoryModuleExecutableSections(
     _In_ PIRP Irp
 );
 
-NTSTATUS ParseSMBIOSTable(
-	_In_ PVOID ConfigMotherboardSerialNumber,
-	_In_ SIZE_T ConfigMotherboardSerialMaxNumberSize
-);
-
-NTSTATUS ValidateProcessLoadedModule(
+NTSTATUS 
+ValidateProcessLoadedModule(
 	_In_ PIRP Irp
 );
 
-NTSTATUS GetHardDiskDriveSerialNumber(
+NTSTATUS 
+GetHardDiskDriveSerialNumber(
 	_In_ PVOID ConfigDrive0Serial,
 	_In_ SIZE_T ConfigDrive0MaxSize
+);
+
+NTSTATUS
+ParseSMBIOSTable(
+	_In_ PVOID ConfigMotherboardSerialNumber,
+	_In_ SIZE_T ConfigMotherboardSerialNumberMaxSize
 );
 
 #endif

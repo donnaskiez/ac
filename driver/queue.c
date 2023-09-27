@@ -26,7 +26,8 @@ typedef struct _REPORT_QUEUE_CONFIGURATION
 
 REPORT_QUEUE_CONFIGURATION report_queue_config = { 0 };
 
-VOID InitialiseGlobalReportQueue(
+VOID 
+InitialiseGlobalReportQueue(
 	_In_ PBOOLEAN Status
 )
 {
@@ -56,7 +57,8 @@ VOID InitialiseGlobalReportQueue(
 //	return head;
 //}
 
-VOID QueuePush( 
+VOID 
+QueuePush( 
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 )
@@ -85,7 +87,8 @@ end:
 	KeReleaseSpinLock( &Head->lock, irql );
 }
 
-PVOID QueuePop(
+PVOID 
+QueuePop(
 	_In_ PQUEUE_HEAD Head
 )
 {
@@ -113,7 +116,8 @@ end:
 	return data;
 }
 
-VOID InsertReportToQueue(
+VOID 
+InsertReportToQueue(
 	_In_ PVOID Report
 )
 {
@@ -122,7 +126,8 @@ VOID InsertReportToQueue(
 	KeReleaseGuardedMutex( &report_queue_config.lock );
 }
 
-VOID FreeGlobalReportQueueObjects()
+VOID 
+FreeGlobalReportQueueObjects()
 {
 	KeAcquireGuardedMutex( &report_queue_config.lock );
 
@@ -146,7 +151,8 @@ end:
 * reports as a result of a single usermode request and hence it makes dealing with
 * reports generated from ObRegisterCallbacks for example much easier.
 */
-NTSTATUS HandlePeriodicGlobalReportQueueQuery(
+NTSTATUS 
+HandlePeriodicGlobalReportQueueQuery(
 	_In_ PIRP Irp
 )
 {
@@ -254,7 +260,8 @@ end:
 	return STATUS_SUCCESS;
 }
 
-VOID ListInit(
+VOID 
+ListInit(
 	_In_ PLIST_HEAD ListHead
 )
 {
@@ -262,7 +269,8 @@ VOID ListInit(
 	ListHead->start = NULL;
 }
 
-PLIST_ITEM ListInsert(
+PLIST_ITEM 
+ListInsert(
 	_In_ PLIST_HEAD ListHead,
 	_In_ PLIST_ITEM NewEntry
 )
@@ -278,7 +286,8 @@ PLIST_ITEM ListInsert(
 	KeReleaseSpinLock( &ListHead->lock, irql );
 }
 
-PVOID ListRemoveFirst(
+PVOID 
+ListRemoveFirst(
 	_In_ PLIST_HEAD ListHead
 )
 {
@@ -295,7 +304,8 @@ PVOID ListRemoveFirst(
 	KeReleaseSpinLock( &ListHead->lock, irql );
 }
 
-PVOID ListRemoveItem(
+PVOID 
+ListRemoveItem(
 	_In_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem
 )

@@ -28,17 +28,20 @@ typedef struct _DRIVER_INITIATION_INFORMATION
 
 } DRIVER_INITIATION_INFORMATION, * PDRIVER_INITIATION_INFORMATION;
 
-NTSTATUS DeviceControl(
+NTSTATUS 
+DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PIRP Irp
 );
 
-NTSTATUS DeviceClose(
+NTSTATUS 
+DeviceClose(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 );
 
-NTSTATUS DeviceCreate(
+NTSTATUS 
+DeviceCreate(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 );

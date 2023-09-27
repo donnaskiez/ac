@@ -51,17 +51,23 @@ static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
 static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING( L"Process" );
 static UNICODE_STRING OBJECT_TYPE_THREAD = RTL_CONSTANT_STRING( L"Thread" );
 
-VOID NTAPI ExUnlockHandleTableEntry(
+VOID 
+NTAPI 
+ExUnlockHandleTableEntry(
 	IN PHANDLE_TABLE HandleTable,
 	IN PHANDLE_TABLE_ENTRY HandleTableEntry
 );
 
-VOID ObPostOpCallbackRoutine(
+STATIC
+VOID 
+ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
 );
 
-OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
+STATIC
+OB_PREOP_CALLBACK_STATUS 
+ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 );
@@ -72,19 +78,21 @@ OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
 //	_In_ BOOLEAN Create
 //);
 
-VOID EnumerateProcessListWithCallbackFunction(
+VOID 
+EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function,
 	_In_opt_ PVOID Context
 );
 
-NTSTATUS EnumerateProcessHandles(
+NTSTATUS 
+EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 );
 
-NTSTATUS InitiateDriverCallbacks();
+NTSTATUS 
+InitiateDriverCallbacks();
 
-VOID UnregisterCallbacksOnProcessTermination();
-
-VOID UnregisterCallbacksOnProcessTermination();
+VOID 
+UnregisterCallbacksOnProcessTermination();
 
 #endif

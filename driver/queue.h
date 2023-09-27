@@ -49,43 +49,53 @@ typedef struct _LIST_HEAD
 
 #define LIST_POOL_TAG 'list'
 
-VOID QueuePush(
+VOID 
+QueuePush(
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 );
 
-PVOID QueuePop( 
+PVOID 
+QueuePop( 
 	_In_ PQUEUE_HEAD Head
 );
 
-VOID InitialiseGlobalReportQueue(
+VOID 
+InitialiseGlobalReportQueue(
 	_In_ PBOOLEAN Status
 );
 
-VOID InsertReportToQueue(
+VOID 
+InsertReportToQueue(
 	_In_ PVOID Report
 );
 
-NTSTATUS HandlePeriodicGlobalReportQueueQuery(
+NTSTATUS 
+HandlePeriodicGlobalReportQueueQuery(
 	_In_ PIRP Irp
 );
 
-VOID FreeGlobalReportQueueObjects();
+VOID 
+FreeGlobalReportQueueObjects();
 
-VOID ListInit(
+VOID 
+ListInit(
 	_In_ PLIST_HEAD ListHead
 );
 
-PLIST_ITEM ListInsert(
+PLIST_ITEM 
+ListInsert(
 	_In_ PLIST_HEAD ListHead,
 	_In_ PLIST_ITEM Data
 );
 
-PVOID ListRemoveFirst(
+PVOID 
+ListRemoveFirst(
 	_In_ PLIST_HEAD ListHead
 );
 
-PVOID ListRemoveItem(
+PVOID 
+ListRemoveItem(
 	_In_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem
 );

@@ -19,7 +19,9 @@
 * reference: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
 */
 
-INT APERFMsrTimingCheck()
+STATIC
+INT 
+APERFMsrTimingCheck()
 {
 	KAFFINITY new_affinity = { 0 };
 	KAFFINITY old_affinity = { 0 };
@@ -78,7 +80,8 @@ INT APERFMsrTimingCheck()
 	return aperf_delta == 0 ? TRUE : FALSE;
 }
 
-NTSTATUS PerformVirtualizationDetection(
+NTSTATUS 
+PerformVirtualizationDetection(
 	_In_ PIRP Irp
 )
 {

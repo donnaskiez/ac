@@ -16,7 +16,9 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 
 }KPRCB_THREAD_VALIDATION_CTX, *PKPRCB_THREAD_VALIDATION_CTX;
 
-VOID KPRCBThreadValidationProcessCallback(
+STATIC
+VOID 
+KPRCBThreadValidationProcessCallback(
 	_In_ PEPROCESS Process,
 	_Inout_ PVOID Context
 )
@@ -77,7 +79,8 @@ VOID KPRCBThreadValidationProcessCallback(
 *
 */
 
-VOID ValidateKPCRBThreads(
+VOID 
+ValidateKPCRBThreads(
 	_In_ PIRP Irp
 )
 {
@@ -129,7 +132,9 @@ VOID ValidateKPCRBThreads(
 	}
 }
 
-VOID DetectAttachedThreadsProcessCallback(
+STATIC
+VOID 
+DetectAttachedThreadsProcessCallback(
 	_In_ PEPROCESS Process,
 	_In_ PVOID Context
 )

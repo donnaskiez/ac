@@ -8,7 +8,9 @@
 
 CALLBACK_CONFIGURATION configuration = { 0 };
 
-VOID ObPostOpCallbackRoutine(
+STATIC
+VOID 
+ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
 )
@@ -16,7 +18,9 @@ VOID ObPostOpCallbackRoutine(
 
 }
 
-OB_PREOP_CALLBACK_STATUS ObPreOpCallbackRoutine(
+STATIC
+OB_PREOP_CALLBACK_STATUS 
+ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
@@ -156,7 +160,9 @@ end:
 //}
 
 /* stolen from ReactOS xD */
-VOID NTAPI ExUnlockHandleTableEntry(
+VOID 
+NTAPI 
+ExUnlockHandleTableEntry(
 	IN PHANDLE_TABLE HandleTable,
 	IN PHANDLE_TABLE_ENTRY HandleTableEntry
 )
@@ -171,7 +177,9 @@ VOID NTAPI ExUnlockHandleTableEntry(
 	ExfUnblockPushLock( &HandleTable->HandleContentionEvent, NULL );
 }
 
-BOOLEAN EnumHandleCallback(
+STATIC
+BOOLEAN 
+EnumHandleCallback(
 	_In_ PHANDLE_TABLE HandleTable,
 	_In_ PHANDLE_TABLE_ENTRY Entry,
 	_In_ HANDLE Handle,
@@ -319,7 +327,8 @@ end:
 	return FALSE;
 }
 
-NTSTATUS EnumerateProcessHandles(
+NTSTATUS 
+EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 )
 {
@@ -364,7 +373,8 @@ NTSTATUS EnumerateProcessHandles(
 * The Context argument is simply a pointer to a user designed context structure
 * which is passed to the callback function.
 */
-VOID EnumerateProcessListWithCallbackFunction(
+VOID 
+EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function,
 	_In_opt_ PVOID Context
 )
@@ -395,7 +405,8 @@ VOID EnumerateProcessListWithCallbackFunction(
 	} while ( process_list_entry != process_list_head->Blink);
 }
 
-NTSTATUS InitiateDriverCallbacks()
+NTSTATUS 
+InitiateDriverCallbacks()
 {
 	NTSTATUS status;
 
@@ -441,7 +452,8 @@ NTSTATUS InitiateDriverCallbacks()
 	return status;
 }
 
-VOID UnregisterCallbacksOnProcessTermination()
+VOID 
+UnregisterCallbacksOnProcessTermination()
 {
 	DEBUG_LOG( "Process closed, unregistering callbacks" );
 	KeAcquireGuardedMutex( &configuration.mutex );

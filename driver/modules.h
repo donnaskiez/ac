@@ -102,6 +102,7 @@ typedef struct _APC_CONTEXT_HEADER
 {
 	LONG context_id;
 	volatile INT count;
+	volatile INT allocation_in_progress;
 
 }APC_CONTEXT_HEADER, * PAPC_CONTEXT_HEADER;
 
@@ -112,20 +113,28 @@ typedef struct _APC_STACKWALK_CONTEXT
 
 }APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
 
-NTSTATUS GetSystemModuleInformation(
+#define SYSTEM_IDLE_PROCESS_ID 0
+#define SYSTEM_PROCESS_ID 4
+#define SVCHOST_PROCESS_ID 8
+
+NTSTATUS 
+GetSystemModuleInformation(
 	_Inout_ PSYSTEM_MODULES ModuleInformation
 );
 
-NTSTATUS HandleValidateDriversIOCTL(
+NTSTATUS 
+HandleValidateDriversIOCTL(
 	_In_ PIRP Irp
 );
 
-PRTL_MODULE_EXTENDED_INFO FindSystemModuleByName(
+PRTL_MODULE_EXTENDED_INFO 
+FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
 	_In_ PSYSTEM_MODULES SystemModules
 );
 
-NTSTATUS HandleNmiIOCTL(
+NTSTATUS 
+HandleNmiIOCTL(
 	_In_ PIRP Irp
 );
 
@@ -134,7 +143,8 @@ FreeApcContextStructure(
 	_Inout_ PAPC_CONTEXT_HEADER Context
 );
 
-NTSTATUS ValidateThreadsViaKernelApc();
+NTSTATUS 
+ValidateThreadsViaKernelApc();
 
 VOID
 FreeApcStackwalkApcContextInformation(

@@ -12,7 +12,8 @@
 
 #include "hv.h"
 
-NTSTATUS DeviceControl(
+NTSTATUS 
+DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PIRP Irp
 )
@@ -123,6 +124,11 @@ NTSTATUS DeviceControl(
 		break;
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
+
+		status = QueryActiveApcContextsForCompletion();
+
+			if ( !NT_SUCCESS( status ) )
+				DEBUG_ERROR( "QueryActiveApcContextsForCompletion filed with status %x", status );
 
 		status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
@@ -283,7 +289,8 @@ end:
 	return status;
 }
 
-NTSTATUS DeviceClose(
+NTSTATUS 
+DeviceClose(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 )
@@ -302,7 +309,8 @@ NTSTATUS DeviceClose(
 	return Irp->IoStatus.Status;
 }
 
-NTSTATUS DeviceCreate(
+NTSTATUS 
+DeviceCreate(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 )

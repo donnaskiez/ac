@@ -1000,6 +1000,8 @@ ValidateThreadViaKernelApcCallback(
 	PETHREAD current_thread;
 	PKAPC apc = NULL;
 	BOOLEAN apc_status;
+	HANDLE process_id;
+	PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
 
 	HANDLE id = PsGetProcessId( Process );
 
@@ -1010,12 +1012,18 @@ ValidateThreadViaKernelApcCallback(
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
 	thread_list_entry = thread_list_head->Flink;
 
+	context->header.allocation_in_progress = TRUE;
+
 	while ( thread_list_entry != thread_list_head )
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
 
-		/* ensure thread has a valid cid entry */
-		if ( PsGetThreadId( current_thread ) == NULL )
+		process_id = PsGetThreadId(current_thread );
+
+		/* ensure thread has a valid cid entry and is not svchost or the kernel */
+		if ( process_id == SYSTEM_IDLE_PROCESS_ID ||
+			process_id == SYSTEM_PROCESS_ID || 
+			process_id == SVCHOST_PROCESS_ID )
 			goto increment;
 
 		if (current_thread == KeGetCurrentThread())
@@ -1055,6 +1063,8 @@ ValidateThreadViaKernelApcCallback(
 	increment:
 		thread_list_entry = thread_list_entry->Flink;
 	}
+
+	context->header.allocation_in_progress = FALSE;
 }
 
 /*
