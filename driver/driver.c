@@ -125,7 +125,6 @@ FreeApcAndDecrementApcCount(
 		goto end;
 
 	KeAcquireGuardedMutex( &driver_config.lock );
-
 	context->count -= 1;
 
 end:
@@ -134,15 +133,33 @@ end:
 
 /*
 * The reason we use a query model rather then checking the count of queued APCs 
-* after each APC free and decrement is that the lock can get acquired by more freeing
-* threads then active APCs at the time meaning the context structures will be freed
-* while APCs are still in the progress of being queued or executed as those creational
-* threads dont hold the lock therefore cannot increase the count.
+* after each APC free and decrement is that the lock can be recursively acquired by 
+* freeing threads rather then APC allocation threads. The reason for this
+* being that freeing threads are executing at a higher IRQL then the APC allocation 
+* thread, hence they are granted higher priority by the scheduler when determining
+* which thread will accquire the mutex next:
+* 
+* [+] ApcKernelRoutine IRQL: 1
+* [+] ValidateThreadViaKernelApcCallback IRQL: 0
+*
+* As a result, once an APC is executed and reaches the freeing stage, it will acquire the 
+* lock and decrement it.Then, if another executing thread is attempting to acquire the lock, 
+* it will be prioritised over an APC allocation thread and the cycle will continue until either 
+* no APC threads are executing or the APC allocation thread is able to acquire the lock. If no 
+* more APCs are able to be allocated, then eventually the count will reach 0 due to the recursive 
+* acquisition by the freeing threads and the context structure will be freed, leading to 
+* a bug check when the allocation threads eventually acquire the lock and attempt to increment
+* the count;
+* 
+* So to combat this, we add in a flag specifying whether or not an allocation of APCs is
+* in progress, and even if the count is 0 we will not free the context structure until
+* the count is 0 and allocation_in_progress is 0. We can then call this function alongside
+* other query callbacks via IOCTL to constantly monitor the status of open APC contexts.
 */
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
-	for ( INT index = 0; index < 10; index++ )
+	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
 	{
 		PAPC_CONTEXT_HEADER entry = NULL;
 		GetApcContextByIndex( &entry, index );
