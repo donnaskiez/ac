@@ -133,23 +133,21 @@ end:
 
 /*
 * The reason we use a query model rather then checking the count of queued APCs 
-* after each APC free and decrement is that the lock can be recursively acquired by 
-* freeing threads rather then APC allocation threads. The reason for this
+* after each APC free and decrement is that the lock will be recursively acquired by 
+* freeing threads (i.e executing APCs) rather then APC allocation threads. The reason for this
 * being that freeing threads are executing at a higher IRQL then the APC allocation 
 * thread, hence they are granted higher priority by the scheduler when determining
-* which thread will accquire the mutex next:
+* which thread will accquire the lock next:
 * 
-* [+] ApcKernelRoutine IRQL: 1
-* [+] ValidateThreadViaKernelApcCallback IRQL: 0
+* [+] Freeing thread -> ApcKernelRoutine IRQL: 1 (APC_LEVEL)
+* [+] Allocation thread -> ValidateThreadViaKernelApcCallback IRQL: 0 (PASSIVE_LEVEL)
 *
 * As a result, once an APC is executed and reaches the freeing stage, it will acquire the 
-* lock and decrement it.Then, if another executing thread is attempting to acquire the lock, 
-* it will be prioritised over an APC allocation thread and the cycle will continue until either 
-* no APC threads are executing or the APC allocation thread is able to acquire the lock. If no 
-* more APCs are able to be allocated, then eventually the count will reach 0 due to the recursive 
-* acquisition by the freeing threads and the context structure will be freed, leading to 
-* a bug check when the allocation threads eventually acquire the lock and attempt to increment
-* the count;
+* lock and decrement it. Then, if atleast 1 APC execution thread is waiting on the lock,
+* it will be prioritised due to its higher IRQL and the cycle will continue. Eventually, 
+* the count will reach 0 due to recursive acquisition by the executing APC threads and then
+* the function will free the APC context structure. This will then cause a bug check the next
+* time a thread accesses the context structure and hence not good :c.
 * 
 * So to combat this, we add in a flag specifying whether or not an allocation of APCs is
 * in progress, and even if the count is 0 we will not free the context structure until
