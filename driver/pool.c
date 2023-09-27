@@ -1,11 +1,24 @@
 #include "pool.h"
 
-#include "common.h"
+#include <intrin.h>
 
 #include "callbacks.h"
 #include "queue.h"
 
-#include <intrin.h>
+#define PAGE_BASE_SIZE 0x1000
+#define POOL_TAG_SIZE 0x004
+
+#define PML4_ENTRY_COUNT 512
+#define PDPT_ENTRY_COUNT 512
+#define PD_ENTRY_COUNT 512
+#define PT_ENTRY_COUNT 512
+
+#define LARGE_PAGE_2MB_ENTRIES 512
+#define LARGE_PAGE_1GB_ENTRIES 0x40000
+
+#define CHUNK_SIZE 16
+
+#define PROCESS_OBJECT_ALLOCATION_MARGIN 0x90
 
 #define POOL_TAG_LENGTH 4
 #define EXECUTIVE_OBJECT_COUNT 8

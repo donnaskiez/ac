@@ -1,11 +1,11 @@
 #include "thread.h"
 
+#include <intrin.h>
+
 #include "pool.h"
 #include "callbacks.h"
 #include "driver.h"
 #include "queue.h"
-
-#include <intrin.h>
 
 typedef struct _KPRCB_THREAD_VALIDATION_CTX
 {

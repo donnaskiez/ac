@@ -10,6 +10,44 @@
 #include "modules.h"
 #include "integrity.h"
 
+/*
+* This structure is strictly for driver related stuff
+* that should only be written at driver entry.
+*
+* Note that the lock isnt really needed here but Im using one
+* just in case c:
+*/
+
+#define MAXIMUM_APC_CONTEXTS 10
+
+typedef struct _DRIVER_CONFIG
+{
+	UNICODE_STRING unicode_driver_name;
+	ANSI_STRING ansi_driver_name;
+	UNICODE_STRING device_name;
+	UNICODE_STRING device_symbolic_link;
+	UNICODE_STRING driver_path;
+	UNICODE_STRING registry_path;
+	SYSTEM_INFORMATION system_information;
+	PVOID apc_contexts[ MAXIMUM_APC_CONTEXTS ];
+	KGUARDED_MUTEX lock;
+
+}DRIVER_CONFIG, * PDRIVER_CONFIG;
+
+/*
+* This structure can change at anytime based on whether
+* the target process to protect is open / closed / changes etc.
+*/
+typedef struct _PROCESS_CONFIG
+{
+	BOOLEAN initialised;
+	LONG um_handle;
+	LONG km_handle;
+	PEPROCESS protected_process_eprocess;
+	KGUARDED_MUTEX lock;
+
+}PROCESS_CONFIG, * PPROCESS_CONFIG;
+
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
 

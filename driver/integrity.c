@@ -6,12 +6,40 @@
 
 #include <bcrypt.h>
 
+#define SMBIOS_TABLE 'RSMB'
+
+/* for generic intel */
+#define SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE 2
+#define MOTHERBOARD_SERIAL_CODE_TABLE_INDEX 4
+
+#define NULL_TERMINATOR '\0'
+
+/* for testing purposes in vmware */
+#define VMWARE_SMBIOS_TABLE 1
+#define VMWARE_SMBIOS_TABLE_INDEX 3
+
 typedef struct _INTEGRITY_CHECK_HEADER
 {
     INT executable_section_count;
     LONG total_packet_size;
 
 }INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
+
+#define MAX_MODULE_PATH 256
+
+typedef struct _PROCESS_MODULE_INFORMATION
+{
+    PVOID module_base;
+    SIZE_T module_size;
+    WCHAR module_path[ MAX_MODULE_PATH ];
+
+}PROCESS_MODULE_INFORMATION, * PPROCESS_MODULE_INFORMATION;
+
+typedef struct _PROCESS_MODULE_VALIDATION_RESULT
+{
+    INT is_module_valid;
+
+}PROCESS_MODULE_VALIDATION_RESULT, * PPROCESS_MODULE_VALIDATION_RESULT;
 
 /*
 * note: this can be put into its own function wihtout an IRP as argument then it can be used 

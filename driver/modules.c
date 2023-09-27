@@ -21,11 +21,37 @@ CHAR WHITELISTED_MODULES[ WHITELISTED_MODULE_COUNT ][ MODULE_MAX_STRING_SIZE ] =
 	"Wdf01000.sys",
 };
 
+#define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
+
+#define REASON_NO_BACKING_MODULE 1
+#define REASON_INVALID_IOCTL_DISPATCH 2
+
+typedef struct _WHITELISTED_REGIONS
+{
+	UINT64 base;
+	UINT64 end;
+
+}WHITELISTED_REGIONS, * PWHITELISTED_REGIONS;
+
+typedef struct _NMI_POOLS
+{
+	PVOID thread_data_pool;
+	PVOID stack_frames;
+	PVOID nmi_context;
+
+}NMI_POOLS, * PNMI_POOLS;
+
 typedef struct _NMI_CORE_CONTEXT
 {
 	INT nmi_callbacks_run;
 
 }NMI_CORE_CONTEXT, * PNMI_CORE_CONTEXT;
+
+typedef struct _MODULE_VALIDATION_FAILURE_HEADER
+{
+	INT module_count;
+
+}MODULE_VALIDATION_FAILURE_HEADER, * PMODULE_VALIDATION_FAILURE_HEADER;
 
 typedef struct _NMI_CONTEXT
 {
@@ -35,6 +61,38 @@ typedef struct _NMI_CONTEXT
 	INT core_count;
 
 }NMI_CONTEXT, * PNMI_CONTEXT;
+
+typedef struct _NMI_CALLBACK_DATA
+{
+	UINT64		kthread_address;
+	UINT64		kprocess_address;
+	UINT64		start_address;
+	UINT64		stack_limit;
+	UINT64		stack_base;
+	uintptr_t	stack_frames_offset;
+	INT			num_frames_captured;
+	UINT64		cr3;
+
+}NMI_CALLBACK_DATA, * PNMI_CALLBACK_DATA;
+
+typedef struct _INVALID_DRIVER
+{
+	struct _INVALID_DRIVER* next;
+	INT reason;
+	PDRIVER_OBJECT driver;
+
+}INVALID_DRIVER, * PINVALID_DRIVER;
+
+typedef struct _INVALID_DRIVERS_HEAD
+{
+	PINVALID_DRIVER first_entry;
+	INT count;
+
+}INVALID_DRIVERS_HEAD, * PINVALID_DRIVERS_HEAD;
+
+#define SYSTEM_IDLE_PROCESS_ID 0
+#define SYSTEM_PROCESS_ID 4
+#define SVCHOST_PROCESS_ID 8
 
 /*
 * TODO: this needs to be refactored to just return the entry not the whole fukin thing
@@ -918,96 +976,101 @@ ApcKernelRoutine(
 	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
-)
-{
-	PVOID buffer = NULL;
-	INT frames_captured = 0;
-	UINT64 stack_frame = 0;
-	NTSTATUS status;
-	BOOLEAN flag = FALSE;
-	PAPC_STACKWALK_CONTEXT context;
-
-	context = ( PAPC_STACKWALK_CONTEXT )Apc->NormalContext;
-
-	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
-
-	if ( !buffer )
-		goto free;
-
-	frames_captured = RtlCaptureStackBackTrace(
-		NULL,
-		STACK_FRAME_POOL_SIZE / sizeof(UINT64),
-		buffer,
-		NULL
-	);
-
-	if ( frames_captured == NULL )
-		goto free;
-
-	for ( INT index = 0; index < frames_captured; index++ )
-	{
-		stack_frame = *( UINT64* )( ( UINT64 )buffer + index * sizeof(UINT64) );
-
-		/*
-		* Apc->NormalContext holds the address of our context data structure that we passed into
-		* KeInitializeApc as the last argument.
-		*/
-		status = IsInstructionPointerInInvalidRegion(
-			stack_frame,
-			context->modules,
-			&flag
-		);
-
-		if ( !NT_SUCCESS( status ) )
+		)
 		{
-			DEBUG_ERROR( "IsInstructionPointerInInvalidRegion failed with status %x", status );
-			goto free;
-		}
+			PVOID buffer = NULL;
+			INT frames_captured = 0;
+			UINT64 stack_frame = 0;
+			NTSTATUS status;
+			BOOLEAN flag = FALSE;
+			PAPC_STACKWALK_CONTEXT context;
+
+			context = ( PAPC_STACKWALK_CONTEXT )Apc->NormalContext;
+
+			buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
+
+			if ( !buffer )
+				goto free;
+
+			frames_captured = RtlCaptureStackBackTrace(
+				NULL,
+				STACK_FRAME_POOL_SIZE / sizeof( UINT64 ),
+				buffer,
+				NULL
+			);
+
+			if ( frames_captured == NULL )
+				goto free;
+
+			for ( INT index = 0; index < frames_captured; index++ )
+			{
+				stack_frame = *( UINT64* )( ( UINT64 )buffer + index * sizeof( UINT64 ) );
+
+				/*
+				* Apc->NormalContext holds the address of our context data structure that we passed into
+				* KeInitializeApc as the last argument.
+				*/
+				status = IsInstructionPointerInInvalidRegion(
+					stack_frame,
+					context->modules,
+					&flag
+				);
+
+				if ( !NT_SUCCESS( status ) )
+				{
+					DEBUG_ERROR( "IsInstructionPointerInInvalidRegion failed with status %x", status );
+					goto free;
+				}
+			}
+
+		free:
+
+			if ( buffer )
+				ExFreePoolWithTag( buffer, POOL_TAG_APC );
+
+			FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
+}
+
+	/*
+	* The NormalRoutine is executed in user mode when the APC is delivered.
+	*/
+	STATIC
+		VOID
+		ApcNormalRoutine(
+			_In_opt_ PVOID NormalContext,
+			_In_opt_ PVOID SystemArgument1,
+			_In_opt_ PVOID SystemArgument2
+		)
+	{
+
 	}
 
-free:
+	STATIC
+		VOID
+		ValidateThreadViaKernelApcCallback(
+			_In_ PEPROCESS Process,
+			_In_ PVOID Context
+		)
+	{
+		NTSTATUS status;
+		PLIST_ENTRY thread_list_head;
+		PLIST_ENTRY thread_list_entry;
+		PETHREAD current_thread;
+		PKAPC apc = NULL;
+		BOOLEAN apc_status;
+		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
+		LPCSTR process_name = PsGetProcessImageFileName( Process );
 
-	if (buffer )
-		ExFreePoolWithTag( buffer, POOL_TAG_APC );
+		/* we dont want to schedule an apc to threads owned by the kernel */
+		if ( Process == PsInitialSystemProcess )
+			return;
 
-	FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
-}
-
-/*
-* The NormalRoutine is executed in user mode when the APC is delivered.
-*/
-STATIC
-VOID 
-ApcNormalRoutine(
-	_In_opt_ PVOID NormalContext,
-	_In_opt_ PVOID SystemArgument1,
-	_In_opt_ PVOID SystemArgument2
-)
-{
-
-}
-
-STATIC
-VOID 
-ValidateThreadViaKernelApcCallback(
-	_In_ PEPROCESS Process,
-	_In_ PVOID Context
-)
-{
-	NTSTATUS status;
-	PLIST_ENTRY thread_list_head;
-	PLIST_ENTRY thread_list_entry;
-	PETHREAD current_thread;
-	PKAPC apc = NULL;
-	BOOLEAN apc_status;
-	HANDLE process_id;
-	PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
-
-	HANDLE id = PsGetProcessId( Process );
-
-	/* we dont want to schedule an apc to threads owned by the kernel */
-	if ( Process == PsInitialSystemProcess )
-		return;
+		/* We are not interested in these processess.. for now lol */
+		if ( !strcmp( process_name, "svchost.exe" ) ||
+			 !strcmp( process_name, "Registry" ) ||
+			 !strcmp( process_name, "smss.exe" ) ||
+			 !strcmp( process_name, "csrss.exe" ) )
+			return;
 
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
 	thread_list_entry = thread_list_head->Flink;
@@ -1017,14 +1080,6 @@ ValidateThreadViaKernelApcCallback(
 	while ( thread_list_entry != thread_list_head )
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
-
-		process_id = PsGetThreadId(current_thread );
-
-		/* ensure thread has a valid cid entry and is not svchost or the kernel */
-		if ( process_id == SYSTEM_IDLE_PROCESS_ID ||
-			process_id == SYSTEM_PROCESS_ID || 
-			process_id == SVCHOST_PROCESS_ID )
-			goto increment;
 
 		if (current_thread == KeGetCurrentThread())
 			goto increment;
