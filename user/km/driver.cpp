@@ -625,6 +625,32 @@ VOID kernelmode::Driver::SendClientHardwareInformation()
 		&system_information, sizeof( global::headers::SYSTEM_INFORMATION ), CLIENT_SEND_SYSTEM_INFORMATION );
 }
 
+BOOLEAN kernelmode::Driver::InitiateApcOperation(INT OperationId)
+{
+	BOOLEAN status;
+	APC_OPERATION_INFORMATION operation = { 0 };
+		
+	operation.operation_id = OperationId;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_INITIATE_APC_OPERATION,
+		&operation,
+		sizeof( APC_OPERATION_INFORMATION ),
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if ( status == NULL )
+	{
+		LOG_ERROR( "DeviceIoControl failed with status %x", GetLastError() );
+		return status;
+	}
+}
+
 VOID GetKernelStructureOffsets()
 {
+
 }

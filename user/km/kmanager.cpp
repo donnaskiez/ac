@@ -60,3 +60,8 @@ VOID kernelmode::KManager::SendClientHardwareInformation()
 {
 	this->driver_interface->SendClientHardwareInformation();
 }
+
+VOID kernelmode::KManager::InitiateApcStackwalkOperation()
+{
+	this->driver_interface->InitiateApcOperation( kernelmode::APC_OPERATION_IDS::operation_stackwalk );
+}

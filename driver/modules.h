@@ -37,6 +37,12 @@ typedef struct _APC_STACKWALK_REPORT
 
 }APC_STACKWALK_REPORT, *PAPC_STACKWALK_REPORT;
 
+typedef struct _APC_OPERATION_ID
+{
+	int operation_id;
+
+}APC_OPERATION_ID, *PAPC_OPERATION_ID;
+
 /* system modules information */
 
 typedef struct _SYSTEM_MODULES

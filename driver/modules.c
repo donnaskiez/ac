@@ -1154,6 +1154,15 @@ ValidateThreadsViaKernelApc()
 	NTSTATUS status;
 	PAPC_STACKWALK_CONTEXT context = NULL;
 
+	/* First, ensure we dont already have an ongoing operation */
+	GetApcContext( &context, APC_CONTEXT_ID_STACKWALK );
+
+	if ( context )
+	{
+		DEBUG_LOG( "Existing APC_STACKWALK operation already in progress." );
+		return STATUS_ALREADY_INITIALIZED;
+	}
+
 	context = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( APC_STACKWALK_CONTEXT ), POOL_TAG_APC );
 
 	if ( !context )

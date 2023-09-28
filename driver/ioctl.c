@@ -24,6 +24,36 @@
 #define IOCTL_DETECT_ATTACHED_THREADS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2014, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_PROCESS_LOADED_MODULE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2015, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_REQUEST_HARDWARE_INFORMATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2016, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_INITIATE_APC_OPERATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2017, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define APC_OPERATION_STACKWALK 0x1
+
+STATIC
+NTSTATUS 
+DispatchApcOperation( PAPC_OPERATION_ID Operation )
+{
+	NTSTATUS status = STATUS_SUCCESS;
+
+	switch ( Operation->operation_id )
+	{
+	case APC_OPERATION_STACKWALK:
+
+		DEBUG_LOG( "Initiating APC stackwalk operation with operation id %i", Operation->operation_id );
+
+		status = ValidateThreadsViaKernelApc();
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "ValidateThreadsViaKernelApc failed with status %x", status );
+
+		return status;
+
+	default:
+		DEBUG_ERROR( "Invalid operation ID passed" );
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	return status;
+}
 
 NTSTATUS 
 DeviceControl(
@@ -290,6 +320,18 @@ DeviceControl(
 		);
 
 		break;
+
+	case IOCTL_INITIATE_APC_OPERATION:;
+
+		PAPC_OPERATION_ID operation = (PAPC_OPERATION_ID)Irp->AssociatedIrp.SystemBuffer;
+
+		status = DispatchApcOperation( operation );
+
+		if ( !NT_SUCCESS( status ) )
+			DEBUG_ERROR( "DispatchApcOperation failed with status %x", status );
+
+		break;
+
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );

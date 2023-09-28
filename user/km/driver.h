@@ -21,6 +21,7 @@
 #define IOCTL_DETECT_ATTACHED_THREADS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2014, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_PROCESS_LOADED_MODULE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2015, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_REQUEST_HARDWARE_INFORMATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2016, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_INITIATE_APC_OPERATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2017, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define MAX_REPORTS_PER_IRP 20
 
@@ -28,6 +29,11 @@
 
 namespace kernelmode
 {
+	enum APC_OPERATION_IDS
+	{
+		operation_stackwalk = 0x1
+	};
+
 	class Driver
 	{
 		HANDLE driver_handle;
@@ -58,6 +64,7 @@ namespace kernelmode
 		VOID CheckForAttachedThreads();
 		VOID VerifyProcessLoadedModuleExecutableRegions();
 		VOID SendClientHardwareInformation();
+		BOOLEAN InitiateApcOperation( INT OperationId );
 
 		template <typename T>
 		VOID ReportTypeFromReportQueue(CONST PVOID Buffer, PSIZE_T Offset, PVOID Report)
@@ -92,6 +99,11 @@ namespace kernelmode
 	struct PROCESS_MODULE_VALIDATION_RESULT
 	{
 		INT is_module_valid;
+	};
+
+	struct APC_OPERATION_INFORMATION
+	{
+		int operation_id;
 	};
 }
 
