@@ -5,6 +5,8 @@
 #include "modules.h"
 
 #include <bcrypt.h>
+#include <initguid.h>
+#include <devpkey.h>
 
 #define SMBIOS_TABLE 'RSMB'
 
@@ -1218,4 +1220,50 @@ end:
         ExFreePoolWithTag( device_descriptor, POOL_TAG_INTEGRITY );
 
     return status;
+}
+
+VOID
+EnumeratePciDevices()
+{
+    NTSTATUS status;
+    PZZWSTR device_interfaces;
+    PWSTR list_base;
+    DEVPROPKEY key = { 0 };
+    UNICODE_STRING symbolic_link = { 0 };
+    WCHAR device_id[ 512 ];
+    PZZWSTR current_string = NULL;
+    SIZE_T string_length = 0;
+
+    /* PCI guid */
+    CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff, 0x1f, 0x95, 0x35, 0x99 };
+
+    status = IoGetDeviceInterfaces( 
+        &guid, 
+        NULL, 
+        NULL, 
+        &device_interfaces
+    );
+
+    if ( !NT_SUCCESS( status ) )
+    {
+        DEBUG_LOG( "IoGetDeviceInterfaces failed with status %x", status );
+        return;
+    }
+
+    current_string = device_interfaces;
+
+    while ( *current_string != NULL_TERMINATOR )
+    {
+        string_length = wcslen( current_string );
+
+        symbolic_link.Buffer = current_string;
+        symbolic_link.Length = string_length;
+        symbolic_link.MaximumLength = string_length;
+
+        DEBUG_LOG( "Device Interface: %wZ", symbolic_link );
+
+        current_string += symbolic_link.Length + 1;
+    }
+
+    ExFreePoolWithTag( device_interfaces, NULL );
 }

@@ -36,4 +36,7 @@ ParseSMBIOSTable(
 	_In_ SIZE_T ConfigMotherboardSerialNumberMaxSize
 );
 
+VOID
+EnumeratePciDevices();
+
 #endif

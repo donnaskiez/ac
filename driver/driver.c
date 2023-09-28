@@ -733,7 +733,7 @@ DriverEntry(
 		return STATUS_FAILED_DRIVER_ENTRY;
 	} 
 
-	ValidateThreadsViaKernelApc();
+	EnumeratePciDevices();
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 
