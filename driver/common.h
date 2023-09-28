@@ -78,6 +78,7 @@
 #define REPORT_INVALID_PROCESS_ALLOCATION 80
 #define REPORT_HIDDEN_SYSTEM_THREAD 90
 #define REPORT_ILLEGAL_ATTACH_PROCESS 100
+#define REPORT_APC_STACKWALK 110
 
 /*
  * Generic macros that allow you to quickly determine whether

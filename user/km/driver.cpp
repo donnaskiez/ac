@@ -174,12 +174,14 @@ VOID kernelmode::Driver::QueryReportQueue()
 	LONG buffer_size;
 	REPORT_ID* report_header;
 	SIZE_T total_size = NULL;
-	global::report_structures::OPEN_HANDLE_FAILURE_REPORT* handle_report;
-	global::report_structures::ATTACH_PROCESS_REPORT* attach_report;
-	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT* allocation_report;
+	global::report_structures::OPEN_HANDLE_FAILURE_REPORT handle_report;
+	global::report_structures::ATTACH_PROCESS_REPORT attach_report;
+	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT allocation_report;
+	global::report_structures::APC_STACKWALK_REPORT apc_report;
 
+	/* allocate enough for the largest report buffer * max reports */
 	buffer_size = 
-		sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP + 
+		sizeof( global::report_structures::APC_STACKWALK_REPORT ) * MAX_REPORTS_PER_IRP +
 		sizeof( global::report_structures::REPORT_QUEUE_HEADER );
 
 	buffer = malloc( buffer_size );
@@ -208,50 +210,32 @@ VOID kernelmode::Driver::QueryReportQueue()
 	if ( !header )
 		goto end;
 
-	LOG_INFO( "Report count: %d", header->count );
-
 	if ( header->count == 0 )
 		goto end;
 
-	for ( INT i = 0; i < header->count; i++ )
+	for ( INT index = 0; index < header->count; index++ )
 	{
 		report_header = ( REPORT_ID* )( ( UINT64 )buffer +
 			sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
 
 		LOG_INFO( "Report id: %d", report_header->report_id );
 
-		if ( report_header->report_id == REPORT_ILLEGAL_ATTACH_PROCESS )
+		switch ( report_header->report_id )
 		{
-			attach_report = ( global::report_structures::ATTACH_PROCESS_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
-
-			this->report_interface->ReportViolation( attach_report );
-
-			total_size += sizeof( global::report_structures::ATTACH_PROCESS_REPORT );
-
-			continue;
-		}
-		else if ( report_header->report_id == REPORT_ILLEGAL_HANDLE_OPERATION )
-		{
-			handle_report = ( global::report_structures::OPEN_HANDLE_FAILURE_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
-
-			this->report_interface->ReportViolation( handle_report );
-
-			total_size += sizeof( global::report_structures::OPEN_HANDLE_FAILURE_REPORT );
-
-			continue;
-		}
-		else if ( report_header->report_id == REPORT_INVALID_PROCESS_ALLOCATION )
-		{
-			allocation_report = ( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT* )(
-				( UINT64 )buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + total_size );
-
-			this->report_interface->ReportViolation( allocation_report );
-
-			total_size += sizeof( global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT );
-
-			continue;
+		case REPORT_ILLEGAL_ATTACH_PROCESS:
+			ReportTypeFromReportQueue<global::report_structures::ATTACH_PROCESS_REPORT>( buffer, &total_size, &attach_report );
+			break;
+		case REPORT_ILLEGAL_HANDLE_OPERATION:
+			ReportTypeFromReportQueue<global::report_structures::OPEN_HANDLE_FAILURE_REPORT>( buffer, &total_size, &handle_report );
+			break;
+		case REPORT_INVALID_PROCESS_ALLOCATION:
+			ReportTypeFromReportQueue<global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT>( buffer, &total_size, &allocation_report );
+			break;
+		case REPORT_APC_STACKWALK:
+			ReportTypeFromReportQueue<global::report_structures::APC_STACKWALK_REPORT>( buffer, &total_size, &apc_report );
+			break;
+		default:
+			break;
 		}
 	}
 

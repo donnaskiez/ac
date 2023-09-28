@@ -58,6 +58,17 @@ namespace kernelmode
 		VOID CheckForAttachedThreads();
 		VOID VerifyProcessLoadedModuleExecutableRegions();
 		VOID SendClientHardwareInformation();
+
+		template <typename T>
+		VOID ReportTypeFromReportQueue(CONST PVOID Buffer, PSIZE_T Offset, PVOID Report)
+		{
+			Report = ( T* )(
+				( UINT64 )Buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + *Offset );
+
+			this->report_interface->ReportViolation( (T*)Report );
+
+			*Offset += sizeof( T );
+		}
 	};
 
 	struct DRIVER_INITIATION_INFORMATION

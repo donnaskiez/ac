@@ -731,9 +731,7 @@ DriverEntry(
 		IoDeleteSymbolicLink( &driver_config.device_symbolic_link );
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
-	} 
-
-	EnumeratePciDevices();
+	}
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 

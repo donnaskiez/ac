@@ -225,6 +225,18 @@ HandlePeriodicGlobalReportQueueQuery(
 
 			total_size += sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
 			break;
+
+		case REPORT_APC_STACKWALK:
+
+			RtlCopyMemory(
+				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				report,
+				sizeof( APC_STACKWALK_REPORT )
+			);
+
+			total_size += sizeof( APC_STACKWALK_REPORT );
+			break;
+
 		}
 
 		/* QueuePop frees the node, but we still need to free the returned data */

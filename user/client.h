@@ -25,6 +25,7 @@
 #define REPORT_INVALID_PROCESS_ALLOCATION 80
 #define REPORT_HIDDEN_SYSTEM_THREAD 90
 #define REPORT_ILLEGAL_ATTACH_PROCESS 100
+#define REPORT_APC_STACKWALK 110
 
 #define TEST_STEAM_64_ID 123456789;
 
@@ -190,6 +191,14 @@ namespace global
 			INT RequestId;
 			INT CanUserProceed;
 			INT reason;
+		};
+
+		struct APC_STACKWALK_REPORT
+		{
+			INT report_code;
+			UINT64 kthread_address;
+			UINT64 invalid_rip;
+			CHAR driver[ 4096 ];
 		};
 	}
 }

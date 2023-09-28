@@ -26,6 +26,17 @@ typedef struct _MODULE_VALIDATION_FAILURE
 
 }MODULE_VALIDATION_FAILURE, *PMODULE_VALIDATION_FAILURE;
 
+#define APC_STACKWALK_BUFFER_SIZE 4096
+
+typedef struct _APC_STACKWALK_REPORT
+{
+	INT report_code;
+	UINT64 kthread_address;
+	UINT64 invalid_rip;
+	CHAR driver[ APC_STACKWALK_BUFFER_SIZE ];
+
+}APC_STACKWALK_REPORT, *PAPC_STACKWALK_REPORT;
+
 /* system modules information */
 
 typedef struct _SYSTEM_MODULES

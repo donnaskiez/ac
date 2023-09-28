@@ -384,7 +384,7 @@ EnumerateProcessListWithCallbackFunction(
 	PLIST_ENTRY process_list_entry = NULL;
 	PEPROCESS base_process = PsInitialSystemProcess;
 
-	if ( !base_process || !Function)
+	if ( !base_process )
 		return;
 
 	process_list_head = ( UINT64 )( ( UINT64 )base_process + EPROCESS_PLIST_ENTRY_OFFSET );

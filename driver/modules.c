@@ -976,101 +976,121 @@ ApcKernelRoutine(
 	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
-		)
+)
+{
+	PVOID buffer = NULL;
+	INT frames_captured = 0;
+	UINT64 stack_frame = 0;
+	NTSTATUS status;
+	BOOLEAN flag = FALSE;
+	PAPC_STACKWALK_CONTEXT context;
+
+	context = ( PAPC_STACKWALK_CONTEXT )Apc->NormalContext;
+
+	buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
+
+	if ( !buffer )
+		goto free;
+
+	frames_captured = RtlCaptureStackBackTrace(
+		NULL,
+		STACK_FRAME_POOL_SIZE / sizeof( UINT64 ),
+		buffer,
+		NULL
+	);
+
+	if ( frames_captured == NULL )
+		goto free;
+
+	for ( INT index = 0; index < frames_captured; index++ )
+	{
+		stack_frame = *( UINT64* )( ( UINT64 )buffer + index * sizeof( UINT64 ) );
+
+		/*
+		* Apc->NormalContext holds the address of our context data structure that we passed into
+		* KeInitializeApc as the last argument.
+		*/
+		status = IsInstructionPointerInInvalidRegion(
+			stack_frame,
+			context->modules,
+			&flag
+		);
+
+		if ( !NT_SUCCESS( status ) )
 		{
-			PVOID buffer = NULL;
-			INT frames_captured = 0;
-			UINT64 stack_frame = 0;
-			NTSTATUS status;
-			BOOLEAN flag = FALSE;
-			PAPC_STACKWALK_CONTEXT context;
+			DEBUG_ERROR( "IsInstructionPointerInInvalidRegion failed with status %x", status );
+			goto free;
+		}
 
-			context = ( PAPC_STACKWALK_CONTEXT )Apc->NormalContext;
+		if ( flag == FALSE )
+		{
+			PAPC_STACKWALK_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( APC_STACKWALK_REPORT ), POOL_TAG_APC );
 
-			buffer = ExAllocatePool2( POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC );
-
-			if ( !buffer )
+			if ( !report )
 				goto free;
 
-			frames_captured = RtlCaptureStackBackTrace(
-				NULL,
-				STACK_FRAME_POOL_SIZE / sizeof( UINT64 ),
-				buffer,
-				NULL
+			report->report_code = REPORT_APC_STACKWALK;
+			report->kthread_address = ( UINT64 )KeGetCurrentThread();
+			report->invalid_rip = stack_frame;
+			
+			RtlCopyMemory(
+				&report->driver,
+				( UINT64 )stack_frame - 0x500,
+				APC_STACKWALK_BUFFER_SIZE
 			);
 
-			if ( frames_captured == NULL )
-				goto free;
-
-			for ( INT index = 0; index < frames_captured; index++ )
-			{
-				stack_frame = *( UINT64* )( ( UINT64 )buffer + index * sizeof( UINT64 ) );
-
-				/*
-				* Apc->NormalContext holds the address of our context data structure that we passed into
-				* KeInitializeApc as the last argument.
-				*/
-				status = IsInstructionPointerInInvalidRegion(
-					stack_frame,
-					context->modules,
-					&flag
-				);
-
-				if ( !NT_SUCCESS( status ) )
-				{
-					DEBUG_ERROR( "IsInstructionPointerInInvalidRegion failed with status %x", status );
-					goto free;
-				}
-			}
-
-		free:
-
-			if ( buffer )
-				ExFreePoolWithTag( buffer, POOL_TAG_APC );
-
-			FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
-}
-
-	/*
-	* The NormalRoutine is executed in user mode when the APC is delivered.
-	*/
-	STATIC
-		VOID
-		ApcNormalRoutine(
-			_In_opt_ PVOID NormalContext,
-			_In_opt_ PVOID SystemArgument1,
-			_In_opt_ PVOID SystemArgument2
-		)
-	{
-
+			InsertReportToQueue( report );
+		}
 	}
 
-	STATIC
-		VOID
-		ValidateThreadViaKernelApcCallback(
-			_In_ PEPROCESS Process,
-			_In_ PVOID Context
-		)
-	{
-		NTSTATUS status;
-		PLIST_ENTRY thread_list_head;
-		PLIST_ENTRY thread_list_entry;
-		PETHREAD current_thread;
-		PKAPC apc = NULL;
-		BOOLEAN apc_status;
-		PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
-		LPCSTR process_name = PsGetProcessImageFileName( Process );
+free:
 
-		/* we dont want to schedule an apc to threads owned by the kernel */
-		if ( Process == PsInitialSystemProcess )
-			return;
+	if ( buffer )
+		ExFreePoolWithTag( buffer, POOL_TAG_APC );
 
-		/* We are not interested in these processess.. for now lol */
-		if ( !strcmp( process_name, "svchost.exe" ) ||
-			 !strcmp( process_name, "Registry" ) ||
-			 !strcmp( process_name, "smss.exe" ) ||
-			 !strcmp( process_name, "csrss.exe" ) )
-			return;
+	FreeApcAndDecrementApcCount( Apc, APC_CONTEXT_ID_STACKWALK );
+}
+
+/*
+* The NormalRoutine is executed in user mode when the APC is delivered.
+*/
+STATIC
+VOID
+ApcNormalRoutine(
+	_In_opt_ PVOID NormalContext,
+	_In_opt_ PVOID SystemArgument1,
+	_In_opt_ PVOID SystemArgument2
+)
+{
+
+}
+
+STATIC
+VOID
+ValidateThreadViaKernelApcCallback(
+	_In_ PEPROCESS Process,
+	_In_ PVOID Context
+)
+{
+	NTSTATUS status;
+	PLIST_ENTRY thread_list_head;
+	PLIST_ENTRY thread_list_entry;
+	PETHREAD current_thread;
+	PKAPC apc = NULL;
+	BOOLEAN apc_status;
+	PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
+	LPCSTR process_name = PsGetProcessImageFileName( Process );
+
+	/* we dont want to schedule an apc to threads owned by the kernel */
+	if ( Process == PsInitialSystemProcess )
+		return;
+
+	/* We are not interested in these processess.. for now lol */
+	if ( !strcmp( process_name, "svchost.exe" ) ||
+		!strcmp( process_name, "Registry" ) ||
+		!strcmp( process_name, "smss.exe" ) ||
+		!strcmp( process_name, "csrss.exe" ) )
+		return;
 
 	thread_list_head = ( PLIST_ENTRY )( ( UINT64 )Process + KPROCESS_THREADLIST_OFFSET );
 	thread_list_entry = thread_list_head->Flink;
