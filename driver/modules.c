@@ -929,7 +929,10 @@ HandleNmiIOCTL(
 	if ( !NT_SUCCESS( status ) )
 	{
 		DEBUG_ERROR( "Error running NMI callbacks" );
-		ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
+
+		if (system_modules.address )
+			ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
+
 		return status;
 	}
 	status = AnalyseNmiData( &nmi_context, &system_modules, Irp );
@@ -937,8 +940,11 @@ HandleNmiIOCTL(
 	if ( !NT_SUCCESS( status ) )
 		DEBUG_ERROR( "Error analysing nmi data" );
 
-	ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
-	ExFreePoolWithTag( nmi_context.nmi_core_context, NMI_CONTEXT_POOL );
+	if (system_modules.address )
+		ExFreePoolWithTag( system_modules.address, SYSTEM_MODULES_POOL );
+
+	if (nmi_context.nmi_core_context )
+		ExFreePoolWithTag( nmi_context.nmi_core_context, NMI_CONTEXT_POOL );
 
 	if ( nmi_context.stack_frames )
 		ExFreePoolWithTag( nmi_context.stack_frames, STACK_FRAMES_POOL );
@@ -1065,6 +1071,27 @@ ApcNormalRoutine(
 
 }
 
+BOOLEAN 
+FlipKThreadMiscFlagsFlag(
+	_In_ PKTHREAD Thread,
+	_In_ LONG FlagIndex,
+	_In_ BOOLEAN NewValue
+)
+{
+	PLONG misc_flags = ( PLONG )( ( UINT64 )Thread + KTHREAD_MISC_FLAGS_OFFSET );
+	LONG mask = 1U << FlagIndex;
+
+	if ( !MmIsAddressValid( misc_flags ) )
+		return FALSE;
+
+	if ( NewValue )
+		*misc_flags |= mask;
+	else
+		*misc_flags &= ~mask;
+
+	return TRUE;
+}
+
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
@@ -1078,6 +1105,8 @@ ValidateThreadViaKernelApcCallback(
 	PETHREAD current_thread;
 	PKAPC apc = NULL;
 	BOOLEAN apc_status;
+	PLONG misc_flags = NULL;
+	BOOLEAN apc_queueable = FALSE;
 	PAPC_STACKWALK_CONTEXT context = ( PAPC_STACKWALK_CONTEXT )Context;
 	LPCSTR process_name = PsGetProcessImageFileName( Process );
 
@@ -1101,13 +1130,32 @@ ValidateThreadViaKernelApcCallback(
 	{
 		current_thread = ( PETHREAD )( ( UINT64 )thread_list_entry - KTHREAD_THREADLIST_OFFSET );
 
-		if (current_thread == KeGetCurrentThread())
+		if (current_thread == KeGetCurrentThread() || !current_thread )
 			goto increment;
 
 		apc = ( PKAPC )ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( KAPC ), POOL_TAG_APC );
 
 		if ( !apc )
 			goto increment;
+
+		/*
+		* Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
+		* queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
+		* lets make sure we flip this before before queueing ours. Since we filter out any system
+		* threads this should be fine... c:
+		*/
+		misc_flags = ( PLONG )( ( UINT64 )current_thread + KTHREAD_MISC_FLAGS_OFFSET );
+
+		/* sanity check */
+		if ( !MmIsAddressValid( misc_flags ) )
+			goto increment;
+
+		/* todo: We should also flag all threads that have the flag set to false */
+		if ( *misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE )
+		{
+			if ( !FlipKThreadMiscFlagsFlag( current_thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE ) )
+				goto increment;
+		}
 
 		KeInitializeApc(
 			apc,
@@ -1130,6 +1178,8 @@ ValidateThreadViaKernelApcCallback(
 		if ( !apc_status )
 		{
 			DEBUG_ERROR( "KeInsertQueueApc failed" );
+			ExFreePoolWithTag( apc, POOL_TAG_APC );
+			apc = NULL;
 			goto increment;
 		}
 
@@ -1205,3 +1255,4 @@ FreeApcStackwalkApcContextInformation(
 	if ( Context->modules )
 		ExFreePoolWithTag( Context->modules, POOL_TAG_APC );
 }
+
