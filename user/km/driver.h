@@ -46,6 +46,17 @@ namespace kernelmode
 		VOID NotifyDriverOnProcessTermination();
 		//VOID GetKernelStructureOffsets();
 
+		template <typename T>
+		VOID ReportTypeFromReportQueue( CONST PVOID Buffer, PSIZE_T Offset, CONST PVOID Report )
+		{
+			Report = ( T* )(
+				( UINT64 )Buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + *Offset );
+
+			this->report_interface->ReportViolation( ( T* )Report );
+
+			*Offset += sizeof( T );
+		}
+
 	public:
 
 		Driver(LPCWSTR DriverName, std::shared_ptr<global::Client> ReportInterface );
@@ -65,17 +76,6 @@ namespace kernelmode
 		VOID VerifyProcessLoadedModuleExecutableRegions();
 		VOID SendClientHardwareInformation();
 		BOOLEAN InitiateApcOperation( INT OperationId );
-
-		template <typename T>
-		VOID ReportTypeFromReportQueue(CONST PVOID Buffer, PSIZE_T Offset, PVOID Report)
-		{
-			Report = ( T* )(
-				( UINT64 )Buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + *Offset );
-
-			this->report_interface->ReportViolation( (T*)Report );
-
-			*Offset += sizeof( T );
-		}
 	};
 
 	struct DRIVER_INITIATION_INFORMATION

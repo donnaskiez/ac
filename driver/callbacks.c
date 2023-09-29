@@ -457,6 +457,13 @@ UnregisterCallbacksOnProcessTermination()
 {
 	DEBUG_LOG( "Process closed, unregistering callbacks" );
 	KeAcquireGuardedMutex( &configuration.mutex );
+
+	if ( configuration.registration_handle == NULL )
+	{
+		KeReleaseGuardedMutex( &configuration.mutex );
+		return;
+	}
+
 	ObUnRegisterCallbacks( configuration.registration_handle );
 	configuration.registration_handle = NULL;
 	KeReleaseGuardedMutex( &configuration.mutex );

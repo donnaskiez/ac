@@ -76,9 +76,11 @@ PROCESS_CONFIG process_config = { 0 };
 */
 
 STATIC
-VOID 
+BOOLEAN 
 FreeAllApcContextStructures()
 {
+	BOOLEAN flag = TRUE;
+
 	KeAcquireGuardedMutex( &driver_config.lock );
 
 	for ( INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++ )
@@ -87,12 +89,21 @@ FreeAllApcContextStructures()
 
 		if ( entry[ index ] != NULL )
 		{
+			PAPC_CONTEXT_HEADER context = entry[ index ];
+
+			if ( context->count > 0 )
+			{
+				flag = FALSE;
+				goto unlock;
+			}
+
 			ExFreePoolWithTag( entry, POOL_TAG_APC );
 		}
 	}
 
 unlock:
 	KeReleaseGuardedMutex( &driver_config.lock );
+	return flag;
 }
 
 /*
@@ -591,10 +602,6 @@ InitialiseProcessConfigOnProcessLaunch(
 	if ( !NT_SUCCESS( status ) )
 		return status;
 
-	/*
-	* acquire the mutex here to prevent a race condition if an unknown party trys 
-	* to fuzz our IOCTL codes whilst the target process launches.
-	*/
 	KeAcquireGuardedMutex( &process_config.lock );
 
 	process_config.protected_process_eprocess = eprocess;
@@ -631,7 +638,14 @@ DriverUnload(
 {
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	//QueryActiveApcContextsForCompletion();
-	//FreeAllApcContextStructures();
+
+	/* dont unload while we have active APC operations */
+	while ( !FreeAllApcContextStructures() )
+		YieldProcessor();
+
+	/* This is safe to call even if the callbacks have already been disabled */
+	UnregisterCallbacksOnProcessTermination();
+
 	CleanupDriverConfigOnUnload();
 	IoDeleteDevice( DriverObject->DeviceObject );
 }
