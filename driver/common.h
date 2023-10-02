@@ -36,6 +36,8 @@
 #define MODULES_REPORT_POOL_TAG 'modu'
 #define POOL_TAG_LIST_ITEM 'tsil'
 
+#define IA32_APERF_MSR 0x000000E8
+
 #define ERROR -1
 #define STACK_FRAME_POOL_SIZE 0x200
 #define NUMBER_HASH_BUCKETS 37

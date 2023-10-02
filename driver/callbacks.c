@@ -91,7 +91,8 @@ ObPreOpCallbackRoutine(
 
 			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
 
-			POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
+			POPEN_HANDLE_FAILURE_REPORT report = 
+				ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
 
 			if ( !report )
 				goto end;
@@ -299,10 +300,10 @@ EnumHandleCallback(
 			DEBUG_LOG( "Stripped PROCESS_VM_WRITE" );
 		}
 
-		//POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
+		POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
 
-		//if ( !report )
-		//	goto end;
+		if ( !report )
+			goto end;
 
 		/*
 		* Using the same report structure as the ObRegisterCallbacks report
@@ -312,14 +313,14 @@ EnumHandleCallback(
 		* another queue specifically for open handle reports since they will be
 		* rare.
 		*/
-		//report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
-		//report->is_kernel_handle = NULL;
-		//report->process_id = PsGetProcessId( process );
-		//report->thread_id = NULL;
-		//report->access = handle_access_mask;
-		//RtlCopyMemory( &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+		report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
+		report->is_kernel_handle = NULL;
+		report->process_id = PsGetProcessId( process );
+		report->thread_id = NULL;
+		report->access = handle_access_mask;
+		RtlCopyMemory( &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
 
-		//InsertReportToQueue( report );
+		InsertReportToQueue( report );
 	}
 
 end:

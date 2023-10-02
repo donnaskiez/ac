@@ -1267,3 +1267,169 @@ EnumeratePciDevices()
 
     ExFreePoolWithTag( device_interfaces, NULL );
 }
+
+STATIC 
+PVOID 
+ScanForSignature(
+    _In_ PVOID BaseAddress,
+    _In_ SIZE_T MaxLength,
+    _In_ LPCSTR Signature,
+    _In_ SIZE_T SignatureLength
+)
+{
+    CHAR current_char = 0;
+    CHAR current_sig_char = 0;
+
+    for ( INT index = 0; index < MaxLength; index++ )
+    {
+        for ( INT sig_index = 0; sig_index < SignatureLength + 1; sig_index++ )
+        {
+            current_char = *( PCHAR )( ( UINT64 )BaseAddress + index + sig_index );
+            current_sig_char = Signature[ sig_index ];
+
+            if ( sig_index == SignatureLength )
+                return ( UINT64 )BaseAddress + index;
+
+            if ( current_char != current_sig_char )
+                break;
+        }
+    }
+}
+
+#pragma optimize("", off)
+
+STATIC
+UINT64
+MeasureInstructionRead(
+    _In_ PVOID InstructionAddress
+)
+{
+    UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
+    CHAR character = *(PCHAR)InstructionAddress;
+    return ( __readmsr( IA32_APERF_MSR ) << 32 ) - start;
+}
+
+STATIC
+UINT64
+MeasureInstructionExecute(
+    _In_ PVOID InstructionAddress
+)
+{
+    UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
+    ( ( VOID( * )( ) )InstructionAddress )( );
+    return ( __readmsr( IA32_APERF_MSR ) << 32 ) - start;
+}
+
+#pragma optimize("", on)
+
+UINT64 MeasureReads(
+    _In_ PVOID Address,
+    _In_ ULONG Count
+)
+{
+    UINT64 read_average = 0;
+    KIRQL old_irql;
+
+    MeasureInstructionRead( Address );
+
+    old_irql = __readcr8();
+    __writecr8( HIGH_LEVEL );
+
+    _disable();
+
+    for ( INT iteration = 0; iteration < Count; iteration++ )
+    {
+        read_average += MeasureInstructionRead( Address );
+    }
+
+    _enable();
+    __writecr8( old_irql );
+
+    return read_average / Count;
+}
+
+UINT64 MeasureExecutionWithAlternatingReads(
+    _In_ PVOID Address,
+    _In_ ULONG Count
+)
+{
+    UINT64 read_average = 0;
+    UINT64 execute_average = 0;
+    KIRQL old_irql;
+
+    MeasureInstructionRead( Address );
+    MeasureInstructionExecute( Address );
+
+    old_irql = __readcr8();
+    __writecr8( HIGH_LEVEL );
+
+    _disable();
+
+    for ( INT iteration = 0; iteration < Count; iteration++ )
+    {
+        read_average += MeasureInstructionRead( Address );
+        execute_average += MeasureInstructionExecute( Address );
+    }
+
+    _enable();
+    __writecr8( old_irql );
+
+    return execute_average / Count;
+}
+
+/*
+* Even though we test for the presence of a hypervisor, we should still test for the presence
+* of EPT hooks on key functions.
+* 
+* Credits to momo5502 for the idea: https://momo5502.com/blog/?p=255 
+*/
+NTSTATUS
+DetectEptPresenceOnFunction(
+    _In_ PUNICODE_STRING RoutineName
+)
+{
+    PVOID function_address = NULL;
+    PVOID ret_instruction_address = NULL;
+    UINT64 page_base = NULL;
+    LPCSTR ret_instruction = "\xC3";
+    ULONG num_iterations = 200;
+    UINT64 read_average = 0;
+    UINT64 read_exec_average = 0;
+
+    DEBUG_LOG( "Sizxe of ret instruction: %llx", strlen( ret_instruction ) );
+
+    if ( !RoutineName )
+        return STATUS_INVALID_PARAMETER;
+
+    /* some hard coded stuff for ExAllocatePoolWithTag for now */
+    function_address = ( UINT64 )MmGetSystemRoutineAddress( RoutineName );
+
+    if ( !function_address )
+        return STATUS_INVALID_PARAMETER;
+
+    DEBUG_LOG( "NtCreateFile Virtual Address: %llx", ( UINT64 )function_address );
+
+    page_base = ( UINT64 )function_address & 0xfffffffffffff000;
+
+    DEBUG_LOG( "Page base: %llx", page_base );
+
+    ret_instruction_address = ScanForSignature(
+        page_base,
+        PAGE_SIZE,
+        ret_instruction,
+        strlen( ret_instruction )
+    );
+
+    if ( !ret_instruction_address )
+        return STATUS_NOT_FOUND;
+
+    DEBUG_LOG( "Ret instruction: %llx", ( UINT64 )ret_instruction_address );
+
+    for ( int i = 0; i < 50; i++ )
+    {
+        read_average = MeasureReads( ret_instruction_address, num_iterations );
+        read_exec_average = MeasureInstructionRead( ret_instruction_address, num_iterations );
+
+        DEBUG_LOG( "Read average: %llx, read exec average: %llx", read_average, read_exec_average );
+    }
+}

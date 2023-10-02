@@ -47,7 +47,7 @@ namespace kernelmode
 		//VOID GetKernelStructureOffsets();
 
 		template <typename T>
-		VOID ReportTypeFromReportQueue( CONST PVOID Buffer, PSIZE_T Offset, CONST PVOID Report )
+		VOID ReportTypeFromReportQueue( CONST PVOID Buffer, PSIZE_T Offset, PVOID Report )
 		{
 			Report = ( T* )(
 				( UINT64 )Buffer + sizeof( global::report_structures::REPORT_QUEUE_HEADER ) + *Offset );

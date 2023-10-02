@@ -640,14 +640,14 @@ DriverUnload(
 	//QueryActiveApcContextsForCompletion();
 
 	/* dont unload while we have active APC operations */
-	while ( !FreeAllApcContextStructures() )
-		YieldProcessor();
+	//while ( !FreeAllApcContextStructures() )
+	//	YieldProcessor();
 
 	/* This is safe to call even if the callbacks have already been disabled */
-	UnregisterCallbacksOnProcessTermination();
+	//UnregisterCallbacksOnProcessTermination();
 
-	CleanupDriverConfigOnUnload();
-	IoDeleteDevice( DriverObject->DeviceObject );
+	//CleanupDriverConfigOnUnload();
+	//IoDeleteDevice( DriverObject->DeviceObject );
 }
 
 VOID 
@@ -746,6 +746,10 @@ DriverEntry(
 		IoDeleteDevice( DriverObject->DeviceObject );
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
+
+	UNICODE_STRING string = RTL_CONSTANT_STRING( L"ExAllocatePoolWithTag" );
+
+	DetectEptPresenceOnFunction( &string );
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 

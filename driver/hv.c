@@ -6,8 +6,6 @@
 
 #define TOTAL_ITERATION_COUNT 20
 
-#define IA32_APERF_MSR 0x000000E8
-
 /*
 * TODO: Perform the test in a loop and average the delta out, then compare it 
 * to an instruction such as FYL2XP1 (source: secret.club) which has an average
