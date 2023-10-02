@@ -1296,16 +1296,20 @@ ScanForSignature(
     }
 }
 
+/*
+* Lets ensure to the compiler doens't optimise out our useless instructions...
+*/
 #pragma optimize("", off)
 
 STATIC
 UINT64
 MeasureInstructionRead(
-    _In_ PVOID InstructionAddress
+    _In_ PVOID InstructionAddress,
+    _In_ PCHAR StorageBuffer
 )
 {
     UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
-    CHAR character = *(PCHAR)InstructionAddress;
+    *StorageBuffer = *( PCHAR )InstructionAddress;
     return ( __readmsr( IA32_APERF_MSR ) << 32 ) - start;
 }
 
@@ -1329,8 +1333,9 @@ UINT64 MeasureReads(
 {
     UINT64 read_average = 0;
     KIRQL old_irql;
+    CHAR value_store = "e";
 
-    MeasureInstructionRead( Address );
+    MeasureInstructionRead( Address, &value_store );
 
     old_irql = __readcr8();
     __writecr8( HIGH_LEVEL );
@@ -1339,7 +1344,7 @@ UINT64 MeasureReads(
 
     for ( INT iteration = 0; iteration < Count; iteration++ )
     {
-        read_average += MeasureInstructionRead( Address );
+        read_average += MeasureInstructionRead( Address, &value_store );
     }
 
     _enable();
@@ -1356,8 +1361,9 @@ UINT64 MeasureExecutionWithAlternatingReads(
     UINT64 read_average = 0;
     UINT64 execute_average = 0;
     KIRQL old_irql;
+    CHAR value_store = "e";
 
-    MeasureInstructionRead( Address );
+    MeasureInstructionRead( Address, &value_store );
     MeasureInstructionExecute( Address );
 
     old_irql = __readcr8();
@@ -1367,7 +1373,7 @@ UINT64 MeasureExecutionWithAlternatingReads(
 
     for ( INT iteration = 0; iteration < Count; iteration++ )
     {
-        read_average += MeasureInstructionRead( Address );
+        read_average += MeasureInstructionRead( Address, &value_store );
         execute_average += MeasureInstructionExecute( Address );
     }
 
@@ -1379,9 +1385,24 @@ UINT64 MeasureExecutionWithAlternatingReads(
 
 /*
 * Even though we test for the presence of a hypervisor, we should still test for the presence
-* of EPT hooks on key functions.
+* of EPT hooks on key functions as this is primary method for reversing AC's.
 * 
 * Credits to momo5502 for the idea: https://momo5502.com/blog/?p=255 
+* 
+* EPT active on system:
+* 
+* [+] EPT: Read average: 15d52f5c28f5, read exec average: 377e147ae14
+* [+] EPT: Read average: 15dc0b851eb8, read exec average: 376e6666666
+* [+] no ept: Read average: 65accccccc, read exec average: 6a547ae147
+* [+] no ept: Read average: 67251eb851, read exec average: 6b8e147ae1
+* 
+* No EPT active on system:
+* 
+* [+] EPT: Read average: 3451eb851e, read exec average: 37eb851eb8
+* [+] EPT: Read average: 3547ae147a, read exec average: 3828f5c28f
+* [+] no ept: Read average: 350a3d70a3, read exec average: 3828f5c28f
+* [+] no ept: Read average: 350a3d70a3, read exec average: 37ae147ae1
+
 */
 NTSTATUS
 DetectEptPresenceOnFunction(
@@ -1395,6 +1416,10 @@ DetectEptPresenceOnFunction(
     ULONG num_iterations = 200;
     UINT64 read_average = 0;
     UINT64 read_exec_average = 0;
+    UINT64 test2 = 0;
+    UINT64 test22 = 0;
+    UINT64 two_ret_instruction = 0;
+
 
     DEBUG_LOG( "Sizxe of ret instruction: %llx", strlen( ret_instruction ) );
 
@@ -1420,16 +1445,29 @@ DetectEptPresenceOnFunction(
         strlen( ret_instruction )
     );
 
+    two_ret_instruction = ScanForSignature(
+        page_base - PAGE_SIZE,
+        PAGE_SIZE,
+        ret_instruction,
+        strlen( ret_instruction )
+    );
+
     if ( !ret_instruction_address )
         return STATUS_NOT_FOUND;
 
     DEBUG_LOG( "Ret instruction: %llx", ( UINT64 )ret_instruction_address );
 
-    for ( int i = 0; i < 50; i++ )
+    for ( int i = 0; i < 20; i++ )
     {
         read_average = MeasureReads( ret_instruction_address, num_iterations );
-        read_exec_average = MeasureInstructionRead( ret_instruction_address, num_iterations );
+        read_exec_average = MeasureExecutionWithAlternatingReads( ret_instruction_address, num_iterations );
+        DEBUG_LOG( "EPT: Read average: %llx, read exec average: %llx", read_average, read_exec_average );
+    }
 
-        DEBUG_LOG( "Read average: %llx, read exec average: %llx", read_average, read_exec_average );
+    for ( int i = 0; i < 20; i++ )
+    {
+        read_average = MeasureReads( two_ret_instruction, num_iterations );
+        read_exec_average = MeasureExecutionWithAlternatingReads( two_ret_instruction, num_iterations );
+        DEBUG_LOG( "no ept: Read average: %llx, read exec average: %llx", read_average, read_exec_average );
     }
 }
