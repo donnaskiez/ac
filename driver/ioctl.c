@@ -32,7 +32,7 @@ STATIC
 NTSTATUS 
 DispatchApcOperation( PAPC_OPERATION_ID Operation )
 {
-	NTSTATUS status = STATUS_SUCCESS;
+	NTSTATUS status;
 
 	switch ( Operation->operation_id )
 	{
@@ -76,9 +76,12 @@ DeviceControl(
 	*/
 	ReadProcessInitialisedConfigFlag( &security_flag );
 
-	if ( security_flag == FALSE && 
+	if ( security_flag == FALSE &&
 		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH )
+	{
+		status = STATUS_ABANDONED;
 		goto end;
+	}
 
 	switch ( stack_location->Parameters.DeviceIoControl.IoControlCode )
 	{
@@ -335,6 +338,7 @@ DeviceControl(
 
 	default:
 		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
+		status = STATUS_INVALID_PARAMETER;
 		break;
 	}
 

@@ -975,7 +975,7 @@ typedef struct _RAW_SMBIOS_DATA
     BYTE    SMBIOSMinorVersion;
     BYTE    DmiRevision;
     UINT32   Length;
-    BYTE    SMBIOSTableData[];
+    BYTE    SMBIOSTableData[1];
 } RAW_SMBIOS_DATA, * PRAW_SMBIOS_DATA;
 
 typedef struct _SMBIOS_TABLE_HEADER

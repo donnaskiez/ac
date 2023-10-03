@@ -83,8 +83,6 @@ PerformVirtualizationDetection(
 	_In_ PIRP Irp
 )
 {
-	NTSTATUS status = STATUS_SUCCESS;
-
 	HYPERVISOR_DETECTION_REPORT report;
 	report.aperf_msr_timing_check = APERFMsrTimingCheck();
 	report.invd_emulation_check = TestINVDEmulation();
@@ -97,5 +95,5 @@ PerformVirtualizationDetection(
 		sizeof( HYPERVISOR_DETECTION_REPORT )
 	);
 
-	return status;
+	return STATUS_SUCCESS;
 }

@@ -81,11 +81,11 @@ GetDriverImageSize(
 STATIC
 NTSTATUS 
 GetModuleInformationByName(
-    _In_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
+    _Inout_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
     _In_ LPCSTR ModuleName
 )
 {
-    NTSTATUS status = STATUS_SUCCESS;
+    NTSTATUS status;
     SYSTEM_MODULES modules = { 0 };
     PRTL_MODULE_EXTENDED_INFO driver_info;
 
@@ -122,13 +122,13 @@ GetModuleInformationByName(
 STATIC
 NTSTATUS 
 StoreModuleExecutableRegionsInBuffer(
-    _In_ PVOID* Buffer,
+    _Inout_ PVOID* Buffer,
+    _Inout_ PULONG BytesWritten,
     _In_ PVOID ModuleBase,
-    _In_ SIZE_T ModuleSize,
-    _In_ PSIZE_T BytesWritten
+    _In_ SIZE_T ModuleSize
 )
 {
-    NTSTATUS status = STATUS_SUCCESS;
+    NTSTATUS status;
     PIMAGE_DOS_HEADER dos_header;
     PLOCAL_NT_HEADER nt_header;
     PIMAGE_SECTION_HEADER section;
@@ -136,8 +136,8 @@ StoreModuleExecutableRegionsInBuffer(
     ULONG num_sections = 0;
     ULONG num_executable_sections = 0;
     UINT64 buffer_base;
-    ULONG bytes_returned;
-    MM_COPY_ADDRESS address;
+    SIZE_T bytes_returned = 0;
+    MM_COPY_ADDRESS address = { 0 };
 
     if ( !ModuleBase || !ModuleSize )
         return STATUS_INVALID_PARAMETER;
@@ -165,7 +165,7 @@ StoreModuleExecutableRegionsInBuffer(
     * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the IMAGE_NT_HEADER from the base
     * of the image.
     */
-    nt_header = ( struct _IMAGE_NT_HEADERS64* )( ( UINT64 )ModuleBase + dos_header->e_lfanew );
+    nt_header = ( PLOCAL_NT_HEADER )( ( UINT64 )ModuleBase + dos_header->e_lfanew );
 
     num_sections = nt_header->FileHeader.NumberOfSections;
 
@@ -187,7 +187,7 @@ StoreModuleExecutableRegionsInBuffer(
             address.VirtualAddress = section;
 
             status = MmCopyMemory(
-                ( UINT64 )buffer_base + total_packet_size,
+                (PVOID)( ( UINT64 )buffer_base + total_packet_size ),
                 address,
                 sizeof( IMAGE_SECTION_HEADER ),
                 MM_COPY_MEMORY_VIRTUAL,
@@ -203,10 +203,10 @@ StoreModuleExecutableRegionsInBuffer(
                 return status;
             }
 
-            address.VirtualAddress = ( UINT64 )ModuleBase + section->PointerToRawData;
+            address.VirtualAddress = (PVOID)( ( UINT64 )ModuleBase + section->PointerToRawData );
 
             status = MmCopyMemory(
-                ( UINT64 )buffer_base + total_packet_size + sizeof( IMAGE_SECTION_HEADER ),
+                (PVOID)( ( UINT64 )buffer_base + total_packet_size + sizeof( IMAGE_SECTION_HEADER ) ),
                 address,
                 section->SizeOfRawData,
                 MM_COPY_MEMORY_VIRTUAL,
@@ -248,15 +248,15 @@ STATIC
 NTSTATUS 
 MapDiskImageIntoVirtualAddressSpace(
     _In_ PHANDLE SectionHandle,
-    _In_ PVOID* Section,
     _In_ PUNICODE_STRING Path,
-    _In_ PSIZE_T Size
+    _Inout_ PVOID* Section,
+    _Inout_ PULONG Size
 )
 {
     NTSTATUS status;
     HANDLE file_handle;
-    OBJECT_ATTRIBUTES object_attributes;
-    PIO_STATUS_BLOCK pio_block;
+    OBJECT_ATTRIBUTES object_attributes = { 0 };
+    IO_STATUS_BLOCK pio_block = { 0 };
     UNICODE_STRING path;
 
     RtlInitUnicodeString( &path, Path->Buffer );
@@ -274,8 +274,8 @@ MapDiskImageIntoVirtualAddressSpace(
         FILE_GENERIC_READ,
         &object_attributes,
         &pio_block,
-        NULL,
-        NULL
+        0,
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -320,10 +320,10 @@ MapDiskImageIntoVirtualAddressSpace(
         *SectionHandle,
         ZwCurrentProcess(),
         Section,
+        0,
+        0,
         NULL,
-        NULL,
-        NULL,
-        Size,
+        (PSIZE_T)Size,
         ViewUnmap,
         MEM_TOP_DOWN,
         PAGE_READONLY
@@ -356,8 +356,8 @@ NTSTATUS
 ComputeHashOfBuffer(
     _In_ PVOID Buffer,
     _In_ ULONG BufferSize,
-    _In_ PVOID* HashResult,
-    _In_ PULONG HashResultSize
+    _Inout_ PVOID* HashResult,
+    _Inout_ PULONG HashResultSize
 )
 {
     /*
@@ -380,14 +380,14 @@ ComputeHashOfBuffer(
     ULONG bytes_copied = 0;
     ULONG resulting_hash_size = 0;
     ULONG hash_object_size = 0;
-    PCHAR hash_object = NULL;
-    PCHAR resulting_hash = NULL;
+    PUCHAR hash_object = NULL;
+    PUCHAR resulting_hash = NULL;
 
     status = BCryptOpenAlgorithmProvider(
         &algo_handle,
         BCRYPT_SHA256_ALGORITHM,
         NULL,
-        NULL
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -405,10 +405,10 @@ ComputeHashOfBuffer(
     status = BCryptGetProperty(
         algo_handle,
         BCRYPT_OBJECT_LENGTH,
-        ( PCHAR )&hash_object_size,
+        ( PUCHAR )&hash_object_size,
         sizeof( ULONG ),
         &bytes_copied,
-        NULL
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -433,10 +433,10 @@ ComputeHashOfBuffer(
     status = BCryptGetProperty(
         algo_handle,
         BCRYPT_HASH_LENGTH,
-        ( PCHAR )&resulting_hash_size,
+        ( PUCHAR )&resulting_hash_size,
         sizeof( ULONG ),
         &bytes_copied,
-        NULL
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -463,8 +463,8 @@ ComputeHashOfBuffer(
         hash_object,
         hash_object_size,
         NULL,
-        NULL,
-        NULL
+        0,
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -482,7 +482,7 @@ ComputeHashOfBuffer(
         hash_handle,
         Buffer,
         BufferSize,
-        NULL
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -500,7 +500,7 @@ ComputeHashOfBuffer(
         hash_handle,
         resulting_hash,
         resulting_hash_size,
-        NULL
+        0
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -516,7 +516,7 @@ ComputeHashOfBuffer(
 end:
 
     if ( algo_handle )
-        BCryptCloseAlgorithmProvider( algo_handle, NULL );
+        BCryptCloseAlgorithmProvider( algo_handle, 0 );
 
     if ( hash_handle )
         BCryptDestroyHash( hash_handle );
@@ -543,31 +543,31 @@ VerifyInMemoryImageVsDiskImage(
     UNICODE_STRING path = { 0 };
     HANDLE section_handle = NULL;
     PVOID section = NULL;
-    SIZE_T section_size = NULL;
-    SIZE_T bytes_written = NULL;
+    ULONG section_size = 0;
+    ULONG bytes_written = 0;
     PVOID disk_buffer = NULL;
     PVOID in_memory_buffer = NULL;
     RTL_MODULE_EXTENDED_INFO module_info = { 0 };
-    UINT64 disk_base = NULL;
-    UINT64 memory_base = NULL;
+    UINT64 disk_base = 0;
+    UINT64 memory_base = 0;
     PIMAGE_SECTION_HEADER disk_text_header = NULL;
     PIMAGE_SECTION_HEADER memory_text_header = NULL;
     PVOID disk_text_hash = NULL;
     PVOID memory_text_hash = NULL;
-    ULONG disk_text_hash_size = NULL;
-    ULONG memory_text_hash_size = NULL;
-    SIZE_T result = NULL;
+    ULONG disk_text_hash_size = 0;
+    ULONG memory_text_hash_size = 0;
+    SIZE_T result = 0;
 
     GetDriverPath( &path );
 
     status = MapDiskImageIntoVirtualAddressSpace(
         &section_handle,
-        &section,
         &path,
+        &section,
         &section_size
     );
 
-    if ( !NT_SUCCESS( status ) )
+    if ( !NT_SUCCESS( status ) || !section )
     {
         DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
         //TerminateProtectedProcessOnViolation();
@@ -576,9 +576,9 @@ VerifyInMemoryImageVsDiskImage(
 
     status = StoreModuleExecutableRegionsInBuffer(
         &disk_buffer,
+        &bytes_written,
         section,
-        section_size,
-        &bytes_written
+        section_size
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -596,7 +596,7 @@ VerifyInMemoryImageVsDiskImage(
         "driver.sys"
     );
 
-    if ( !NT_SUCCESS( status ) )
+    if ( !NT_SUCCESS( status ) || !module_info.ImageBase )
     {
         DEBUG_ERROR( "GetModuleInformationByName failed with status %x", status );
         //TerminateProtectedProcessOnViolation();
@@ -605,9 +605,9 @@ VerifyInMemoryImageVsDiskImage(
 
     status = StoreModuleExecutableRegionsInBuffer(
         &in_memory_buffer,
+        &bytes_written,
         module_info.ImageBase,
-        module_info.ImageSize,
-        &bytes_written
+        module_info.ImageSize
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -639,7 +639,7 @@ VerifyInMemoryImageVsDiskImage(
     }
 
     status = ComputeHashOfBuffer(
-        disk_base,
+        (PVOID)disk_base,
         disk_text_header->SizeOfRawData,
         &disk_text_hash,
         &disk_text_hash_size
@@ -653,7 +653,7 @@ VerifyInMemoryImageVsDiskImage(
     }
 
     status = ComputeHashOfBuffer(
-        memory_base,
+        (PVOID)memory_base,
         memory_text_header->SizeOfRawData,
         &memory_text_hash,
         &memory_text_hash_size
@@ -718,7 +718,7 @@ RetrieveInMemoryModuleExecutableSections(
 )
 {
     NTSTATUS status;
-    SIZE_T bytes_written = NULL;
+    ULONG bytes_written = 0;
     PVOID buffer = NULL;
     RTL_MODULE_EXTENDED_INFO module_info = { 0 };
 
@@ -727,7 +727,7 @@ RetrieveInMemoryModuleExecutableSections(
         "driver.sys"
     );
 
-    if ( !NT_SUCCESS( status ) )
+    if ( !NT_SUCCESS( status ) || !module_info.ImageBase )
     {
         DEBUG_ERROR( "GetModuleInformationByName failed with status %x", status );
         return status;
@@ -735,9 +735,9 @@ RetrieveInMemoryModuleExecutableSections(
 
     status = StoreModuleExecutableRegionsInBuffer(
         &buffer,
+        &bytes_written,
         module_info.ImageBase,
-        module_info.ImageSize,
-        &bytes_written
+        module_info.ImageSize
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -833,7 +833,7 @@ GetStringAtIndexFromSMBIOSTable(
             if ( *current_string_char == NULL_TERMINATOR )
                 return STATUS_SUCCESS;
 
-            RtlCopyMemory( ( UINT64 )Buffer + current_string_char_index, current_string_char, sizeof( CHAR ) );
+            RtlCopyMemory( (PVOID)( ( UINT64 )Buffer + current_string_char_index ), current_string_char, sizeof( CHAR ) );
             current_string_char_index++;
             goto increment;
         }
@@ -849,8 +849,6 @@ GetStringAtIndexFromSMBIOSTable(
         current_string_char++;
         next_string_char++;
     }
-
-    return STATUS_NOT_FOUND;
 }
 
 NTSTATUS 
@@ -860,18 +858,17 @@ ParseSMBIOSTable(
 )
 {
     NTSTATUS status;
-    PVOID firmware_table_buffer;
-    ULONG firmware_table_buffer_size = NULL;
-    ULONG bytes_returned;
-    PRAW_SMBIOS_DATA smbios_data;
-    PSMBIOS_TABLE_HEADER smbios_table_header;
-    PRAW_SMBIOS_TABLE_01 smbios_baseboard_information;
+    PVOID firmware_table_buffer = NULL;
+    ULONG firmware_table_buffer_size = 0;
+    ULONG bytes_returned = 0;
+    PRAW_SMBIOS_DATA smbios_data = NULL;
+    PSMBIOS_TABLE_HEADER smbios_table_header = NULL;
 
     status = ExGetSystemFirmwareTable(
         SMBIOS_TABLE,
+        0,
         NULL,
-        NULL,
-        NULL,
+        0,
         &firmware_table_buffer_size
     );
 
@@ -879,7 +876,7 @@ ParseSMBIOSTable(
     * Because we pass a null buffer here, the NTSTATUS result will be a BUFFER_TOO_SMALL error, so to validate
     * this function call we check the return bytes returned (which indicate required buffer size) is above 0.
     */
-    if ( firmware_table_buffer_size == NULL )
+    if ( firmware_table_buffer_size == 0 )
     {
         DEBUG_ERROR( "ExGetSystemFirmwareTable call 1 failed to get required buffer size." );
         return STATUS_BUFFER_TOO_SMALL;
@@ -892,7 +889,7 @@ ParseSMBIOSTable(
 
     status = ExGetSystemFirmwareTable(
         SMBIOS_TABLE,
-        NULL,
+        0,
         firmware_table_buffer,
         firmware_table_buffer_size,
         &bytes_returned
@@ -958,22 +955,22 @@ ValidateProcessLoadedModule(
 )
 {
     NTSTATUS status;
-    BOOLEAN bstatus;
-    PROCESS_MODULE_VALIDATION_RESULT validation_result;
-    PPROCESS_MODULE_INFORMATION module_info;
-    PKPROCESS process;
-    KAPC_STATE apc_state;
+    BOOLEAN bstatus = FALSE;
+    PROCESS_MODULE_VALIDATION_RESULT validation_result = { 0 };
+    PPROCESS_MODULE_INFORMATION module_info = NULL;
+    PKPROCESS process = NULL;
+    KAPC_STATE apc_state = { 0 };
     PVOID in_memory_buffer = NULL;
     PVOID disk_buffer = NULL;
     PVOID in_memory_hash = NULL;
     PVOID disk_hash = NULL;
-    ULONG in_memory_hash_size = NULL;
-    ULONG disk_hash_size = NULL;
-    SIZE_T bytes_written = NULL;
+    ULONG in_memory_hash_size = 0;
+    ULONG disk_hash_size = 0;
+    ULONG bytes_written = 0;
     UNICODE_STRING module_path;
     HANDLE section_handle = NULL;
     PVOID section = NULL;
-    ULONG section_size = NULL;
+    ULONG section_size = 0;
 
     module_info = ( PPROCESS_MODULE_INFORMATION )Irp->AssociatedIrp.SystemBuffer;
 
@@ -986,9 +983,9 @@ ValidateProcessLoadedModule(
 
     status = StoreModuleExecutableRegionsInBuffer(
         &in_memory_buffer,
+        &bytes_written,
         module_info->module_base,
-        module_info->module_size,
-        &bytes_written
+        module_info->module_size
     );
 
     KeUnstackDetachProcess( &apc_state );
@@ -1012,16 +1009,16 @@ ValidateProcessLoadedModule(
         goto end;
     }
 
-    RtlInitUnicodeString( &module_path, &module_info->module_path );
+    RtlInitUnicodeString( &module_path, (PCWSTR)&module_info->module_path);
 
     status = MapDiskImageIntoVirtualAddressSpace(
         &section_handle,
-        &section,
         &module_path,
+        &section,
         &section_size
     );
 
-    if ( !NT_SUCCESS( status ) )
+    if ( !NT_SUCCESS( status ) || !section )
     {
         DEBUG_ERROR( "MapDiskImageIntoVirtualAddressSpace failed with status %x", status );
         goto end;
@@ -1029,9 +1026,9 @@ ValidateProcessLoadedModule(
 
     status = StoreModuleExecutableRegionsInBuffer(
         &disk_buffer,
+        &bytes_written,
         section,
-        section_size,
-        &bytes_written
+        section_size
     );
 
     if ( !NT_SUCCESS( status ) )
@@ -1109,14 +1106,14 @@ GetHardDiskDriveSerialNumber(
 {
     NTSTATUS status;
     HANDLE handle;
-    OBJECT_ATTRIBUTES attributes;
-    IO_STATUS_BLOCK status_block;
+    OBJECT_ATTRIBUTES attributes = { 0 };
+    IO_STATUS_BLOCK status_block = { 0 };
     STORAGE_PROPERTY_QUERY storage_property = { 0 };
     STORAGE_DESCRIPTOR_HEADER storage_descriptor_header = { 0 };
     PSTORAGE_DEVICE_DESCRIPTOR device_descriptor = NULL;
     UNICODE_STRING physical_drive_path;
     PCHAR serial_number = NULL;
-    SIZE_T serial_length = NULL;
+    SIZE_T serial_length = 0;
 
     RtlInitUnicodeString( &physical_drive_path, L"\\DosDevices\\PhysicalDrive0" );
 
@@ -1133,8 +1130,8 @@ GetHardDiskDriveSerialNumber(
         GENERIC_READ,
         &attributes,
         &status_block,
-        NULL,
-        NULL
+        0,
+        0
     );
 
     if ( !NT_SUCCESS( status ) ) 
@@ -1222,51 +1219,51 @@ end:
     return status;
 }
 
-VOID
-EnumeratePciDevices()
-{
-    NTSTATUS status;
-    PZZWSTR device_interfaces;
-    PWSTR list_base;
-    DEVPROPKEY key = { 0 };
-    UNICODE_STRING symbolic_link = { 0 };
-    WCHAR device_id[ 512 ];
-    PZZWSTR current_string = NULL;
-    SIZE_T string_length = 0;
-
-    /* PCI guid */
-    CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff, 0x1f, 0x95, 0x35, 0x99 };
-
-    status = IoGetDeviceInterfaces( 
-        &guid, 
-        NULL, 
-        NULL, 
-        &device_interfaces
-    );
-
-    if ( !NT_SUCCESS( status ) )
-    {
-        DEBUG_LOG( "IoGetDeviceInterfaces failed with status %x", status );
-        return;
-    }
-
-    current_string = device_interfaces;
-
-    while ( *current_string != NULL_TERMINATOR )
-    {
-        string_length = wcslen( current_string );
-
-        symbolic_link.Buffer = current_string;
-        symbolic_link.Length = string_length;
-        symbolic_link.MaximumLength = string_length;
-
-        DEBUG_LOG( "Device Interface: %wZ", symbolic_link );
-
-        current_string += symbolic_link.Length + 1;
-    }
-
-    ExFreePoolWithTag( device_interfaces, NULL );
-}
+//VOID
+//EnumeratePciDevices()
+//{
+//    NTSTATUS status;
+//    PZZWSTR device_interfaces;
+//    PWSTR list_base;
+//    DEVPROPKEY key = { 0 };
+//    UNICODE_STRING symbolic_link = { 0 };
+//    WCHAR device_id[ 512 ];
+//    PZZWSTR current_string = NULL;
+//    SIZE_T string_length = 0;
+//
+//    /* PCI guid */
+//    CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff, 0x1f, 0x95, 0x35, 0x99 };
+//
+//    status = IoGetDeviceInterfaces( 
+//        &guid, 
+//        NULL, 
+//        NULL, 
+//        &device_interfaces
+//    );
+//
+//    if ( !NT_SUCCESS( status ) )
+//    {
+//        DEBUG_LOG( "IoGetDeviceInterfaces failed with status %x", status );
+//        return;
+//    }
+//
+//    current_string = device_interfaces;
+//
+//    while ( *current_string != NULL_TERMINATOR )
+//    {
+//        string_length = wcslen( current_string );
+//
+//        symbolic_link.Buffer = current_string;
+//        symbolic_link.Length = string_length;
+//        symbolic_link.MaximumLength = string_length;
+//
+//        DEBUG_LOG( "Device Interface: %wZ", symbolic_link );
+//
+//        current_string += symbolic_link.Length + 1;
+//    }
+//
+//    ExFreePoolWithTag( device_interfaces, NULL );
+//}
 
 PVOID 
 ScanForSignature(
@@ -1287,12 +1284,14 @@ ScanForSignature(
             current_sig_char = Signature[ sig_index ];
 
             if ( sig_index == SignatureLength )
-                return ( UINT64 )BaseAddress + index;
+                return (PVOID)( ( UINT64 )BaseAddress + index );
 
             if ( current_char != current_sig_char )
                 break;
         }
     }
+
+    return NULL;
 }
 
 /*
@@ -1321,7 +1320,7 @@ MeasureReads(
 )
 {
     UINT64 read_average = 0;
-    KIRQL old_irql;
+    UINT64 old_irql;
 
     MeasureInstructionRead( Address );
 
@@ -1330,7 +1329,7 @@ MeasureReads(
 
     _disable();
 
-    for ( INT iteration = 0; iteration < Count; iteration++ )
+    for ( ULONG iteration = 0; iteration < Count; iteration++ )
         read_average += MeasureInstructionRead( Address );
 
     _enable();
@@ -1369,7 +1368,7 @@ GetAverageReadTimeAtRoutine(
     if ( !RoutineName || !AverageTime )
         return STATUS_INVALID_PARAMETER;
 
-    function_address = ( UINT64 )MmGetSystemRoutineAddress( RoutineName );
+    function_address = MmGetSystemRoutineAddress( RoutineName );
 
     if ( !function_address )
         return STATUS_ABANDONED;
@@ -1395,8 +1394,8 @@ GetAverageReadTimeAtRoutine(
 * Each time we measure the read we perform 30 iterations to ensure we get a consistent result 
 * aswell as disabling interrupts + raising IRQL to ensure the test is as accurate as possible.
 * 
-* The following open source Intel VT-X hv's w/ EPT functionality have been tested in a non
-* vm environment:
+* The following open source Intel VT-X hv's w/ EPT functionality have been tested and detected 
+* in a non vm environment:
 * 
 * HyperDbg !epthook (https://github.com/HyperDbg/HyperDbg):  detected
 * DdiMon (https://github.com/tandasat/DdiMon):               detected
@@ -1418,11 +1417,11 @@ WCHAR PROTECTED_FUNCTIONS[ EPT_PROTECTED_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAM
 NTSTATUS 
 DetectEptHooksInKeyFunctions()
 {
-    NTSTATUS status = STATUS_SUCCESS;
+    NTSTATUS status;
     UINT32 control_fails = 0;
-    UINT64 instruction_time = NULL;
-    UINT64 control_time_sum = NULL;
-    UINT64 control_average = NULL;
+    UINT64 instruction_time = 0;
+    UINT64 control_time_sum = 0;
+    UINT64 control_average = 0;
     UNICODE_STRING current_function;
 
     for ( INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++ )
@@ -1493,4 +1492,11 @@ DetectEptHooksInKeyFunctions()
     }
 
     return status;
+}
+
+NTSTATUS
+DetermineIfTestSigningIsEnabled()
+{
+    /* Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control -> SystemStartOption : TESTSIGNING */
+    return STATUS_SUCCESS;
 }

@@ -534,7 +534,7 @@ HandleValidateDriversIOCTL(
 	_In_ PIRP Irp
 )
 {
-	NTSTATUS status = STATUS_SUCCESS;
+	NTSTATUS status;
 	SYSTEM_MODULES system_modules = { 0 };
 
 	/* Fix annoying visual studio linting error */
@@ -888,7 +888,7 @@ HandleNmiIOCTL(
 	_In_ PIRP Irp
 )
 {
-	NTSTATUS status = STATUS_SUCCESS;
+	NTSTATUS status;
 	SYSTEM_MODULES system_modules = { 0 };
 	NMI_CONTEXT nmi_context = { 0 };
 	PVOID callback_handle;
