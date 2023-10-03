@@ -49,7 +49,7 @@ namespace server.Message
             public int success;
         }
 
-        public ClientReport(ILogger logger, ref byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
+        public ClientReport(ILogger logger, byte[] buffer, int bufferSize, PACKET_HEADER packetHeader)
         {
             this._logger = logger;
             this._buffer = buffer;
@@ -481,6 +481,8 @@ namespace server.Message
             HIDDEN_SYSTEM_THREAD_FAILURE report =
                 Helper.BytesToStructure<HIDDEN_SYSTEM_THREAD_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
 
+            /* todo: some weird reference bug here */
+
             if (report.FoundInPspCidTable == 0 &&
                 report.FoundInKThreadList == 0 &&
                 report.ThreadId == 0 &&
@@ -567,6 +569,14 @@ namespace server.Message
         {
             INVALID_PROCESS_ALLOCATION_FAILURE report =
                 Helper.BytesToStructure<INVALID_PROCESS_ALLOCATION_FAILURE>(_buffer, sizeof(PACKET_HEADER) + offset);
+
+            if (report.Equals(null)) { return; }
+
+            if (report.ReportCode == 0 &&
+                report.ProcessStructure.Length == 0)
+            {
+                return;
+            }
 
             _logger.Information("received invalid process allocation structure");
 
