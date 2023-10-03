@@ -40,8 +40,6 @@ VOID
 EnumeratePciDevices();
 
 NTSTATUS
-DetectEptPresenceOnFunction(
-	_In_ PUNICODE_STRING RoutineName
-);
+DetectEptHooksInKeyFunctions();
 
 #endif

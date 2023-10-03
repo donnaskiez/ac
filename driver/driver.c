@@ -749,7 +749,7 @@ DriverEntry(
 
 	UNICODE_STRING string = RTL_CONSTANT_STRING( L"ExAllocatePoolWithTag" );
 
-	DetectEptPresenceOnFunction( &string );
+	DetectEptHooksInKeyFunctions();
 
 	DEBUG_LOG( "DonnaAC Driver Entry Complete" );
 

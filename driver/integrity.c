@@ -20,6 +20,12 @@
 #define VMWARE_SMBIOS_TABLE 1
 #define VMWARE_SMBIOS_TABLE_INDEX 3
 
+#define EPT_CHECK_NUM_ITERATIONS 30
+#define EPT_CONTROL_FUNCTIONS_COUNT 4
+#define EPT_PROTECTED_FUNCTIONS_COUNT 1
+#define EPT_MAX_FUNCTION_NAME_LENGTH 128
+#define EPT_EXECUTION_TIME_THRESHOLD 10
+
 typedef struct _INTEGRITY_CHECK_HEADER
 {
     INT executable_section_count;
@@ -1268,7 +1274,6 @@ EnumeratePciDevices()
     ExFreePoolWithTag( device_interfaces, NULL );
 }
 
-STATIC 
 PVOID 
 ScanForSignature(
     _In_ PVOID BaseAddress,
@@ -1304,38 +1309,27 @@ ScanForSignature(
 STATIC
 UINT64
 MeasureInstructionRead(
-    _In_ PVOID InstructionAddress,
-    _In_ PCHAR StorageBuffer
-)
-{
-    UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
-    *StorageBuffer = *( PCHAR )InstructionAddress;
-    return ( __readmsr( IA32_APERF_MSR ) << 32 ) - start;
-}
-
-STATIC
-UINT64
-MeasureInstructionExecute(
     _In_ PVOID InstructionAddress
 )
 {
-    UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
-    ( ( VOID( * )( ) )InstructionAddress )( );
+    CONST UINT64 start = __readmsr( IA32_APERF_MSR ) << 32;
+    CHAR value = *( PCHAR )InstructionAddress;
     return ( __readmsr( IA32_APERF_MSR ) << 32 ) - start;
 }
 
 #pragma optimize("", on)
 
-UINT64 MeasureReads(
+STATIC
+UINT64 
+MeasureReads(
     _In_ PVOID Address,
     _In_ ULONG Count
 )
 {
     UINT64 read_average = 0;
     KIRQL old_irql;
-    CHAR value_store = "e";
 
-    MeasureInstructionRead( Address, &value_store );
+    MeasureInstructionRead( Address );
 
     old_irql = __readcr8();
     __writecr8( HIGH_LEVEL );
@@ -1343,44 +1337,12 @@ UINT64 MeasureReads(
     _disable();
 
     for ( INT iteration = 0; iteration < Count; iteration++ )
-    {
-        read_average += MeasureInstructionRead( Address, &value_store );
-    }
+        read_average += MeasureInstructionRead( Address );
 
     _enable();
     __writecr8( old_irql );
 
     return read_average / Count;
-}
-
-UINT64 MeasureExecutionWithAlternatingReads(
-    _In_ PVOID Address,
-    _In_ ULONG Count
-)
-{
-    UINT64 read_average = 0;
-    UINT64 execute_average = 0;
-    KIRQL old_irql;
-    CHAR value_store = "e";
-
-    MeasureInstructionRead( Address, &value_store );
-    MeasureInstructionExecute( Address );
-
-    old_irql = __readcr8();
-    __writecr8( HIGH_LEVEL );
-
-    _disable();
-
-    for ( INT iteration = 0; iteration < Count; iteration++ )
-    {
-        read_average += MeasureInstructionRead( Address, &value_store );
-        execute_average += MeasureInstructionExecute( Address );
-    }
-
-    _enable();
-    __writecr8( old_irql );
-
-    return execute_average / Count;
 }
 
 /*
@@ -1389,85 +1351,134 @@ UINT64 MeasureExecutionWithAlternatingReads(
 * 
 * Credits to momo5502 for the idea: https://momo5502.com/blog/?p=255 
 * 
-* EPT active on system:
+* [+] EPT: Read average: 14991c28f5c2
+* [+] no EPT: Read average: 28828f5c28
 * 
-* [+] EPT: Read average: 15d52f5c28f5, read exec average: 377e147ae14
-* [+] EPT: Read average: 15dc0b851eb8, read exec average: 376e6666666
-* [+] no ept: Read average: 65accccccc, read exec average: 6a547ae147
-* [+] no ept: Read average: 67251eb851, read exec average: 6b8e147ae1
-* 
-* No EPT active on system:
-* 
-* [+] EPT: Read average: 3451eb851e, read exec average: 37eb851eb8
-* [+] EPT: Read average: 3547ae147a, read exec average: 3828f5c28f
-* [+] no ept: Read average: 350a3d70a3, read exec average: 3828f5c28f
-* [+] no ept: Read average: 350a3d70a3, read exec average: 37ae147ae1
-
+* On average a read when HyperDbg's !epthook is active is around ~125x longer. Will need to continue
+* testing with other HV's, however it is a good start.
 */
+STATIC
 NTSTATUS
 DetectEptPresenceOnFunction(
-    _In_ PUNICODE_STRING RoutineName
+    _In_ PUNICODE_STRING RoutineName,
+    _Inout_ PUINT64 AverageTime
 )
 {
     PVOID function_address = NULL;
-    PVOID ret_instruction_address = NULL;
-    UINT64 page_base = NULL;
-    LPCSTR ret_instruction = "\xC3";
-    ULONG num_iterations = 200;
-    UINT64 read_average = 0;
-    UINT64 read_exec_average = 0;
-    UINT64 test2 = 0;
-    UINT64 test22 = 0;
-    UINT64 two_ret_instruction = 0;
 
-
-    DEBUG_LOG( "Sizxe of ret instruction: %llx", strlen( ret_instruction ) );
-
-    if ( !RoutineName )
+    if ( !RoutineName || !AverageTime )
         return STATUS_INVALID_PARAMETER;
 
-    /* some hard coded stuff for ExAllocatePoolWithTag for now */
     function_address = ( UINT64 )MmGetSystemRoutineAddress( RoutineName );
 
     if ( !function_address )
         return STATUS_INVALID_PARAMETER;
 
-    DEBUG_LOG( "NtCreateFile Virtual Address: %llx", ( UINT64 )function_address );
+    *AverageTime = MeasureReads( function_address, EPT_CHECK_NUM_ITERATIONS );
 
-    page_base = ( UINT64 )function_address & 0xfffffffffffff000;
+    return STATUS_SUCCESS;
+}
 
-    DEBUG_LOG( "Page base: %llx", page_base );
+/*
+* todo: encrypt both arrays
+* 
+* The goal with the control functions is to find a reference time for an average read on a
+* function that is not EPT hooked. To accomplish this I've selected some arbitrary, rarely
+* used functions that shouldn't really ever have an EPT hook active on them. This will give
+* us a baseline that we can then average out to find a relatively accurate average read time.
+* 
+* From here, we have an array of protected functions which are commonly hooked via EPT to 
+* reverse anti cheats. We then check the read times of these functions and compare them to
+* the average of the read times for the control functions. If the read threshold exceeds a
+* multiple of 10, we can be fairly certain an EPT hook is active. 
+* 
+* Each time we measure the read we perform 30 iterations to ensure we get a consistent result 
+* aswell as disabling interrupts + raising IRQL to ensure the test is as accurate as possible.
+*/
+WCHAR CONTROL_FUNCTIONS[ EPT_CONTROL_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAME_LENGTH ] =
+{
+    L"RtlAssert",
+    L"PsAcquireSiloHardReference",
+    L"PsDereferencePrimaryToken",
+    L"ZwCommitEnlistment"
+};
 
-    ret_instruction_address = ScanForSignature(
-        page_base,
-        PAGE_SIZE,
-        ret_instruction,
-        strlen( ret_instruction )
-    );
+WCHAR PROTECTED_FUNCTIONS[ EPT_PROTECTED_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAME_LENGTH ] =
+{
+    L"ExAllocatePoolWithTag"
+};
 
-    two_ret_instruction = ScanForSignature(
-        page_base - PAGE_SIZE,
-        PAGE_SIZE,
-        ret_instruction,
-        strlen( ret_instruction )
-    );
+NTSTATUS 
+DetectEptHooksInKeyFunctions()
+{
+    NTSTATUS status;
+    UINT32 control_fails = 0;
+    UINT64 instruction_time = NULL;
+    UINT64 control_time_sum = NULL;
+    UINT64 control_average = NULL;
+    UNICODE_STRING current_function;
 
-    if ( !ret_instruction_address )
-        return STATUS_NOT_FOUND;
-
-    DEBUG_LOG( "Ret instruction: %llx", ( UINT64 )ret_instruction_address );
-
-    for ( int i = 0; i < 20; i++ )
+    for ( INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++ )
     {
-        read_average = MeasureReads( ret_instruction_address, num_iterations );
-        read_exec_average = MeasureExecutionWithAlternatingReads( ret_instruction_address, num_iterations );
-        DEBUG_LOG( "EPT: Read average: %llx, read exec average: %llx", read_average, read_exec_average );
+        RtlInitUnicodeString( &current_function, CONTROL_FUNCTIONS[ index ] );
+
+        if ( !current_function.Buffer )
+            continue;
+
+        status = DetectEptPresenceOnFunction(
+            &current_function,
+            &instruction_time
+        );
+
+        if ( !NT_SUCCESS( status ) )
+        {
+            DEBUG_ERROR( "DetectEptPresentOnFunction failed with status %x", status );
+            control_fails += 1;
+            continue;
+        }
+
+        control_time_sum += instruction_time;
+
+        RtlZeroMemory( current_function.Buffer, current_function.Length );
     }
 
-    for ( int i = 0; i < 20; i++ )
+    if ( !control_time_sum )
+        return STATUS_UNSUCCESSFUL;
+
+    control_average = control_time_sum / ( EPT_CONTROL_FUNCTIONS_COUNT - control_fails );
+
+    if ( !control_average )
+        return STATUS_UNSUCCESSFUL;
+
+    for ( INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++ )
     {
-        read_average = MeasureReads( two_ret_instruction, num_iterations );
-        read_exec_average = MeasureExecutionWithAlternatingReads( two_ret_instruction, num_iterations );
-        DEBUG_LOG( "no ept: Read average: %llx, read exec average: %llx", read_average, read_exec_average );
+        RtlInitUnicodeString( &current_function, PROTECTED_FUNCTIONS[ index ] );
+
+        if ( !current_function.Buffer )
+            continue;
+
+        status = DetectEptPresenceOnFunction(
+            &current_function,
+            &instruction_time
+        );
+
+        if ( !NT_SUCCESS( status ) )
+        {
+            DEBUG_ERROR( "DetectEptPresentOnFunction failed with status %x", status );
+            continue;
+        }
+
+        if ( control_average * EPT_EXECUTION_TIME_THRESHOLD < instruction_time )
+        {
+            DEBUG_LOG( "EPT hook detected at function: %wZ with execution time of: %llx",
+                current_function,
+                instruction_time );
+
+            /* close game etc. */
+        }
+        else
+        {
+            DEBUG_LOG( "No ept hook detected" );
+        }
     }
 }
