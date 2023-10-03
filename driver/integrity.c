@@ -20,12 +20,6 @@
 #define VMWARE_SMBIOS_TABLE 1
 #define VMWARE_SMBIOS_TABLE_INDEX 3
 
-#define EPT_CHECK_NUM_ITERATIONS 30
-#define EPT_CONTROL_FUNCTIONS_COUNT 4
-#define EPT_PROTECTED_FUNCTIONS_COUNT 1
-#define EPT_MAX_FUNCTION_NAME_LENGTH 128
-#define EPT_EXECUTION_TIME_THRESHOLD 10
-
 typedef struct _INTEGRITY_CHECK_HEADER
 {
     INT executable_section_count;
@@ -1345,9 +1339,15 @@ MeasureReads(
     return read_average / Count;
 }
 
+#define EPT_CHECK_NUM_ITERATIONS 30
+#define EPT_CONTROL_FUNCTIONS_COUNT 4
+#define EPT_PROTECTED_FUNCTIONS_COUNT 2
+#define EPT_MAX_FUNCTION_NAME_LENGTH 128
+#define EPT_EXECUTION_TIME_MULTIPLIER 10
+
 /*
 * Even though we test for the presence of a hypervisor, we should still test for the presence
-* of EPT hooks on key functions as this is primary method for reversing AC's.
+* of EPT hooks on key functions as this is a primary method for reversing AC's.
 * 
 * Credits to momo5502 for the idea: https://momo5502.com/blog/?p=255 
 * 
@@ -1359,7 +1359,7 @@ MeasureReads(
 */
 STATIC
 NTSTATUS
-DetectEptPresenceOnFunction(
+GetAverageReadTimeAtRoutine(
     _In_ PUNICODE_STRING RoutineName,
     _Inout_ PUINT64 AverageTime
 )
@@ -1372,7 +1372,7 @@ DetectEptPresenceOnFunction(
     function_address = ( UINT64 )MmGetSystemRoutineAddress( RoutineName );
 
     if ( !function_address )
-        return STATUS_INVALID_PARAMETER;
+        return STATUS_ABANDONED;
 
     *AverageTime = MeasureReads( function_address, EPT_CHECK_NUM_ITERATIONS );
 
@@ -1394,6 +1394,12 @@ DetectEptPresenceOnFunction(
 * 
 * Each time we measure the read we perform 30 iterations to ensure we get a consistent result 
 * aswell as disabling interrupts + raising IRQL to ensure the test is as accurate as possible.
+* 
+* The following open source Intel VT-X hv's w/ EPT functionality have been tested in a non
+* vm environment:
+* 
+* HyperDbg !epthook (https://github.com/HyperDbg/HyperDbg):  detected
+* DdiMon (https://github.com/tandasat/DdiMon):               detected
 */
 WCHAR CONTROL_FUNCTIONS[ EPT_CONTROL_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAME_LENGTH ] =
 {
@@ -1405,13 +1411,14 @@ WCHAR CONTROL_FUNCTIONS[ EPT_CONTROL_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAME_LE
 
 WCHAR PROTECTED_FUNCTIONS[ EPT_PROTECTED_FUNCTIONS_COUNT ][ EPT_MAX_FUNCTION_NAME_LENGTH ] =
 {
-    L"ExAllocatePoolWithTag"
+    L"ExAllocatePoolWithTag",
+    L"MmCopyMemory"
 };
 
 NTSTATUS 
 DetectEptHooksInKeyFunctions()
 {
-    NTSTATUS status;
+    NTSTATUS status = STATUS_SUCCESS;
     UINT32 control_fails = 0;
     UINT64 instruction_time = NULL;
     UINT64 control_time_sum = NULL;
@@ -1425,7 +1432,7 @@ DetectEptHooksInKeyFunctions()
         if ( !current_function.Buffer )
             continue;
 
-        status = DetectEptPresenceOnFunction(
+        status = GetAverageReadTimeAtRoutine(
             &current_function,
             &instruction_time
         );
@@ -1457,7 +1464,7 @@ DetectEptHooksInKeyFunctions()
         if ( !current_function.Buffer )
             continue;
 
-        status = DetectEptPresenceOnFunction(
+        status = GetAverageReadTimeAtRoutine(
             &current_function,
             &instruction_time
         );
@@ -1468,7 +1475,8 @@ DetectEptHooksInKeyFunctions()
             continue;
         }
 
-        if ( control_average * EPT_EXECUTION_TIME_THRESHOLD < instruction_time )
+        /* [+] EPT hook detected at function: ExAllocatePoolWithTag with execution time of: 149b7777777 */
+        if ( control_average * EPT_EXECUTION_TIME_MULTIPLIER < instruction_time )
         {
             DEBUG_LOG( "EPT hook detected at function: %wZ with execution time of: %llx",
                 current_function,
@@ -1478,7 +1486,11 @@ DetectEptHooksInKeyFunctions()
         }
         else
         {
-            DEBUG_LOG( "No ept hook detected" );
+            DEBUG_LOG( "No ept hook detected at function: %wZ", current_function );
         }
+
+        RtlZeroMemory( current_function.Buffer, current_function.Length );
     }
+
+    return status;
 }
