@@ -1133,11 +1133,6 @@ ValidateThreadViaKernelApcCallback(
 		if (current_thread == KeGetCurrentThread() || !current_thread)
 			goto increment;
 
-		apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
-
-		if (!apc)
-			goto increment;
-
 		/*
 		* Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
 		* queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
@@ -1156,6 +1151,11 @@ ValidateThreadViaKernelApcCallback(
 			if (!FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE))
 				goto increment;
 		}
+
+		apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
+
+		if (!apc)
+			goto increment;
 
 		KeInitializeApc(
 			apc,
