@@ -15,16 +15,16 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 	LONG process_id;
 	LONG thread_id;
 	LONG access;
-	CHAR process_name[ HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH ];
+	CHAR process_name[HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH];
 
-}OPEN_HANDLE_FAILURE_REPORT, *POPEN_HANDLE_FAILURE_REPORT;
+}OPEN_HANDLE_FAILURE_REPORT, * POPEN_HANDLE_FAILURE_REPORT;
 
 typedef struct _CALLBACKS_CONFIGURATION
 {
 	PVOID registration_handle;
 	KGUARDED_MUTEX mutex;
 
-}CALLBACK_CONFIGURATION, *PCALLBACK_CONFIGURATION;
+}CALLBACK_CONFIGURATION, * PCALLBACK_CONFIGURATION;
 
 //handle access masks
 //https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights
@@ -48,25 +48,25 @@ static const uintptr_t EPROCESS_IMAGE_FILE_NAME_OFFSET = 0x5a8;
 static const uintptr_t EPROCESS_HANDLE_TABLE_OFFSET = 0x570;
 static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
 
-static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING( L"Process" );
-static UNICODE_STRING OBJECT_TYPE_THREAD = RTL_CONSTANT_STRING( L"Thread" );
+static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING(L"Process");
+static UNICODE_STRING OBJECT_TYPE_THREAD = RTL_CONSTANT_STRING(L"Thread");
 
-VOID 
-NTAPI 
+VOID
+NTAPI
 ExUnlockHandleTableEntry(
 	IN PHANDLE_TABLE HandleTable,
 	IN PHANDLE_TABLE_ENTRY HandleTableEntry
 );
 
 STATIC
-VOID 
+VOID
 ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
 );
 
 STATIC
-OB_PREOP_CALLBACK_STATUS 
+OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
@@ -78,21 +78,21 @@ ObPreOpCallbackRoutine(
 //	_In_ BOOLEAN Create
 //);
 
-VOID 
+VOID
 EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function,
 	_In_opt_ PVOID Context
 );
 
-NTSTATUS 
+NTSTATUS
 EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 );
 
-NTSTATUS 
+NTSTATUS
 InitiateDriverCallbacks();
 
-VOID 
+VOID
 UnregisterCallbacksOnProcessTermination();
 
 #endif

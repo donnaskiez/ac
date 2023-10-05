@@ -4,27 +4,27 @@
 #include <ntifs.h>
 #include "common.h"
 
-NTSTATUS 
+NTSTATUS
 GetDriverImageSize(
 	_In_ PIRP Irp
 );
 
-NTSTATUS 
+NTSTATUS
 VerifyInMemoryImageVsDiskImage(
-    //_In_ PIRP Irp
+	//_In_ PIRP Irp
 );
 
-NTSTATUS 
+NTSTATUS
 RetrieveInMemoryModuleExecutableSections(
-    _In_ PIRP Irp
+	_In_ PIRP Irp
 );
 
-NTSTATUS 
+NTSTATUS
 ValidateProcessLoadedModule(
 	_In_ PIRP Irp
 );
 
-NTSTATUS 
+NTSTATUS
 GetHardDiskDriveSerialNumber(
 	_In_ PVOID ConfigDrive0Serial,
 	_In_ SIZE_T ConfigDrive0MaxSize

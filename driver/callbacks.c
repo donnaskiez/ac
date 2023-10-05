@@ -9,7 +9,7 @@
 CALLBACK_CONFIGURATION configuration = { 0 };
 
 STATIC
-VOID 
+VOID
 ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
@@ -19,13 +19,13 @@ ObPostOpCallbackRoutine(
 }
 
 STATIC
-OB_PREOP_CALLBACK_STATUS 
+OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
 {
-	UNREFERENCED_PARAMETER( RegistrationContext );
+	UNREFERENCED_PARAMETER(RegistrationContext);
 
 	/* access mask to completely strip permissions */
 	ACCESS_MASK deny_access = SYNCHRONIZE | PROCESS_TERMINATE;
@@ -39,39 +39,39 @@ ObPreOpCallbackRoutine(
 	*/
 	PEPROCESS process_creator = PsGetCurrentProcess();
 	PEPROCESS protected_process;
-	PEPROCESS target_process = ( PEPROCESS )OperationInformation->Object;
-	LONG target_process_id = PsGetProcessId( target_process );
-	LONG process_creator_id = PsGetProcessId( process_creator );
+	PEPROCESS target_process = (PEPROCESS)OperationInformation->Object;
+	LONG target_process_id = PsGetProcessId(target_process);
+	LONG process_creator_id = PsGetProcessId(process_creator);
 	LONG protected_process_id = NULL;
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
 	LPCSTR protected_process_name;
 
-	KeAcquireGuardedMutex( &configuration.mutex );
+	KeAcquireGuardedMutex(&configuration.mutex);
 
-	GetProtectedProcessId( &protected_process_id );
-	GetProtectedProcessEProcess( &protected_process );
+	GetProtectedProcessId(&protected_process_id);
+	GetProtectedProcessEProcess(&protected_process);
 
-	if ( !protected_process_id || !protected_process )
+	if (!protected_process_id || !protected_process)
 		goto end;
 
-	process_creator_name = PsGetProcessImageFileName( process_creator );
-	target_process_name = PsGetProcessImageFileName( target_process );
-	protected_process_name = PsGetProcessImageFileName( protected_process );
+	process_creator_name = PsGetProcessImageFileName(process_creator);
+	target_process_name = PsGetProcessImageFileName(target_process);
+	protected_process_name = PsGetProcessImageFileName(protected_process);
 
-	if ( !protected_process_name || !target_process_name )
+	if (!protected_process_name || !target_process_name)
 		goto end;
 
-	if ( !strcmp( protected_process_name, target_process_name) )
+	if (!strcmp(protected_process_name, target_process_name))
 	{
-		if ( !strcmp( process_creator_name, "lsass.exe" ) || !strcmp( process_creator_name, "csrss.exe" ) )
+		if (!strcmp(process_creator_name, "lsass.exe") || !strcmp(process_creator_name, "csrss.exe"))
 		{
 			/* We will downgrade these handles later */
-			DEBUG_LOG( "Handles created by CSRSS and LSASS are allowed for now..." );
+			DEBUG_LOG("Handles created by CSRSS and LSASS are allowed for now...");
 		}
-		else if ( target_process == process_creator )
+		else if (target_process == process_creator)
 		{
-			DEBUG_LOG( "handles made by NOTEPAD r okay :)" );
+			DEBUG_LOG("handles made by NOTEPAD r okay :)");
 			/* handles created by the game (notepad) are okay */
 		}
 		else
@@ -84,17 +84,17 @@ ObPreOpCallbackRoutine(
 			* so we will still strip them but we won't report them.. for now atleast.
 			*/
 
-			if ( !strcmp( process_creator_name, "Discord.exe" ) ||
-				 !strcmp( process_creator_name, "svchost.exe" ) ||
-				 !strcmp( process_creator_name, "explorer.exe" ) )
+			if (!strcmp(process_creator_name, "Discord.exe") ||
+				!strcmp(process_creator_name, "svchost.exe") ||
+				!strcmp(process_creator_name, "explorer.exe"))
 				goto end;
 
-			DEBUG_LOG( "handle stripped from: %s", process_creator_name );
+			DEBUG_LOG("handle stripped from: %s", process_creator_name);
 
-			POPEN_HANDLE_FAILURE_REPORT report = 
-				ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
+			POPEN_HANDLE_FAILURE_REPORT report =
+				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(OPEN_HANDLE_FAILURE_REPORT), REPORT_POOL_TAG);
 
-			if ( !report )
+			if (!report)
 				goto end;
 
 			report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
@@ -102,15 +102,15 @@ ObPreOpCallbackRoutine(
 			report->is_kernel_handle = OperationInformation->KernelHandle;
 			report->process_id = process_creator_id;
 			report->thread_id = PsGetCurrentThreadId();
-			RtlCopyMemory( report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+			RtlCopyMemory(report->process_name, process_creator_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-			InsertReportToQueue( report );
+			InsertReportToQueue(report);
 		}
 	}
 
 end:
 
-	KeReleaseGuardedMutex( &configuration.mutex );
+	KeReleaseGuardedMutex(&configuration.mutex);
 	return OB_PREOP_SUCCESS;
 }
 
@@ -161,8 +161,8 @@ end:
 //}
 
 /* stolen from ReactOS xD */
-VOID 
-NTAPI 
+VOID
+NTAPI
 ExUnlockHandleTableEntry(
 	IN PHANDLE_TABLE HandleTable,
 	IN PHANDLE_TABLE_ENTRY HandleTableEntry
@@ -172,14 +172,14 @@ ExUnlockHandleTableEntry(
 	PAGED_CODE();
 
 	/* Set the lock bit and make sure it wasn't earlier */
-	old_value = InterlockedOr( ( PLONG )&HandleTableEntry->VolatileLowValue, 1 );
+	old_value = InterlockedOr((PLONG)&HandleTableEntry->VolatileLowValue, 1);
 
 	/* Unblock any waiters */
-	ExfUnblockPushLock( &HandleTable->HandleContentionEvent, NULL );
+	ExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
 }
 
 STATIC
-BOOLEAN 
+BOOLEAN
 EnumHandleCallback(
 	_In_ PHANDLE_TABLE HandleTable,
 	_In_ PHANDLE_TABLE_ENTRY Entry,
@@ -196,113 +196,113 @@ EnumHandleCallback(
 	LPCSTR protected_process_name;
 	ACCESS_MASK handle_access_mask;
 
-	object_header = GET_OBJECT_HEADER_FROM_HANDLE( Entry->ObjectPointerBits );
+	object_header = GET_OBJECT_HEADER_FROM_HANDLE(Entry->ObjectPointerBits);
 
 	/* Object header is the first 30 bytes of the object */
-	object = ( uintptr_t )object_header + OBJECT_HEADER_SIZE;
+	object = (uintptr_t)object_header + OBJECT_HEADER_SIZE;
 
-	object_type = ObGetObjectType( object );
+	object_type = ObGetObjectType(object);
 
 	/* TODO: check for threads aswell */
-	if ( !RtlCompareUnicodeString( &object_type->Name, &OBJECT_TYPE_PROCESS, TRUE ) )
+	if (!RtlCompareUnicodeString(&object_type->Name, &OBJECT_TYPE_PROCESS, TRUE))
 	{
-		process = ( PEPROCESS )object;
-		process_name = PsGetProcessImageFileName( process );
+		process = (PEPROCESS)object;
+		process_name = PsGetProcessImageFileName(process);
 
-		GetProtectedProcessEProcess( &protected_process );
+		GetProtectedProcessEProcess(&protected_process);
 
-		protected_process_name = PsGetProcessImageFileName( protected_process );
+		protected_process_name = PsGetProcessImageFileName(protected_process);
 
-		if ( strcmp( process_name, protected_process_name ) )
+		if (strcmp(process_name, protected_process_name))
 			goto end;
 
-		DEBUG_LOG( "Handle references our protected process with access mask: %lx", ( ACCESS_MASK )Entry->GrantedAccessBits );
+		DEBUG_LOG("Handle references our protected process with access mask: %lx", (ACCESS_MASK)Entry->GrantedAccessBits);
 
-		handle_access_mask = ( ACCESS_MASK )Entry->GrantedAccessBits;
+		handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
 
 		/* These permissions can be stripped from every process including CSRSS and LSASS */
-		if ( handle_access_mask & PROCESS_CREATE_PROCESS )
+		if (handle_access_mask & PROCESS_CREATE_PROCESS)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_CREATE_PROCESS;
-			DEBUG_LOG( "Stripped PROCESS_CREATE_PROCESS" );
+			DEBUG_LOG("Stripped PROCESS_CREATE_PROCESS");
 		}
 
-		if ( handle_access_mask & PROCESS_CREATE_THREAD )
+		if (handle_access_mask & PROCESS_CREATE_THREAD)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_CREATE_THREAD;
-			DEBUG_LOG( "Stripped PROCESS_CREATE_THREAD" );
+			DEBUG_LOG("Stripped PROCESS_CREATE_THREAD");
 		}
 
-		if ( handle_access_mask & PROCESS_DUP_HANDLE )
+		if (handle_access_mask & PROCESS_DUP_HANDLE)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_DUP_HANDLE;
-			DEBUG_LOG( "Stripped PROCESS_DUP_HANDLE" );
+			DEBUG_LOG("Stripped PROCESS_DUP_HANDLE");
 		}
 
-		if ( handle_access_mask & PROCESS_QUERY_INFORMATION )
+		if (handle_access_mask & PROCESS_QUERY_INFORMATION)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_QUERY_INFORMATION;
-			DEBUG_LOG( "Stripped PROCESS_QUERY_INFORMATION" );
+			DEBUG_LOG("Stripped PROCESS_QUERY_INFORMATION");
 		}
 
-		if ( handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION )
+		if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_QUERY_LIMITED_INFORMATION;
-			DEBUG_LOG( "Stripped PROCESS_QUERY_LIMITED_INFORMATION" );
+			DEBUG_LOG("Stripped PROCESS_QUERY_LIMITED_INFORMATION");
 		}
 
-		if ( handle_access_mask & PROCESS_VM_READ )
+		if (handle_access_mask & PROCESS_VM_READ)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_VM_READ;
-			DEBUG_LOG( "Stripped PROCESS_VM_READ" );
+			DEBUG_LOG("Stripped PROCESS_VM_READ");
 		}
 
-		if ( !strcmp( process_name, "csrss.exe" ) || !strcmp( process_name, "lsass.exe" ) )
+		if (!strcmp(process_name, "csrss.exe") || !strcmp(process_name, "lsass.exe"))
 		{
-			DEBUG_LOG( "Required system process allowed, only stripping some permissions" );
+			DEBUG_LOG("Required system process allowed, only stripping some permissions");
 			goto end;
 		}
 
 		/* Permissions beyond here can only be stripped from non critical processes */
-		if ( handle_access_mask & PROCESS_SET_INFORMATION )
+		if (handle_access_mask & PROCESS_SET_INFORMATION)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_SET_INFORMATION;
-			DEBUG_LOG( "Stripped PROCESS_SET_INFORMATION" );
+			DEBUG_LOG("Stripped PROCESS_SET_INFORMATION");
 		}
 
-		if ( handle_access_mask & PROCESS_SET_QUOTA )
+		if (handle_access_mask & PROCESS_SET_QUOTA)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_SET_QUOTA;
-			DEBUG_LOG( "Stripped PROCESS_SET_QUOTA" );
+			DEBUG_LOG("Stripped PROCESS_SET_QUOTA");
 		}
 
-		if ( handle_access_mask & PROCESS_SUSPEND_RESUME )
+		if (handle_access_mask & PROCESS_SUSPEND_RESUME)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_SUSPEND_RESUME;
-			DEBUG_LOG( "Stripped PROCESS_SUSPEND_RESUME " );
+			DEBUG_LOG("Stripped PROCESS_SUSPEND_RESUME ");
 		}
 
-		if ( handle_access_mask & PROCESS_TERMINATE )
+		if (handle_access_mask & PROCESS_TERMINATE)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_TERMINATE;
-			DEBUG_LOG( "Stripped PROCESS_TERMINATE" );
+			DEBUG_LOG("Stripped PROCESS_TERMINATE");
 		}
 
-		if ( handle_access_mask & PROCESS_VM_OPERATION )
+		if (handle_access_mask & PROCESS_VM_OPERATION)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_VM_OPERATION;
-			DEBUG_LOG( "Stripped PROCESS_VM_OPERATION" );
+			DEBUG_LOG("Stripped PROCESS_VM_OPERATION");
 		}
 
-		if ( handle_access_mask & PROCESS_VM_WRITE )
+		if (handle_access_mask & PROCESS_VM_WRITE)
 		{
 			Entry->GrantedAccessBits &= ~PROCESS_VM_WRITE;
-			DEBUG_LOG( "Stripped PROCESS_VM_WRITE" );
+			DEBUG_LOG("Stripped PROCESS_VM_WRITE");
 		}
 
-		POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( OPEN_HANDLE_FAILURE_REPORT ), REPORT_POOL_TAG );
+		POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(OPEN_HANDLE_FAILURE_REPORT), REPORT_POOL_TAG);
 
-		if ( !report )
+		if (!report)
 			goto end;
 
 		/*
@@ -315,20 +315,20 @@ EnumHandleCallback(
 		*/
 		report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
 		report->is_kernel_handle = NULL;
-		report->process_id = PsGetProcessId( process );
+		report->process_id = PsGetProcessId(process);
 		report->thread_id = NULL;
 		report->access = handle_access_mask;
-		RtlCopyMemory( &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH );
+		RtlCopyMemory(&report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-		InsertReportToQueue( report );
+		InsertReportToQueue(report);
 	}
 
 end:
-	ExUnlockHandleTableEntry( HandleTable, Entry );
+	ExUnlockHandleTableEntry(HandleTable, Entry);
 	return FALSE;
 }
 
-NTSTATUS 
+NTSTATUS
 EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 )
@@ -336,18 +336,18 @@ EnumerateProcessHandles(
 	/* Handles are paged out so we need to be at an IRQL that allows paging */
 	PAGED_CODE();
 
-	if ( !Process )
+	if (!Process)
 		return STATUS_INVALID_PARAMETER;
 
-	if ( Process == PsInitialSystemProcess )
+	if (Process == PsInitialSystemProcess)
 		return STATUS_SUCCESS;
 
-	PHANDLE_TABLE handle_table = *( PHANDLE_TABLE* )( ( uintptr_t )Process + EPROCESS_HANDLE_TABLE_OFFSET );
+	PHANDLE_TABLE handle_table = *(PHANDLE_TABLE*)((uintptr_t)Process + EPROCESS_HANDLE_TABLE_OFFSET);
 
-	if ( !handle_table )
+	if (!handle_table)
 		return STATUS_INVALID_ADDRESS;
 
-	if ( !MmIsAddressValid( handle_table ) )
+	if (!MmIsAddressValid(handle_table))
 		return STATUS_INVALID_ADDRESS;
 
 #pragma warning(push)
@@ -370,11 +370,11 @@ EnumerateProcessHandles(
 * cheat which is mass deployed and needs to ensure that it won't crash the system.
 * Since we have no access to the process structure locks it is definitely not
 * mass deployment safe lol.
-* 
+*
 * The Context argument is simply a pointer to a user designed context structure
 * which is passed to the callback function.
 */
-VOID 
+VOID
 EnumerateProcessListWithCallbackFunction(
 	_In_ PVOID Function,
 	_In_opt_ PVOID Context
@@ -385,28 +385,28 @@ EnumerateProcessListWithCallbackFunction(
 	PLIST_ENTRY process_list_entry = NULL;
 	PEPROCESS base_process = PsInitialSystemProcess;
 
-	if ( !base_process )
+	if (!base_process)
 		return;
 
-	process_list_head = ( UINT64 )( ( UINT64 )base_process + EPROCESS_PLIST_ENTRY_OFFSET );
+	process_list_head = (UINT64)((UINT64)base_process + EPROCESS_PLIST_ENTRY_OFFSET);
 	process_list_entry = process_list_head;
 
 	do
 	{
-		current_process = ( PEPROCESS )( ( UINT64 )process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET );
+		current_process = (PEPROCESS)((UINT64)process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET);
 
-		if ( !current_process )
+		if (!current_process)
 			return;
 
-		VOID( *callback_function_ptr )( PEPROCESS, PVOID ) = Function;
-		( *callback_function_ptr )( current_process, Context );
+		VOID(*callback_function_ptr)(PEPROCESS, PVOID) = Function;
+		(*callback_function_ptr)(current_process, Context);
 
 		process_list_entry = process_list_entry->Flink;
 
-	} while ( process_list_entry != process_list_head->Blink);
+	} while (process_list_entry != process_list_head->Blink);
 }
 
-NTSTATUS 
+NTSTATUS
 InitiateDriverCallbacks()
 {
 	NTSTATUS status;
@@ -416,7 +416,7 @@ InitiateDriverCallbacks()
 	* the callback function is running since this might cause some funny stuff
 	* to happen. Better to be safe then sorry :)
 	*/
-	KeInitializeGuardedMutex( &configuration.mutex );
+	KeInitializeGuardedMutex(&configuration.mutex);
 
 	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
 	OB_OPERATION_REGISTRATION operation_registration = { 0 };
@@ -436,9 +436,9 @@ InitiateDriverCallbacks()
 		&configuration.registration_handle
 	);
 
-	if ( !NT_SUCCESS( status ) )
+	if (!NT_SUCCESS(status))
 	{
-		DEBUG_ERROR( "failed to launch obregisters with status %x", status );
+		DEBUG_ERROR("failed to launch obregisters with status %x", status);
 		return status;
 	}
 
@@ -453,19 +453,19 @@ InitiateDriverCallbacks()
 	return status;
 }
 
-VOID 
+VOID
 UnregisterCallbacksOnProcessTermination()
 {
-	DEBUG_LOG( "Process closed, unregistering callbacks" );
-	KeAcquireGuardedMutex( &configuration.mutex );
+	DEBUG_LOG("Process closed, unregistering callbacks");
+	KeAcquireGuardedMutex(&configuration.mutex);
 
-	if ( configuration.registration_handle == NULL )
+	if (configuration.registration_handle == NULL)
 	{
-		KeReleaseGuardedMutex( &configuration.mutex );
+		KeReleaseGuardedMutex(&configuration.mutex);
 		return;
 	}
 
-	ObUnRegisterCallbacks( configuration.registration_handle );
+	ObUnRegisterCallbacks(configuration.registration_handle);
 	configuration.registration_handle = NULL;
-	KeReleaseGuardedMutex( &configuration.mutex );
+	KeReleaseGuardedMutex(&configuration.mutex);
 }

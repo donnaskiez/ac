@@ -21,8 +21,8 @@
 
 typedef struct _SYSTEM_INFORMATION
 {
-	CHAR motherboard_serial[ MOTHERBOARD_SERIAL_CODE_LENGTH ];
-	CHAR drive_0_serial[ DEVICE_DRIVE_0_SERIAL_CODE_LENGTH ];
+	CHAR motherboard_serial[MOTHERBOARD_SERIAL_CODE_LENGTH];
+	CHAR drive_0_serial[DEVICE_DRIVE_0_SERIAL_CODE_LENGTH];
 
 }SYSTEM_INFORMATION, * PSYSTEM_INFORMATION;
 
@@ -80,10 +80,10 @@ FreeApcAndDecrementApcCount(
 NTSTATUS
 QueryActiveApcContextsForCompletion();
 
-VOID 
+VOID
 TerminateProtectedProcessOnViolation();
 
-VOID 
+VOID
 ClearProcessConfigOnProcessTermination();
 
 #endif

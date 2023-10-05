@@ -22,11 +22,11 @@ typedef struct _REPORT_QUEUE_CONFIGURATION
 	QUEUE_HEAD head;
 	KGUARDED_MUTEX lock;
 
-}REPORT_QUEUE_CONFIGURATION, *PREPORT_QUEUE_CONFIGURATION;
+}REPORT_QUEUE_CONFIGURATION, * PREPORT_QUEUE_CONFIGURATION;
 
 REPORT_QUEUE_CONFIGURATION report_queue_config = { 0 };
 
-VOID 
+VOID
 InitialiseGlobalReportQueue(
 	_In_ PBOOLEAN Status
 )
@@ -35,8 +35,8 @@ InitialiseGlobalReportQueue(
 	report_queue_config.head.end = NULL;
 	report_queue_config.head.entries = 0;
 
-	KeInitializeSpinLock( &report_queue_config.head.lock );
-	KeInitializeGuardedMutex( &report_queue_config.lock );
+	KeInitializeSpinLock(&report_queue_config.head.lock);
+	KeInitializeGuardedMutex(&report_queue_config.lock);
 
 	*Status = TRUE;
 }
@@ -57,48 +57,48 @@ InitialiseGlobalReportQueue(
 //	return head;
 //}
 
-VOID 
-QueuePush( 
+VOID
+QueuePush(
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( &Head->lock, &irql );
+	KeAcquireSpinLock(&Head->lock, &irql);
 
-	PQUEUE_NODE temp = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( QUEUE_NODE ), QUEUE_POOL_TAG );
+	PQUEUE_NODE temp = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
 
-	if ( !temp )
+	if (!temp)
 		goto end;
 
 	Head->entries += 1;
 
 	temp->data = Data;
 
-	if ( Head->end != NULL )
+	if (Head->end != NULL)
 		Head->end->next = temp;
 
 	Head->end = temp;
 
-	if ( Head->start == NULL )
+	if (Head->start == NULL)
 		Head->start = temp;
 
 end:
-	KeReleaseSpinLock( &Head->lock, irql );
+	KeReleaseSpinLock(&Head->lock, irql);
 }
 
-PVOID 
+PVOID
 QueuePop(
 	_In_ PQUEUE_HEAD Head
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( &Head->lock, &irql );
+	KeAcquireSpinLock(&Head->lock, &irql);
 
 	PVOID data = NULL;
 	PQUEUE_NODE temp = Head->start;
 
-	if ( temp == NULL )
+	if (temp == NULL)
 		goto end;
 
 	Head->entries = Head->entries - 1;
@@ -106,41 +106,41 @@ QueuePop(
 	data = temp->data;
 	Head->start = temp->next;
 
-	if ( Head->end == temp )
+	if (Head->end == temp)
 		Head->end = NULL;
 
-	ExFreePoolWithTag( temp, QUEUE_POOL_TAG );
+	ExFreePoolWithTag(temp, QUEUE_POOL_TAG);
 
 end:
-	KeReleaseSpinLock( &Head->lock, irql );
+	KeReleaseSpinLock(&Head->lock, irql);
 	return data;
 }
 
-VOID 
+VOID
 InsertReportToQueue(
 	_In_ PVOID Report
 )
 {
-	KeAcquireGuardedMutex( &report_queue_config.lock );
-	QueuePush( &report_queue_config.head, Report );
-	KeReleaseGuardedMutex( &report_queue_config.lock );
+	KeAcquireGuardedMutex(&report_queue_config.lock);
+	QueuePush(&report_queue_config.head, Report);
+	KeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
-VOID 
+VOID
 FreeGlobalReportQueueObjects()
 {
-	KeAcquireGuardedMutex( &report_queue_config.lock );
+	KeAcquireGuardedMutex(&report_queue_config.lock);
 
-	PVOID report = QueuePop( &report_queue_config.head );
+	PVOID report = QueuePop(&report_queue_config.head);
 
-	while ( report != NULL )
+	while (report != NULL)
 	{
-		ExFreePoolWithTag( report, REPORT_POOL_TAG );
-		report = QueuePop( &report_queue_config.head );
+		ExFreePoolWithTag(report, REPORT_POOL_TAG);
+		report = QueuePop(&report_queue_config.head);
 	}
 
 end:
-	KeReleaseGuardedMutex( &report_queue_config.lock );
+	KeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
 /*
@@ -151,7 +151,7 @@ end:
 * reports as a result of a single usermode request and hence it makes dealing with
 * reports generated from ObRegisterCallbacks for example much easier.
 */
-NTSTATUS 
+NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
 	_In_ PIRP Irp
 )
@@ -163,186 +163,186 @@ HandlePeriodicGlobalReportQueueQuery(
 	PREPORT_HEADER report_header;
 	SIZE_T total_size = NULL;
 
-	KeAcquireGuardedMutex( &report_queue_config.lock );
-	report = QueuePop( &report_queue_config.head );
+	KeAcquireGuardedMutex(&report_queue_config.lock);
+	report = QueuePop(&report_queue_config.head);
 
-	report_buffer = ExAllocatePool2( 
-		POOL_FLAG_NON_PAGED, 
-		sizeof( INVALID_PROCESS_ALLOCATION_REPORT ) * MAX_REPORTS_PER_IRP + sizeof( GLOBAL_REPORT_QUEUE_HEADER ),
+	report_buffer = ExAllocatePool2(
+		POOL_FLAG_NON_PAGED,
+		sizeof(INVALID_PROCESS_ALLOCATION_REPORT) * MAX_REPORTS_PER_IRP + sizeof(GLOBAL_REPORT_QUEUE_HEADER),
 		REPORT_QUEUE_TEMP_BUFFER_TAG
 	);
 
-	if ( !report_buffer )
+	if (!report_buffer)
 	{
-		KeReleaseGuardedMutex( &report_queue_config.lock );
+		KeReleaseGuardedMutex(&report_queue_config.lock);
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
 
-	if ( report == NULL )
+	if (report == NULL)
 	{
-		DEBUG_LOG( "callback report queue is empty, returning" );
+		DEBUG_LOG("callback report queue is empty, returning");
 		goto end;
 	}
 
-	while ( report != NULL )
+	while (report != NULL)
 	{
-		if ( count >= MAX_REPORTS_PER_IRP )
+		if (count >= MAX_REPORTS_PER_IRP)
 			goto end;
 
-		report_header = ( PREPORT_HEADER )report;
+		report_header = (PREPORT_HEADER)report;
 
-		switch ( report_header->report_id )
+		switch (report_header->report_id)
 		{
 		case REPORT_ILLEGAL_HANDLE_OPERATION:
 
 			RtlCopyMemory(
-				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				(UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size,
 				report,
-				sizeof( OPEN_HANDLE_FAILURE_REPORT )
+				sizeof(OPEN_HANDLE_FAILURE_REPORT)
 			);
 
-			total_size += sizeof( OPEN_HANDLE_FAILURE_REPORT );
+			total_size += sizeof(OPEN_HANDLE_FAILURE_REPORT);
 			break;
 
 		case REPORT_ILLEGAL_ATTACH_PROCESS:
 
 			RtlCopyMemory(
-				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				(UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size,
 				report,
-				sizeof( ATTACH_PROCESS_REPORT )
+				sizeof(ATTACH_PROCESS_REPORT)
 			);
 
-			total_size += sizeof( ATTACH_PROCESS_REPORT );
+			total_size += sizeof(ATTACH_PROCESS_REPORT);
 			break;
 
 		case REPORT_INVALID_PROCESS_ALLOCATION:
 
 			RtlCopyMemory(
-				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				(UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size,
 				report,
-				sizeof( INVALID_PROCESS_ALLOCATION_REPORT )
+				sizeof(INVALID_PROCESS_ALLOCATION_REPORT)
 			);
 
-			total_size += sizeof( INVALID_PROCESS_ALLOCATION_REPORT );
+			total_size += sizeof(INVALID_PROCESS_ALLOCATION_REPORT);
 			break;
 
 		case REPORT_APC_STACKWALK:
 
 			RtlCopyMemory(
-				( UINT64 )report_buffer + sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size,
+				(UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size,
 				report,
-				sizeof( APC_STACKWALK_REPORT )
+				sizeof(APC_STACKWALK_REPORT)
 			);
 
-			total_size += sizeof( APC_STACKWALK_REPORT );
+			total_size += sizeof(APC_STACKWALK_REPORT);
 			break;
 
 		}
 
 		/* QueuePop frees the node, but we still need to free the returned data */
-		ExFreePoolWithTag( report, REPORT_POOL_TAG );
+		ExFreePoolWithTag(report, REPORT_POOL_TAG);
 
-		report = QueuePop( &report_queue_config.head );
+		report = QueuePop(&report_queue_config.head);
 		count += 1;
 	}
 
 end:
 
-	KeReleaseGuardedMutex( &report_queue_config.lock );
+	KeReleaseGuardedMutex(&report_queue_config.lock);
 
-	Irp->IoStatus.Information = sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size;
+	Irp->IoStatus.Information = sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size;
 
 	header.count = count;
 
 	RtlCopyMemory(
 		report_buffer,
 		&header,
-		sizeof( GLOBAL_REPORT_QUEUE_HEADER ) );
+		sizeof(GLOBAL_REPORT_QUEUE_HEADER));
 
 	RtlCopyMemory(
 		Irp->AssociatedIrp.SystemBuffer,
 		report_buffer,
-		sizeof( GLOBAL_REPORT_QUEUE_HEADER ) + total_size
+		sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size
 	);
 
-	if ( report_buffer )
-		ExFreePoolWithTag( report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG );
+	if (report_buffer)
+		ExFreePoolWithTag(report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG);
 
-	DEBUG_LOG( "Moved all reports into the IRP, sending !" );
+	DEBUG_LOG("Moved all reports into the IRP, sending !");
 	return STATUS_SUCCESS;
 }
 
-VOID 
+VOID
 ListInit(
 	_In_ PLIST_HEAD ListHead
 )
 {
-	KeInitializeSpinLock( &ListHead->lock );
+	KeInitializeSpinLock(&ListHead->lock);
 	ListHead->start = NULL;
 }
 
-PLIST_ITEM 
+PLIST_ITEM
 ListInsert(
 	_In_ PLIST_HEAD ListHead,
 	_In_ PLIST_ITEM NewEntry
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( &ListHead->lock, &irql );
+	KeAcquireSpinLock(&ListHead->lock, &irql);
 
 	PLIST_ITEM old_entry = ListHead->start;
 
 	ListHead->start = NewEntry;
 	NewEntry->next = old_entry;
 
-	KeReleaseSpinLock( &ListHead->lock, irql );
+	KeReleaseSpinLock(&ListHead->lock, irql);
 }
 
-PVOID 
+PVOID
 ListRemoveFirst(
 	_In_ PLIST_HEAD ListHead
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( &ListHead->lock, &irql );
+	KeAcquireSpinLock(&ListHead->lock, &irql);
 
-	if ( ListHead->start )
+	if (ListHead->start)
 	{
 		PLIST_ITEM entry = ListHead->start;
 		ListHead->start = ListHead->start->next;
-		ExFreePoolWithTag( entry, POOL_TAG_APC );
+		ExFreePoolWithTag(entry, POOL_TAG_APC);
 	}
 
-	KeReleaseSpinLock( &ListHead->lock, irql );
+	KeReleaseSpinLock(&ListHead->lock, irql);
 }
 
-PVOID 
+PVOID
 ListRemoveItem(
 	_In_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock( &ListHead->lock, &irql );
+	KeAcquireSpinLock(&ListHead->lock, &irql);
 
 	PLIST_ITEM entry = ListHead->start;
 
-	if ( !entry )
+	if (!entry)
 		goto unlock;
 
-	if ( entry == ListItem )
+	if (entry == ListItem)
 	{
 		ListHead->start = entry->next;
-		ExFreePoolWithTag( ListItem, POOL_TAG_APC );
+		ExFreePoolWithTag(ListItem, POOL_TAG_APC);
 		goto unlock;
 	}
 
-	while ( entry->next )
+	while (entry->next)
 	{
-		if ( entry->next == ListItem )
+		if (entry->next == ListItem)
 		{
 			entry->next = ListItem->next;
-			ExFreePoolWithTag( ListItem, POOL_TAG_APC );
+			ExFreePoolWithTag(ListItem, POOL_TAG_APC);
 			goto unlock;
 		}
 
@@ -350,5 +350,5 @@ ListRemoveItem(
 	}
 
 unlock:
-	KeReleaseSpinLock( &ListHead->lock, irql);
+	KeReleaseSpinLock(&ListHead->lock, irql);
 }

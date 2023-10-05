@@ -29,68 +29,68 @@
 #define APC_OPERATION_STACKWALK 0x1
 
 STATIC
-NTSTATUS 
-DispatchApcOperation( PAPC_OPERATION_ID Operation )
+NTSTATUS
+DispatchApcOperation(PAPC_OPERATION_ID Operation)
 {
 	NTSTATUS status;
 
-	switch ( Operation->operation_id )
+	switch (Operation->operation_id)
 	{
 	case APC_OPERATION_STACKWALK:
 
-		DEBUG_LOG( "Initiating APC stackwalk operation with operation id %i", Operation->operation_id );
+		DEBUG_LOG("Initiating APC stackwalk operation with operation id %i", Operation->operation_id);
 
 		status = ValidateThreadsViaKernelApc();
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "ValidateThreadsViaKernelApc failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("ValidateThreadsViaKernelApc failed with status %x", status);
 
 		return status;
 
 	default:
-		DEBUG_ERROR( "Invalid operation ID passed" );
+		DEBUG_ERROR("Invalid operation ID passed");
 		return STATUS_INVALID_PARAMETER;
 	}
 
 	return status;
 }
 
-NTSTATUS 
+NTSTATUS
 DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
 	_In_ PIRP Irp
 )
 {
-	UNREFERENCED_PARAMETER( DriverObject );
+	UNREFERENCED_PARAMETER(DriverObject);
 
 	NTSTATUS status = STATUS_SUCCESS;
-	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation( Irp );
+	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation(Irp);
 	HANDLE handle;
 	PKTHREAD thread;
 	BOOLEAN security_flag = FALSE;
 
 	/*
 	* The purpose of this is to prevent programs from opening a handle to our driver
-	* and trying to fuzz the IOCTL access or codes. This definitely isnt a perfect 
+	* and trying to fuzz the IOCTL access or codes. This definitely isnt a perfect
 	* solution though... xD
 	*/
-	ReadProcessInitialisedConfigFlag( &security_flag );
+	ReadProcessInitialisedConfigFlag(&security_flag);
 
-	if ( security_flag == FALSE &&
-		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH )
+	if (security_flag == FALSE &&
+		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
 	{
 		status = STATUS_ABANDONED;
 		goto end;
 	}
 
-	switch ( stack_location->Parameters.DeviceIoControl.IoControlCode )
+	switch (stack_location->Parameters.DeviceIoControl.IoControlCode)
 	{
 	case IOCCTL_RUN_NMI_CALLBACKS:
 
-		status = HandleNmiIOCTL( Irp );
+		status = HandleNmiIOCTL(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "RunNmiCallbacks failed with status %lx", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("RunNmiCallbacks failed with status %lx", status);
 
 		break;
 
@@ -114,9 +114,9 @@ DeviceControl(
 			Irp
 		);
 
-		if ( !NT_SUCCESS( status ) )
+		if (!NT_SUCCESS(status))
 		{
-			DEBUG_ERROR( "Failed to start thread to validate system drivers" );
+			DEBUG_ERROR("Failed to start thread to validate system drivers");
 			goto end;
 		}
 
@@ -135,20 +135,20 @@ DeviceControl(
 			NULL
 		);
 
-		if ( !NT_SUCCESS( status ) )
+		if (!NT_SUCCESS(status))
 		{
-			DEBUG_ERROR( "ObReferenceObjectbyhandle failed with status %lx", status );
-			ZwClose( handle );
+			DEBUG_ERROR("ObReferenceObjectbyhandle failed with status %lx", status);
+			ZwClose(handle);
 			goto end;
 		}
 
 		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
 		PAGED_CODE();
 
-		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );
+		KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
 
-		ZwClose( handle );
-		ObDereferenceObject( thread );
+		ZwClose(handle);
+		ObDereferenceObject(thread);
 
 		break;
 
@@ -156,44 +156,44 @@ DeviceControl(
 
 		status = InitialiseProcessConfigOnProcessLaunch(Irp);
 
-		if ( !NT_SUCCESS( status ) )
+		if (!NT_SUCCESS(status))
 		{
-			DEBUG_ERROR( "Failed to initialise driver config on proc launch with status %x", status );
+			DEBUG_ERROR("Failed to initialise driver config on proc launch with status %x", status);
 			goto end;
 		}
 
 		status = InitiateDriverCallbacks();
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "InitiateDriverCallbacks failed with status %x", status );
-		
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("InitiateDriverCallbacks failed with status %x", status);
+
 		break;
 
 	case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
 
 		status = QueryActiveApcContextsForCompletion();
 
-			if ( !NT_SUCCESS( status ) )
-				DEBUG_ERROR( "QueryActiveApcContextsForCompletion filed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("QueryActiveApcContextsForCompletion filed with status %x", status);
 
 		status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "Failed to handle period callback report queue" );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("Failed to handle period callback report queue");
 
 		break;
 
 	case IOCTL_PERFORM_VIRTUALIZATION_CHECK:
 
-		status = PerformVirtualizationDetection( Irp );
+		status = PerformVirtualizationDetection(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "PerformVirtualizationDetection failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("PerformVirtualizationDetection failed with status %x", status);
 
 		break;
 
 	case IOCTL_ENUMERATE_HANDLE_TABLES:
-		
+
 		/* can maybe implement this better so we can extract a status value */
 		EnumerateProcessListWithCallbackFunction(
 			EnumerateProcessHandles,
@@ -214,9 +214,9 @@ DeviceControl(
 			Irp
 		);
 
-		if ( !NT_SUCCESS( status ) )
+		if (!NT_SUCCESS(status))
 		{
-			DEBUG_ERROR( "Failed to start system thread to get executable regions" );
+			DEBUG_ERROR("Failed to start system thread to get executable regions");
 			goto end;
 		}
 
@@ -229,31 +229,31 @@ DeviceControl(
 			NULL
 		);
 
-		if ( !NT_SUCCESS( status ) )
+		if (!NT_SUCCESS(status))
 		{
-			DEBUG_ERROR( "ObReferenceObjectbyhandle failed with status %lx", status );
-			ZwClose( handle );
+			DEBUG_ERROR("ObReferenceObjectbyhandle failed with status %lx", status);
+			ZwClose(handle);
 			goto end;
 		}
 
 		PAGED_CODE();
 
-		KeWaitForSingleObject( thread, Executive, KernelMode, FALSE, NULL );;
+		KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);;
 
-		ZwClose( handle );
-		ObDereferenceObject( thread );
+		ZwClose(handle);
+		ObDereferenceObject(thread);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "Failed to retrieve executable regions" );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("Failed to retrieve executable regions");
 
 		break;
 
 	case IOCTL_REQUEST_TOTAL_MODULE_SIZE:
 
-		status = GetDriverImageSize( Irp );
+		status = GetDriverImageSize(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "Failed to retrieve driver image size" );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("Failed to retrieve driver image size");
 
 		break;
 
@@ -266,16 +266,16 @@ DeviceControl(
 
 	case IOCTL_SCAN_FOR_UNLINKED_PROCESS:
 
-		status = FindUnlinkedProcesses( Irp );
+		status = FindUnlinkedProcesses(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "FindUNlinekdProcesses failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("FindUNlinekdProcesses failed with status %x", status);
 
 		break;
 
 	case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD:
 
-		ValidateKPCRBThreads( Irp );
+		ValidateKPCRBThreads(Irp);
 
 		break;
 
@@ -283,8 +283,8 @@ DeviceControl(
 
 		status = VerifyInMemoryImageVsDiskImage();
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "VerifyInMemoryImageVsDisk failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("VerifyInMemoryImageVsDisk failed with status %x", status);
 
 		break;
 
@@ -296,30 +296,30 @@ DeviceControl(
 
 	case IOCTL_VALIDATE_PROCESS_LOADED_MODULE:
 
-		status = ValidateProcessLoadedModule( Irp );
+		status = ValidateProcessLoadedModule(Irp);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "ValidateProcessLoadedModule failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("ValidateProcessLoadedModule failed with status %x", status);
 
 		break;
 
 	case IOCTL_REQUEST_HARDWARE_INFORMATION:;
 
 		PSYSTEM_INFORMATION system_information = NULL;
-		GetDriverConfigSystemInformation( &system_information );
+		GetDriverConfigSystemInformation(&system_information);
 
-		if ( system_information == NULL )
+		if (system_information == NULL)
 		{
-			DEBUG_ERROR( "GetDriverConfigSystemInformation failed" );
+			DEBUG_ERROR("GetDriverConfigSystemInformation failed");
 			goto end;
 		}
 
-		Irp->IoStatus.Information = sizeof( SYSTEM_INFORMATION );
+		Irp->IoStatus.Information = sizeof(SYSTEM_INFORMATION);
 
 		RtlCopyMemory(
 			Irp->AssociatedIrp.SystemBuffer,
 			system_information,
-			sizeof( SYSTEM_INFORMATION )
+			sizeof(SYSTEM_INFORMATION)
 		);
 
 		break;
@@ -328,33 +328,33 @@ DeviceControl(
 
 		PAPC_OPERATION_ID operation = (PAPC_OPERATION_ID)Irp->AssociatedIrp.SystemBuffer;
 
-		status = DispatchApcOperation( operation );
+		status = DispatchApcOperation(operation);
 
-		if ( !NT_SUCCESS( status ) )
-			DEBUG_ERROR( "DispatchApcOperation failed with status %x", status );
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("DispatchApcOperation failed with status %x", status);
 
 		break;
 
 
 	default:
-		DEBUG_ERROR( "Invalid IOCTL passed to driver" );
+		DEBUG_ERROR("Invalid IOCTL passed to driver");
 		status = STATUS_INVALID_PARAMETER;
 		break;
 	}
 
 end:
 	Irp->IoStatus.Status = status;
-	IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;
 }
 
-NTSTATUS 
+NTSTATUS
 DeviceClose(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 )
 {
-	DEBUG_LOG( "Handle closed to DonnaAC" );
+	DEBUG_LOG("Handle closed to DonnaAC");
 
 	/*
 	* For now its fine, but this will need to be moved to our process load callbacks
@@ -366,17 +366,17 @@ DeviceClose(
 	ClearProcessConfigOnProcessTermination();
 	UnregisterCallbacksOnProcessTermination();
 
-	IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;
 }
 
-NTSTATUS 
+NTSTATUS
 DeviceCreate(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_In_ PIRP Irp
 )
 {
-	DEBUG_LOG( "Handle opened to DonnaAC" );
-	IoCompleteRequest( Irp, IO_NO_INCREMENT );
+	DEBUG_LOG("Handle opened to DonnaAC");
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;
 }

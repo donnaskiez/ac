@@ -11,7 +11,7 @@ typedef struct _QUEUE_NODE
 	struct _QUEUE_NODE* next;
 	PVOID data;
 
-}QUEUE_NODE, *PQUEUE_NODE;
+}QUEUE_NODE, * PQUEUE_NODE;
 
 typedef struct QUEUE_HEAD
 {
@@ -20,7 +20,7 @@ typedef struct QUEUE_HEAD
 	KSPIN_LOCK lock;
 	INT entries;
 
-}QUEUE_HEAD, *PQUEUE_HEAD;
+}QUEUE_HEAD, * PQUEUE_HEAD;
 
 typedef struct _GLOBAL_REPORT_QUEUE_HEADER
 {
@@ -49,52 +49,52 @@ typedef struct _LIST_HEAD
 
 #define LIST_POOL_TAG 'list'
 
-VOID 
+VOID
 QueuePush(
 	_In_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 );
 
-PVOID 
-QueuePop( 
+PVOID
+QueuePop(
 	_In_ PQUEUE_HEAD Head
 );
 
-VOID 
+VOID
 InitialiseGlobalReportQueue(
 	_In_ PBOOLEAN Status
 );
 
-VOID 
+VOID
 InsertReportToQueue(
 	_In_ PVOID Report
 );
 
-NTSTATUS 
+NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
 	_In_ PIRP Irp
 );
 
-VOID 
+VOID
 FreeGlobalReportQueueObjects();
 
-VOID 
+VOID
 ListInit(
 	_In_ PLIST_HEAD ListHead
 );
 
-PLIST_ITEM 
+PLIST_ITEM
 ListInsert(
 	_In_ PLIST_HEAD ListHead,
 	_In_ PLIST_ITEM Data
 );
 
-PVOID 
+PVOID
 ListRemoveFirst(
 	_In_ PLIST_HEAD ListHead
 );
 
-PVOID 
+PVOID
 ListRemoveItem(
 	_In_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem

@@ -22,9 +22,9 @@ typedef struct _MODULE_VALIDATION_FAILURE
 	INT report_type;
 	UINT64 driver_base_address;
 	UINT64 driver_size;
-	CHAR driver_name[ 128 ];
+	CHAR driver_name[128];
 
-}MODULE_VALIDATION_FAILURE, *PMODULE_VALIDATION_FAILURE;
+}MODULE_VALIDATION_FAILURE, * PMODULE_VALIDATION_FAILURE;
 
 #define APC_STACKWALK_BUFFER_SIZE 4096
 
@@ -33,15 +33,15 @@ typedef struct _APC_STACKWALK_REPORT
 	INT report_code;
 	UINT64 kthread_address;
 	UINT64 invalid_rip;
-	CHAR driver[ APC_STACKWALK_BUFFER_SIZE ];
+	CHAR driver[APC_STACKWALK_BUFFER_SIZE];
 
-}APC_STACKWALK_REPORT, *PAPC_STACKWALK_REPORT;
+}APC_STACKWALK_REPORT, * PAPC_STACKWALK_REPORT;
 
 typedef struct _APC_OPERATION_ID
 {
 	int operation_id;
 
-}APC_OPERATION_ID, *PAPC_OPERATION_ID;
+}APC_OPERATION_ID, * PAPC_OPERATION_ID;
 
 /* system modules information */
 
@@ -69,23 +69,23 @@ typedef struct _APC_STACKWALK_CONTEXT
 
 }APC_STACKWALK_CONTEXT, * PAPC_STACKWALK_CONTEXT;
 
-NTSTATUS 
+NTSTATUS
 GetSystemModuleInformation(
 	_Inout_ PSYSTEM_MODULES ModuleInformation
 );
 
-NTSTATUS 
+NTSTATUS
 HandleValidateDriversIOCTL(
 	_In_ PIRP Irp
 );
 
-PRTL_MODULE_EXTENDED_INFO 
+PRTL_MODULE_EXTENDED_INFO
 FindSystemModuleByName(
 	_In_ LPCSTR ModuleName,
 	_In_ PSYSTEM_MODULES SystemModules
 );
 
-NTSTATUS 
+NTSTATUS
 HandleNmiIOCTL(
 	_In_ PIRP Irp
 );
@@ -95,7 +95,7 @@ FreeApcContextStructure(
 	_Inout_ PAPC_CONTEXT_HEADER Context
 );
 
-NTSTATUS 
+NTSTATUS
 ValidateThreadsViaKernelApc();
 
 VOID
