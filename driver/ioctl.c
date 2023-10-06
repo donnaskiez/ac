@@ -9,6 +9,15 @@
 #include "queue.h"
 #include "hv.h"
 
+STATIC NTSTATUS DispatchApcOperation(PAPC_OPERATION_ID Operation);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, DispatchApcOperation)
+#pragma alloc_text(PAGE, DeviceControl)
+#pragma alloc_text(PAGE, DeviceClose)
+#pragma alloc_text(PAGE, DeviceCreate)
+#endif
+
 #define IOCCTL_RUN_NMI_CALLBACKS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2001, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_DRIVER_OBJECTS CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2002, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2004, METHOD_BUFFERED, FILE_ANY_ACCESS)

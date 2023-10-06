@@ -10,6 +10,48 @@
 #include "modules.h"
 #include "integrity.h"
 
+STATIC NTSTATUS AllocateCallbackStructure();
+STATIC VOID CleanupDriverCallbacksOnDriverUnload();
+STATIC NTSTATUS RegistryPathQueryCallbackRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData, 
+	IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext);
+STATIC VOID FreeDriverConfigurationStringBuffers();
+STATIC BOOLEAN FreeAllApcContextStructures();
+STATIC VOID DriverUnload(_In_ PDRIVER_OBJECT DriverObject);
+STATIC VOID InitialiseProcessConfigOnDriverEntry();
+STATIC VOID CleanupDriverConfigOnUnload();
+STATIC NTSTATUS InitialiseDriverConfigOnDriverEntry(_In_ PUNICODE_STRING RegistryPath);
+NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(INIT, DriverEntry)
+#pragma alloc_text(PAGE, EnableCallbackRoutinesOnProcessRun)
+#pragma alloc_text(PAGE, AllocateCallbackStructure)
+#pragma alloc_text(PAGE, UnregisterCallbacksOnProcessTermination)
+#pragma alloc_text(PAGE, CleanupDriverCallbacksOnDriverUnload)
+#pragma alloc_text(PAGE, GetCallbackConfigStructure)
+#pragma alloc_text(PAGE, InsertApcContext)
+#pragma alloc_text(PAGE, GetApcContext)
+#pragma alloc_text(PAGE, GetApcContextByIndex)
+#pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
+#pragma alloc_text(PAGE, GetProtectedProcessEProcess)
+#pragma alloc_text(PAGE, GetProtectedProcessId)
+#pragma alloc_text(PAGE, ClearProcessConfigOnProcessTermination)
+#pragma alloc_text(PAGE, GetDriverName)
+#pragma alloc_text(PAGE, GetDriverPath)
+#pragma alloc_text(PAGE, GetDriverRegistryPath)
+#pragma alloc_text(PAGE, GetDriverDeviceName)
+#pragma alloc_text(PAGE, GetDriverSymbolicLink)
+#pragma alloc_text(PAGE, GetDriverConfigSystemInformation)
+#pragma alloc_text(PAGE, RegistryPathQueryCallbackRoutine)
+#pragma alloc_text(PAGE, FreeDriverConfigurationStringBuffers)
+#pragma alloc_text(PAGE, InitialiseDriverConfigOnDriverEntry)
+#pragma alloc_text(PAGE, InitialiseProcessConfigOnProcessLaunch)
+#pragma alloc_text(PAGE, InitialiseProcessConfigOnDriverEntry)
+#pragma alloc_text(PAGE, CleanupDriverConfigOnUnload)
+#pragma alloc_text(PAGE, DriverUnload)
+#pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
+#endif
+
 /*
 * This structure is strictly for driver related stuff
 * that should only be written at driver entry.
@@ -51,6 +93,14 @@ PROCESS_CONFIG process_config = { 0 };
 
 #define POOL_TAG_CONFIG 'conf'
 
+/*
+* The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
+* to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have moved
+* them here. This way, we can make use of both locks (which is very ugly and I am pretty sure means
+* I have made a mistake implementation wise but alas) ensuring we get rid of any race conditions
+* aswell as the sturcture being paged out as we allocate in a non-paged pool meaning theres no
+* chance our mutex will cause an IRQL bug check due to being paged out during acquisition.
+*/
 NTSTATUS
 EnableCallbackRoutinesOnProcessRun()
 {
@@ -122,26 +172,6 @@ AllocateCallbackStructure()
 	return STATUS_SUCCESS;
 }
 
-/*
-* The question is, What happens if we attempt to register our callbacks after we 
-* unregister them but before we free the pool? Hm.. No Good.
-* 
-* Okay to solve this well acquire the driver lock aswell, we could also just 
-* store the structure in the .data section but i ceebs atm.
-* 
-* This definitely doesn't seem optimal, but it works ...
-*/
-STATIC
-VOID
-CleanupDriverCallbacksOnDriverUnload()
-{
-	/* UnRegisterCallbacksOnProcessTermination holds the driver lock, so must acquire it after */
-	UnregisterCallbacksOnProcessTermination();
-	KeAcquireGuardedMutex(&driver_config.lock);
-	ExFreePoolWithTag(driver_config.callback_config, POOL_TAG_CONFIG);
-	KeAcquireGuardedMutex(&driver_config.lock);
-}
-
 VOID
 UnregisterCallbacksOnProcessTermination()
 {
@@ -159,6 +189,26 @@ UnregisterCallbacksOnProcessTermination()
 }
 
 /*
+* The question is, What happens if we attempt to register our callbacks after we
+* unregister them but before we free the pool? Hm.. No Good.
+*
+* Okay to solve this well acquire the driver lock aswell, we could also just
+* store the structure in the .data section but i ceebs atm.
+*
+* This definitely doesn't seem optimal, but it works ...
+*/
+STATIC
+VOID
+CleanupDriverCallbacksOnDriverUnload()
+{
+	/* UnRegisterCallbacksOnProcessTermination acquires the driver lock, so must acquire it after */
+	UnregisterCallbacksOnProcessTermination();
+	KeAcquireGuardedMutex(&driver_config.lock);
+	ExFreePoolWithTag(driver_config.callback_config, POOL_TAG_CONFIG);
+	KeReleaseGuardedMutex(&driver_config.lock);
+}
+
+/*
 * Can return a null value if we attempt to read the value is underway whilst we are 
 * freeing the structure, hence the use of the 2 locks.
 */
@@ -167,11 +217,11 @@ GetCallbackConfigStructure(
 	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
 )
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
-	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
-	*CallbackConfiguration = driver_config.callback_config;
-	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
-	KeReleaseGuardedMutex(&driver_config.lock);
+	if (!CallbackConfiguration)
+		return;
+
+	*CallbackConfiguration = NULL;
+	InterlockedExchangePointer(CallbackConfiguration, driver_config.callback_config);
 }
 
 /*
@@ -422,9 +472,11 @@ GetApcContextByIndex(
 	_In_ INT Index
 )
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
-	*Context = driver_config.apc_contexts[Index];
-	KeReleaseGuardedMutex(&driver_config.lock);
+	if (!Context)
+		return;
+
+	*Context = NULL;
+	InterlockedExchangePointer(Context, driver_config.apc_contexts[Index]);
 }
 
 VOID
@@ -448,9 +500,8 @@ GetProtectedProcessEProcess(
 	if (Process == NULL)
 		return;
 
-	KeAcquireGuardedMutex(&process_config.lock);
-	*Process = process_config.protected_process_eprocess;
-	KeReleaseGuardedMutex(&process_config.lock);
+	*Process = NULL;
+	InterlockedExchangePointer(Process, process_config.protected_process_eprocess);
 }
 
 VOID
@@ -484,9 +535,8 @@ GetDriverName(
 	if (DriverName == NULL)
 		return;
 
-	KeAcquireGuardedMutex(&driver_config.lock);
-	*DriverName = driver_config.ansi_driver_name.Buffer;
-	KeReleaseGuardedMutex(&driver_config.lock);
+	*DriverName = NULL;
+	InterlockedExchangePointer(DriverName, driver_config.ansi_driver_name.Buffer);
 }
 
 VOID
@@ -541,9 +591,8 @@ GetDriverConfigSystemInformation(
 	if (SystemInformation == NULL)
 		return;
 
-	KeAcquireGuardedMutex(&driver_config.lock);
-	*SystemInformation = &driver_config.system_information;
-	KeReleaseGuardedMutex(&driver_config.lock);
+	*SystemInformation = NULL;
+	InterlockedExchangePointer(SystemInformation, &driver_config.system_information);
 }
 
 STATIC

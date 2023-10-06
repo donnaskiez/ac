@@ -85,23 +85,53 @@ FreeApcAndDecrementApcCount(
 );
 
 NTSTATUS
-QueryActiveApcContextsForCompletion();
+QueryActiveApcContextsForCompletion(
+
+);
 
 VOID
-TerminateProtectedProcessOnViolation();
+TerminateProtectedProcessOnViolation(
+
+);
 
 VOID
-ClearProcessConfigOnProcessTermination();
+ClearProcessConfigOnProcessTermination(
+	
+);
 
 NTSTATUS
-EnableCallbackRoutinesOnProcessRun();
+EnableCallbackRoutinesOnProcessRun(
+
+);
 
 VOID
-UnregisterCallbacksOnProcessTermination();
+UnregisterCallbacksOnProcessTermination(
+
+);
 
 VOID
 GetCallbackConfigStructure(
 	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
+);
+
+VOID
+GetDriverDeviceName(
+	_Out_ PUNICODE_STRING DeviceName
+);
+
+VOID
+GetDriverRegistryPath(
+	_Out_ PUNICODE_STRING RegistryPath
+);
+
+VOID 
+GetDriverName(
+	_Out_ LPCSTR* DriverName
+);
+
+VOID
+GetDriverSymbolicLink(
+	_Out_ PUNICODE_STRING DeviceSymbolicLink
 );
 
 #endif
