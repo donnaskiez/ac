@@ -94,11 +94,14 @@ ValidateKPCRBThreads(
 	{
 		old_affinity = KeSetSystemAffinityThreadEx((KAFFINITY)(1ull << processor_index));
 
+		while (KeGetCurrentProcessorNumber() != processor_index)
+			YieldProcessor();
+
 		kpcr = __readmsr(IA32_GS_BASE);
 		kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
 		context.current_kpcrb_thread = *(UINT64*)(kprcb + KPCRB_CURRENT_THREAD);
 
-		DEBUG_LOG("Current thread: %llx", context.current_kpcrb_thread);
+		DEBUG_LOG("Proc number: %lx, Current thread: %llx", processor_index, context.current_kpcrb_thread);
 
 		if (!context.current_kpcrb_thread)
 			continue;
@@ -107,6 +110,8 @@ ValidateKPCRBThreads(
 			KPRCBThreadValidationProcessCallback,
 			&context
 		);
+
+		DEBUG_LOG("Found in kthread: %lx, found in pspcid: %lx", (UINT32)context.thread_found_in_kthreadlist, (UINT32)context.thread_found_in_pspcidtable);
 
 		if (context.current_kpcrb_thread == FALSE || context.thread_found_in_pspcidtable == FALSE)
 		{

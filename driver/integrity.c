@@ -1338,6 +1338,8 @@ MeasureReads(
         _enable();
         __writecr8(old_irql);
 
+        DEBUG_LOG("REad average: %llx", read_average);
+
         return read_average / Count;
 }
 
@@ -1362,23 +1364,16 @@ MeasureReads(
 STATIC
 NTSTATUS
 GetAverageReadTimeAtRoutine(
-        _In_ PUNICODE_STRING RoutineName,
+        _In_ PVOID RoutineAddress,
         _Inout_ PUINT64 AverageTime
 )
 {
-        PVOID function_address = NULL;
-
-        if (!RoutineName || !AverageTime)
-                return STATUS_INVALID_PARAMETER;
-
-        function_address = MmGetSystemRoutineAddress(RoutineName);
-
-        if (!function_address)
+        if (!RoutineAddress || !AverageTime)
                 return STATUS_ABANDONED;
 
-        *AverageTime = MeasureReads(function_address, EPT_CHECK_NUM_ITERATIONS);
+        *AverageTime = MeasureReads(RoutineAddress, EPT_CHECK_NUM_ITERATIONS);
 
-        return STATUS_SUCCESS;
+        return *AverageTime == 0 ? STATUS_ABANDONED : STATUS_SUCCESS;
 }
 
 /*
@@ -1417,6 +1412,43 @@ WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT][EPT_MAX_FUNCTION_NAME_L
         L"MmCopyMemory"
 };
 
+/*
+* For whatever reason MmGetSystemRoutineAddress only works once, then every call
+* thereafter fails. So will be storing the routine addresses in arrays.
+*/
+UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT];
+UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT];
+
+STATIC
+NTSTATUS
+InitiateEptFunctionAddressArrays()
+{
+        UNICODE_STRING current_function;
+
+        for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++)
+        {
+                RtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
+                CONTROL_FUNCTION_ADDRESSES[index] = MmGetSystemRoutineAddress(&current_function);
+
+                if (!CONTROL_FUNCTION_ADDRESSES[index])
+                        return STATUS_ABANDONED;
+        }
+
+        for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
+        {
+                RtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
+                PROTECTED_FUNCTION_ADDRESSES[index] = MmGetSystemRoutineAddress(&current_function);
+
+                if (!PROTECTED_FUNCTION_ADDRESSES[index])
+                        return STATUS_ABANDONED;
+        }
+
+        return STATUS_SUCCESS;
+}
+
+/*
+* This maybe needs to be dispatched from a system thread rather then a user mode thread.
+*/
 NTSTATUS
 DetectEptHooksInKeyFunctions()
 {
@@ -1425,50 +1457,54 @@ DetectEptHooksInKeyFunctions()
         UINT64 instruction_time = 0;
         UINT64 control_time_sum = 0;
         UINT64 control_average = 0;
-        UNICODE_STRING current_function;
+
+        status = InitiateEptFunctionAddressArrays();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitiateEptFunctionAddressArrays failed with status %x", status);
+                return status;
+        }
 
         for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++)
         {
-                RtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
-
-                if (!current_function.Buffer)
-                        continue;
-
                 status = GetAverageReadTimeAtRoutine(
-                        &current_function,
+                        CONTROL_FUNCTION_ADDRESSES[index],
                         &instruction_time
                 );
 
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x", status);
-                        RtlZeroMemory(current_function.Buffer, current_function.Length);
                         control_fails += 1;
                         continue;
                 }
 
                 control_time_sum += instruction_time;
-
-                RtlZeroMemory(current_function.Buffer, current_function.Length);
         }
 
-        if (!control_time_sum)
+        DEBUG_LOG("Control time sum: %llx", control_time_sum);
+
+        if (control_time_sum == 0)
+        {
+                DEBUG_ERROR("Control time is null");
                 return STATUS_UNSUCCESSFUL;
+        }
 
         control_average = control_time_sum / (EPT_CONTROL_FUNCTIONS_COUNT - control_fails);
 
-        if (!control_average)
+        DEBUG_LOG("Control average: %llx", control_average);
+
+        if (control_average == 0)
+        {
+                DEBUG_ERROR("Control average time is null");
                 return STATUS_UNSUCCESSFUL;
+        }
 
         for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
         {
-                RtlInitUnicodeString(&current_function, PROTECTED_FUNCTIONS[index]);
-
-                if (!current_function.Buffer)
-                        continue;
-
                 status = GetAverageReadTimeAtRoutine(
-                        &current_function,
+                        PROTECTED_FUNCTION_ADDRESSES[index],
                         &instruction_time
                 );
 
@@ -1481,18 +1517,16 @@ DetectEptHooksInKeyFunctions()
                 /* [+] EPT hook detected at function: ExAllocatePoolWithTag with execution time of: 149b7777777 */
                 if (control_average * EPT_EXECUTION_TIME_MULTIPLIER < instruction_time)
                 {
-                        DEBUG_LOG("EPT hook detected at function: %wZ with execution time of: %llx",
-                                current_function,
+                        DEBUG_LOG("EPT hook detected at function: %llx with execution time of: %llx",
+                                PROTECTED_FUNCTION_ADDRESSES[index],
                                 instruction_time);
 
                         /* close game etc. */
                 }
                 else
                 {
-                        DEBUG_LOG("No ept hook detected at function: %wZ", current_function);
+                        DEBUG_LOG("No ept hook detected at function: %llx", PROTECTED_FUNCTION_ADDRESSES[index]);
                 }
-
-                RtlZeroMemory(current_function.Buffer, current_function.Length);
         }
 
         return status;

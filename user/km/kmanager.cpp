@@ -70,3 +70,8 @@ VOID kernelmode::KManager::CheckForHiddenThreads()
 {
 	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForHiddenThreads(); });
 }
+
+VOID kernelmode::KManager::CheckForEptHooks()
+{
+	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForEptHooks(); });
+}

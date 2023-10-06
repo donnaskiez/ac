@@ -25,6 +25,7 @@
 #define IOCTL_VALIDATE_PROCESS_LOADED_MODULE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2015, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_REQUEST_HARDWARE_INFORMATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2016, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INITIATE_APC_OPERATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2017, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_CHECK_FOR_EPT_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x2018, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -335,6 +336,25 @@ DeviceControl(
 
 		break;
 
+	case IOCTL_CHECK_FOR_EPT_HOOK:
+
+		/*
+		* No need to wait on this thread as if it fails, program will be shut.
+		*/
+		status = PsCreateSystemThread(
+			&handle,
+			PROCESS_ALL_ACCESS,
+			NULL,
+			NULL,
+			NULL,
+			DetectEptHooksInKeyFunctions,
+			NULL
+		);
+
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x", status);
+
+		break;
 
 	default:
 		DEBUG_ERROR("Invalid IOCTL passed to driver");

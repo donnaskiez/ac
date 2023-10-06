@@ -527,6 +527,25 @@ VOID kernelmode::Driver::CheckForHiddenThreads()
 		LOG_ERROR("failed to check for hidden threads %x", GetLastError());
 }
 
+VOID kernelmode::Driver::CheckForEptHooks()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_CHECK_FOR_EPT_HOOK,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if (status == NULL)
+		LOG_ERROR("failed to check for ept hooks %x", GetLastError());
+}
+
 VOID kernelmode::Driver::CheckDriverHeartbeat()
 {
 

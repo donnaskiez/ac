@@ -30,6 +30,7 @@ namespace kernelmode
 		VOID SendClientHardwareInformation();
 		VOID InitiateApcStackwalkOperation();
 		VOID CheckForHiddenThreads();
+		VOID CheckForEptHooks();
 	};
 }
 

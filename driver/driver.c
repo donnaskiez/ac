@@ -747,10 +747,6 @@ DriverEntry(
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
-	UNICODE_STRING string = RTL_CONSTANT_STRING(L"ExAllocatePoolWithTag");
-
-	DetectEptHooksInKeyFunctions();
-
 	DEBUG_LOG("DonnaAC Driver Entry Complete");
 
 	return STATUS_SUCCESS;
