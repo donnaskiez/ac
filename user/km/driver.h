@@ -75,6 +75,7 @@ namespace kernelmode
 		VOID CheckForAttachedThreads();
 		VOID VerifyProcessLoadedModuleExecutableRegions();
 		VOID SendClientHardwareInformation();
+		VOID CheckForHiddenThreads();
 		BOOLEAN InitiateApcOperation( INT OperationId );
 	};
 

@@ -178,6 +178,7 @@ VOID kernelmode::Driver::QueryReportQueue()
 	global::report_structures::ATTACH_PROCESS_REPORT attach_report;
 	global::report_structures::INVALID_PROCESS_ALLOCATION_REPORT allocation_report;
 	global::report_structures::APC_STACKWALK_REPORT apc_report;
+	global::report_structures::HIDDEN_SYSTEM_THREAD_REPORT hidden_report;
 
 	/* allocate enough for the largest report buffer * max reports */
 	buffer_size = 
@@ -233,6 +234,9 @@ VOID kernelmode::Driver::QueryReportQueue()
 			break;
 		case REPORT_APC_STACKWALK:
 			ReportTypeFromReportQueue<global::report_structures::APC_STACKWALK_REPORT>( buffer, &total_size, &apc_report );
+			break;
+		case REPORT_HIDDEN_SYSTEM_THREAD:
+			ReportTypeFromReportQueue<global::report_structures::HIDDEN_SYSTEM_THREAD_REPORT>(buffer, &total_size, &hidden_report);
 			break;
 		default:
 			break;
@@ -483,11 +487,6 @@ VOID kernelmode::Driver::ValidateKPRCBThreads()
 		LOG_ERROR( "failed to validate kpcrb threads with status %x", GetLastError() );
 		return;
 	}
-
-	if ( bytes_returned == NULL )
-		return;
-
-	this->report_interface->ServerSend( &report, bytes_returned, CLIENT_REQUEST_MODULE_INTEGRITY_CHECK );
 }
 
 VOID kernelmode::Driver::CheckForAttachedThreads()
@@ -507,6 +506,25 @@ VOID kernelmode::Driver::CheckForAttachedThreads()
 
 	if ( status == NULL )
 		LOG_ERROR( "failed to check for attached threads %x", GetLastError() );
+}
+
+VOID kernelmode::Driver::CheckForHiddenThreads()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_VALIDATE_KPRCB_CURRENT_THREAD,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if (status == NULL)
+		LOG_ERROR("failed to check for hidden threads %x", GetLastError());
 }
 
 VOID kernelmode::Driver::CheckDriverHeartbeat()

@@ -92,11 +92,13 @@ ValidateKPCRBThreads(
 
 	for (LONG processor_index = 0; processor_index < KeQueryActiveProcessorCount(0); processor_index++)
 	{
-		old_affinity = KeSetSystemAffinityThreadEx((KAFFINITY)(1 << processor_index));
+		old_affinity = KeSetSystemAffinityThreadEx((KAFFINITY)(1ull << processor_index));
 
 		kpcr = __readmsr(IA32_GS_BASE);
 		kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
 		context.current_kpcrb_thread = *(UINT64*)(kprcb + KPCRB_CURRENT_THREAD);
+
+		DEBUG_LOG("Current thread: %llx", context.current_kpcrb_thread);
 
 		if (!context.current_kpcrb_thread)
 			continue;
@@ -108,26 +110,27 @@ ValidateKPCRBThreads(
 
 		if (context.current_kpcrb_thread == FALSE || context.thread_found_in_pspcidtable == FALSE)
 		{
-			Irp->IoStatus.Information = sizeof(HIDDEN_SYSTEM_THREAD_REPORT);
+			PHIDDEN_SYSTEM_THREAD_REPORT report =
+				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(HIDDEN_SYSTEM_THREAD_REPORT), REPORT_POOL_TAG);
 
-			HIDDEN_SYSTEM_THREAD_REPORT report;
-			report.report_code = REPORT_HIDDEN_SYSTEM_THREAD;
-			report.found_in_kthreadlist = context.thread_found_in_kthreadlist;
-			report.found_in_pspcidtable = context.thread_found_in_pspcidtable;
-			report.thread_id = PsGetThreadId(context.current_kpcrb_thread);
-			report.thread_address = context.current_kpcrb_thread;
+			if (!report)
+				goto increment;
+
+			report->report_code = REPORT_HIDDEN_SYSTEM_THREAD;
+			report->found_in_kthreadlist = context.thread_found_in_kthreadlist;
+			report->found_in_pspcidtable = context.thread_found_in_pspcidtable;
+			report->thread_id = PsGetThreadId(context.current_kpcrb_thread);
+			report->thread_address = context.current_kpcrb_thread;
 
 			RtlCopyMemory(
-				report.thread,
+				report->thread,
 				context.current_kpcrb_thread,
-				sizeof(report.thread));
+				sizeof(report->thread));
 
-			RtlCopyMemory(
-				Irp->AssociatedIrp.SystemBuffer,
-				&report,
-				sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+			InsertReportToQueue(report);
 		}
 
+	increment:
 		KeRevertToUserAffinityThreadEx(old_affinity);
 	}
 }
@@ -167,13 +170,11 @@ DetectAttachedThreadsProcessCallback(
 		{
 			DEBUG_LOG("Program attached to notepad: %llx", (UINT64)current_thread);
 
-			PATTACH_PROCESS_REPORT report = ExAllocatePool2(
-				POOL_FLAG_NON_PAGED, 
-				sizeof(ATTACH_PROCESS_REPORT), 
-				REPORT_POOL_TAG);
+			PATTACH_PROCESS_REPORT report = 
+				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);
 
 			if (!report)
-				return;
+				goto increment;
 
 			report->report_code = REPORT_ILLEGAL_ATTACH_PROCESS;
 			report->thread_id = PsGetThreadId(current_thread);
@@ -182,6 +183,7 @@ DetectAttachedThreadsProcessCallback(
 			InsertReportToQueue(report);
 		}
 
+	increment:
 		thread_list_entry = thread_list_entry->Flink;
 	}
 }

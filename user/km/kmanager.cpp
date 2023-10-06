@@ -65,3 +65,8 @@ VOID kernelmode::KManager::InitiateApcStackwalkOperation()
 {
 	this->driver_interface->InitiateApcOperation( kernelmode::APC_OPERATION_IDS::operation_stackwalk );
 }
+
+VOID kernelmode::KManager::CheckForHiddenThreads()
+{
+	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForHiddenThreads(); });
+}

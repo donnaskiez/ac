@@ -237,6 +237,17 @@ HandlePeriodicGlobalReportQueueQuery(
 			total_size += sizeof(APC_STACKWALK_REPORT);
 			break;
 
+		case REPORT_HIDDEN_SYSTEM_THREAD:
+
+			RtlCopyMemory(
+				(UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size,
+				report,
+				sizeof(HIDDEN_SYSTEM_THREAD_REPORT)
+			);
+
+			total_size += sizeof(HIDDEN_SYSTEM_THREAD_REPORT);
+			break;
+
 		}
 
 		/* QueuePop frees the node, but we still need to free the returned data */

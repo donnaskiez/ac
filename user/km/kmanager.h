@@ -29,6 +29,7 @@ namespace kernelmode
 		VOID ValidateProcessModules();
 		VOID SendClientHardwareInformation();
 		VOID InitiateApcStackwalkOperation();
+		VOID CheckForHiddenThreads();
 	};
 }
 
