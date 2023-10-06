@@ -13,9 +13,6 @@
 /*
 * This structure is strictly for driver related stuff
 * that should only be written at driver entry.
-*
-* Note that the lock isnt really needed here but Im using one
-* just in case c:
 */
 
 #define MAXIMUM_APC_CONTEXTS 10
@@ -30,6 +27,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
 	PVOID apc_contexts[MAXIMUM_APC_CONTEXTS];
+	PCALLBACK_CONFIGURATION callback_config;
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, * PDRIVER_CONFIG;
@@ -50,6 +48,131 @@ typedef struct _PROCESS_CONFIG
 
 DRIVER_CONFIG driver_config = { 0 };
 PROCESS_CONFIG process_config = { 0 };
+
+#define POOL_TAG_CONFIG 'conf'
+
+NTSTATUS
+EnableCallbackRoutinesOnProcessRun()
+{
+	NTSTATUS status;
+
+	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
+
+	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
+	OB_OPERATION_REGISTRATION operation_registration = { 0 };
+
+	operation_registration.ObjectType = PsProcessType;
+	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
+	operation_registration.PreOperation = ObPreOpCallbackRoutine;
+	operation_registration.PostOperation = ObPostOpCallbackRoutine;
+
+	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
+	callback_registration.OperationRegistration = &operation_registration;
+	callback_registration.OperationRegistrationCount = 1;
+	callback_registration.RegistrationContext = NULL;
+
+	status = ObRegisterCallbacks(
+		&callback_registration,
+		&driver_config.callback_config->registration_handle
+	);
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("failed to launch obregisters with status %x", status);
+		goto end;
+	}
+
+	//status = PsSetCreateProcessNotifyRoutine(
+	//	ProcessCreateNotifyRoutine,
+	//	FALSE
+	//);
+
+	//if ( !NT_SUCCESS( status ) )
+	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
+
+end:
+	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
+	KeReleaseGuardedMutex(&driver_config.lock);
+	return status;
+}
+
+STATIC
+NTSTATUS
+AllocateCallbackStructure()
+{
+	KeAcquireGuardedMutex(&driver_config.lock);
+
+	driver_config.callback_config =
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(CALLBACK_CONFIGURATION), POOL_TAG_CONFIG);
+
+	if (!driver_config.callback_config)
+	{
+		KeReleaseGuardedMutex(&driver_config.lock);
+		return STATUS_MEMORY_NOT_ALLOCATED;
+	}
+
+	/*
+	* This mutex ensures we don't unregister our ObRegisterCallbacks while
+	* the callback function is running since this might cause some funny stuff
+	* to happen. Better to be safe then sorry :)
+	*/
+	KeInitializeGuardedMutex(&driver_config.callback_config->mutex);
+	KeReleaseGuardedMutex(&driver_config.lock);
+	return STATUS_SUCCESS;
+}
+
+/*
+* The question is, What happens if we attempt to register our callbacks after we 
+* unregister them but before we free the pool? Hm.. No Good.
+* 
+* Okay to solve this well acquire the driver lock aswell, we could also just 
+* store the structure in the .data section but i ceebs atm.
+* 
+* This definitely doesn't seem optimal, but it works ...
+*/
+STATIC
+VOID
+CleanupDriverCallbacksOnDriverUnload()
+{
+	/* UnRegisterCallbacksOnProcessTermination holds the driver lock, so must acquire it after */
+	UnregisterCallbacksOnProcessTermination();
+	KeAcquireGuardedMutex(&driver_config.lock);
+	ExFreePoolWithTag(driver_config.callback_config, POOL_TAG_CONFIG);
+	KeAcquireGuardedMutex(&driver_config.lock);
+}
+
+VOID
+UnregisterCallbacksOnProcessTermination()
+{
+	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
+
+	if (driver_config.callback_config->registration_handle)
+	{
+		ObUnRegisterCallbacks(driver_config.callback_config->registration_handle);
+		driver_config.callback_config->registration_handle = NULL;
+	}
+
+	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
+	KeReleaseGuardedMutex(&driver_config.lock);
+}
+
+/*
+* Can return a null value if we attempt to read the value is underway whilst we are 
+* freeing the structure, hence the use of the 2 locks.
+*/
+VOID
+GetCallbackConfigStructure(
+	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
+)
+{
+	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
+	*CallbackConfiguration = driver_config.callback_config;
+	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
+	KeReleaseGuardedMutex(&driver_config.lock);
+}
 
 /*
 * The driver config structure holds an array of pointers to APC context structures. These
@@ -580,6 +703,15 @@ InitialiseDriverConfigOnDriverEntry(
 		return status;
 	}
 
+	status = AllocateCallbackStructure();
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("AllocateCallbackStructure failed with status %x", status);
+		FreeDriverConfigurationStringBuffers();
+		return status;
+	}
+
 	DEBUG_LOG("Motherboard serial: %s", driver_config.system_information.motherboard_serial);
 	DEBUG_LOG("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
 
@@ -592,8 +724,8 @@ InitialiseProcessConfigOnProcessLaunch(
 )
 {
 	NTSTATUS status;
-	PDRIVER_INITIATION_INFORMATION information;
 	PEPROCESS eprocess;
+	PDRIVER_INITIATION_INFORMATION information;
 
 	information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
@@ -636,18 +768,21 @@ DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
 {
+	DEBUG_LOG("Unloading driver...");
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	//QueryActiveApcContextsForCompletion();
 
 	/* dont unload while we have active APC operations */
-	//while ( !FreeAllApcContextStructures() )
-	//	YieldProcessor();
+	while (FreeAllApcContextStructures() == FALSE)
+		YieldProcessor();
 
 	/* This is safe to call even if the callbacks have already been disabled */
-	//UnregisterCallbacksOnProcessTermination();
+	CleanupDriverCallbacksOnDriverUnload();
 
-	//CleanupDriverConfigOnUnload();
-	//IoDeleteDevice( DriverObject->DeviceObject );
+	CleanupDriverConfigOnUnload();
+	IoDeleteDevice(DriverObject->DeviceObject);
+
+	DEBUG_LOG("Driver unloaded");
 }
 
 VOID

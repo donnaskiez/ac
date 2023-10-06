@@ -43,19 +43,40 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
         while (!GetAsyncKeyState(VK_DELETE))
         {
-                int seed = (rand() % 3);
+                int seed = (rand() % 10);
 
                 std::cout << "Seed: " << seed << std::endl;
 
                 switch (seed)
                 {
                 case 0:
-                        kmanager.CheckForAttachedThreads();
+                        kmanager.EnumerateHandleTables();
                         break;
                 case 1:
-                        kmanager.CheckForHiddenThreads();
+                        kmanager.PerformIntegrityCheck();
                         break;
                 case 2:
+                        kmanager.ScanPoolsForUnlinkedProcesses();
+                        break;
+                case 3:
+                        kmanager.VerifySystemModules();
+                        break;
+                case 4:
+                        kmanager.ValidateProcessModules();
+                        break;
+                case 5:
+                        kmanager.RunNmiCallbacks();
+                        break;
+                case 6:
+                        kmanager.CheckForAttachedThreads();
+                        break;
+                case 7:
+                        //kmanager.InitiateApcStackwalkOperation();
+                        break;
+                case 8:
+                        kmanager.CheckForHiddenThreads();
+                        break;
+                case 9:
                         kmanager.CheckForEptHooks();
                         break;
                 }
@@ -64,51 +85,6 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
                 std::this_thread::sleep_for(std::chrono::seconds(10));
         }
-
-        //while (!GetAsyncKeyState(VK_DELETE))
-        //{
-        //        int seed = (rand() % 10);
-
-        //        std::cout << "Seed: " << seed << std::endl;
-
-        //        switch (seed)
-        //        {
-        //        case 0:
-        //                kmanager.EnumerateHandleTables();
-        //                break;
-        //        case 1:
-        //                kmanager.PerformIntegrityCheck();
-        //                break;
-        //        case 2:
-        //                kmanager.ScanPoolsForUnlinkedProcesses();
-        //                break;
-        //        case 3:
-        //                kmanager.VerifySystemModules();
-        //                break;
-        //        case 4:
-        //                kmanager.ValidateProcessModules();
-        //                break;
-        //        case 5:
-        //                kmanager.RunNmiCallbacks();
-        //                break;
-        //        case 6:
-        //                kmanager.CheckForAttachedThreads();
-        //                break;
-        //        case 7:
-        //                kmanager.InitiateApcStackwalkOperation();
-        //                break;
-        //        case 8:
-        //                kmanager.CheckForHiddenThreads();
-        //                break;
-        //        case 9:
-        //                kmanager.CheckForEptHooks();
-        //                break;
-        //        }
-
-        //        kmanager.MonitorCallbackReports();
-
-        //        std::this_thread::sleep_for(std::chrono::seconds(10));
-        //}
 
         fclose(stdout);
         fclose(stdin);

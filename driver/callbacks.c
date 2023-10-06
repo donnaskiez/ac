@@ -6,9 +6,6 @@
 #include "pool.h"
 #include "thread.h"
 
-CALLBACK_CONFIGURATION configuration = { 0 };
-
-STATIC
 VOID
 ObPostOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
@@ -18,7 +15,6 @@ ObPostOpCallbackRoutine(
 
 }
 
-STATIC
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
@@ -46,9 +42,14 @@ ObPreOpCallbackRoutine(
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
 	LPCSTR protected_process_name;
+	PCALLBACK_CONFIGURATION configuration = NULL;
 
-	KeAcquireGuardedMutex(&configuration.mutex);
+	GetCallbackConfigStructure(&configuration);
 
+	if (!configuration)
+		return OB_PREOP_SUCCESS;
+
+	KeAcquireGuardedMutex(&configuration->mutex);
 	GetProtectedProcessId(&protected_process_id);
 	GetProtectedProcessEProcess(&protected_process);
 
@@ -110,7 +111,7 @@ ObPreOpCallbackRoutine(
 
 end:
 
-	KeReleaseGuardedMutex(&configuration.mutex);
+	KeReleaseGuardedMutex(&configuration->mutex);
 	return OB_PREOP_SUCCESS;
 }
 
@@ -404,68 +405,4 @@ EnumerateProcessListWithCallbackFunction(
 		process_list_entry = process_list_entry->Flink;
 
 	} while (process_list_entry != process_list_head->Blink);
-}
-
-NTSTATUS
-InitiateDriverCallbacks()
-{
-	NTSTATUS status;
-
-	/*
-	* This mutex ensures we don't unregister our ObRegisterCallbacks while
-	* the callback function is running since this might cause some funny stuff
-	* to happen. Better to be safe then sorry :)
-	*/
-	KeInitializeGuardedMutex(&configuration.mutex);
-
-	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
-	OB_OPERATION_REGISTRATION operation_registration = { 0 };
-
-	operation_registration.ObjectType = PsProcessType;
-	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
-	operation_registration.PreOperation = ObPreOpCallbackRoutine;
-	operation_registration.PostOperation = ObPostOpCallbackRoutine;
-
-	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
-	callback_registration.OperationRegistration = &operation_registration;
-	callback_registration.OperationRegistrationCount = 1;
-	callback_registration.RegistrationContext = NULL;
-
-	status = ObRegisterCallbacks(
-		&callback_registration,
-		&configuration.registration_handle
-	);
-
-	if (!NT_SUCCESS(status))
-	{
-		DEBUG_ERROR("failed to launch obregisters with status %x", status);
-		return status;
-	}
-
-	//status = PsSetCreateProcessNotifyRoutine(
-	//	ProcessCreateNotifyRoutine,
-	//	FALSE
-	//);
-
-	//if ( !NT_SUCCESS( status ) )
-	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
-
-	return status;
-}
-
-VOID
-UnregisterCallbacksOnProcessTermination()
-{
-	DEBUG_LOG("Process closed, unregistering callbacks");
-	KeAcquireGuardedMutex(&configuration.mutex);
-
-	if (configuration.registration_handle == NULL)
-	{
-		KeReleaseGuardedMutex(&configuration.mutex);
-		return;
-	}
-
-	ObUnRegisterCallbacks(configuration.registration_handle);
-	configuration.registration_handle = NULL;
-	KeReleaseGuardedMutex(&configuration.mutex);
 }

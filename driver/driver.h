@@ -26,6 +26,13 @@ typedef struct _SYSTEM_INFORMATION
 
 }SYSTEM_INFORMATION, * PSYSTEM_INFORMATION;
 
+typedef struct _CALLBACKS_CONFIGURATION
+{
+	PVOID registration_handle;
+	KGUARDED_MUTEX mutex;
+
+}CALLBACK_CONFIGURATION, * PCALLBACK_CONFIGURATION;
+
 NTSTATUS InitialiseProcessConfigOnProcessLaunch(
 	_In_ PIRP Irp
 );
@@ -85,5 +92,16 @@ TerminateProtectedProcessOnViolation();
 
 VOID
 ClearProcessConfigOnProcessTermination();
+
+NTSTATUS
+EnableCallbackRoutinesOnProcessRun();
+
+VOID
+UnregisterCallbacksOnProcessTermination();
+
+VOID
+GetCallbackConfigStructure(
+	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
+);
 
 #endif

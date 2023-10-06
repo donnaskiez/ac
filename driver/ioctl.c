@@ -163,7 +163,7 @@ DeviceControl(
 			goto end;
 		}
 
-		status = InitiateDriverCallbacks();
+		status = EnableCallbackRoutinesOnProcessRun();
 
 		if (!NT_SUCCESS(status))
 			DEBUG_ERROR("InitiateDriverCallbacks failed with status %x", status);
@@ -338,18 +338,7 @@ DeviceControl(
 
 	case IOCTL_CHECK_FOR_EPT_HOOK:
 
-		/*
-		* No need to wait on this thread as if it fails, program will be shut.
-		*/
-		status = PsCreateSystemThread(
-			&handle,
-			PROCESS_ALL_ACCESS,
-			NULL,
-			NULL,
-			NULL,
-			DetectEptHooksInKeyFunctions,
-			NULL
-		);
+		status = DetectEptHooksInKeyFunctions();
 
 		if (!NT_SUCCESS(status))
 			DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x", status);

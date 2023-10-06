@@ -1414,10 +1414,11 @@ WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT][EPT_MAX_FUNCTION_NAME_L
 
 /*
 * For whatever reason MmGetSystemRoutineAddress only works once, then every call
-* thereafter fails. So will be storing the routine addresses in arrays.
+* thereafter fails. So will be storing the routine addresses in arrays since they
+* dont change once the kernel is loaded.
 */
-UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT];
-UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT];
+UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT] = { 0 };
+UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = { 0 };
 
 STATIC
 NTSTATUS
@@ -1446,9 +1447,6 @@ InitiateEptFunctionAddressArrays()
         return STATUS_SUCCESS;
 }
 
-/*
-* This maybe needs to be dispatched from a system thread rather then a user mode thread.
-*/
 NTSTATUS
 DetectEptHooksInKeyFunctions()
 {
@@ -1483,23 +1481,13 @@ DetectEptHooksInKeyFunctions()
                 control_time_sum += instruction_time;
         }
 
-        DEBUG_LOG("Control time sum: %llx", control_time_sum);
-
         if (control_time_sum == 0)
-        {
-                DEBUG_ERROR("Control time is null");
                 return STATUS_UNSUCCESSFUL;
-        }
 
         control_average = control_time_sum / (EPT_CONTROL_FUNCTIONS_COUNT - control_fails);
 
-        DEBUG_LOG("Control average: %llx", control_average);
-
         if (control_average == 0)
-        {
-                DEBUG_ERROR("Control average time is null");
-                return STATUS_UNSUCCESSFUL;
-        }
+                return STATUS_ABANDONED;
 
         for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
         {
