@@ -26,7 +26,7 @@ typedef struct _ATTACH_PROCESS_REPORT
 
 VOID
 ValidateKPCRBThreads(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 VOID

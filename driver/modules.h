@@ -76,7 +76,7 @@ GetSystemModuleInformation(
 
 NTSTATUS
 HandleValidateDriversIOCTL(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 PRTL_MODULE_EXTENDED_INFO
@@ -87,7 +87,7 @@ FindSystemModuleByName(
 
 NTSTATUS
 HandleNmiIOCTL(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 BOOLEAN
@@ -100,7 +100,21 @@ ValidateThreadsViaKernelApc();
 
 VOID
 FreeApcStackwalkApcContextInformation(
-	_In_ PAPC_STACKWALK_CONTEXT Context
+	_Inout_ PAPC_STACKWALK_CONTEXT Context
+);
+
+NTSTATUS
+IsInstructionPointerInInvalidRegion(
+	_In_ UINT64 RIP,
+	_In_ PSYSTEM_MODULES SystemModules,
+	_Out_ PBOOLEAN Result
+);
+
+BOOLEAN
+FlipKThreadMiscFlagsFlag(
+	_In_ PKTHREAD Thread,
+	_In_ LONG FlagIndex,
+	_In_ BOOLEAN NewValue
 );
 
 #endif

@@ -6,7 +6,7 @@
 
 NTSTATUS
 GetDriverImageSize(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 NTSTATUS
@@ -16,17 +16,17 @@ VerifyInMemoryImageVsDiskImage(
 
 NTSTATUS
 RetrieveInMemoryModuleExecutableSections(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 NTSTATUS
 ValidateProcessLoadedModule(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 NTSTATUS
 GetHardDiskDriveSerialNumber(
-	_In_ PVOID ConfigDrive0Serial,
+	_Inout_ PVOID ConfigDrive0Serial,
 	_In_ SIZE_T ConfigDrive0MaxSize
 );
 
@@ -41,5 +41,18 @@ EnumeratePciDevices();
 
 NTSTATUS
 DetectEptHooksInKeyFunctions();
+
+PVOID
+ScanForSignature(
+	_In_ PVOID BaseAddress,
+	_In_ SIZE_T MaxLength,
+	_In_ LPCSTR Signature,
+	_In_ SIZE_T SignatureLength
+);
+
+NTSTATUS
+DetermineIfTestSigningIsEnabled(
+	_Inout_ PBOOLEAN Result
+);
 
 #endif

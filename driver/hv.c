@@ -4,6 +4,10 @@
 
 #include "common.h"
 
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, PerformVirtualizationDetection)
+#endif
+
 #define TOTAL_ITERATION_COUNT 20
 
 /*
@@ -30,7 +34,7 @@ APERFMsrTimingCheck()
 	* First thing we do is we lock the current thread to the logical processor
 	* its executing on.
 	*/
-	new_affinity = (KAFFINITY)(1 << KeGetCurrentProcessorNumber());
+	new_affinity = (KAFFINITY)(1ul << KeGetCurrentProcessorNumber());
 	old_affinity = KeSetSystemAffinityThreadEx(new_affinity);
 
 	/*
@@ -80,7 +84,7 @@ APERFMsrTimingCheck()
 
 NTSTATUS
 PerformVirtualizationDetection(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	HYPERVISOR_DETECTION_REPORT report;

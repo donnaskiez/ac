@@ -3,40 +3,6 @@
 #include "callbacks.h"
 #include "driver.h"
 
-#define WHITELISTED_MODULE_TAG 'whte'
-
-#define NMI_DELAY 200 * 10000
-
-#define WHITELISTED_MODULE_COUNT 7
-#define MODULE_MAX_STRING_SIZE 256
-
-#define NTOSKRNL 0
-#define CLASSPNP 1
-#define WDF01000 2
-
-/*
-* The modules seen in the array below have been seen to commonly hook other drivers'
-* IOCTL dispatch routines. Its possible to see this by using WinObjEx64 and checking which
-* module each individual dispatch routine lies in. These modules are then addded to the list
-* (in addition to either the driver itself or ntoskrnl) which is seen as a valid region
-* for a drivers dispatch routine to lie within.
-*/
-CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
-{
-	"ntoskrnl.exe",
-	"CLASSPNP.SYS",
-	"Wdf01000.sys",
-	"HIDCLASS.sys",
-	"storport.sys",
-	"dxgkrnl.sys",
-	"ndis.sys"
-};
-
-#define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
-
-#define REASON_NO_BACKING_MODULE 1
-#define REASON_INVALID_IOCTL_DISPATCH 2
-
 typedef struct _WHITELISTED_REGIONS
 {
 	UINT64 base;
@@ -101,6 +67,88 @@ typedef struct _INVALID_DRIVERS_HEAD
 
 }INVALID_DRIVERS_HEAD, * PINVALID_DRIVERS_HEAD;
 
+STATIC NTSTATUS PopulateWhitelistedModuleBuffer(_Inout_ PVOID Buffer, _In_ PSYSTEM_MODULES SystemModules);
+STATIC NTSTATUS ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT Driver, _In_ PSYSTEM_MODULES Modules,
+	_In_ PWHITELISTED_REGIONS WhitelistedRegions, _Out_ PBOOLEAN Flag);
+STATIC VOID InitDriverList(_Inout_ PINVALID_DRIVERS_HEAD ListHead);
+STATIC VOID AddDriverToList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead, _In_ PDRIVER_OBJECT Driver,
+	_In_ INT Reason);
+STATIC VOID RemoveInvalidDriverFromList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
+STATIC VOID EnumerateInvalidDrivers(_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
+STATIC NTSTATUS ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
+	_In_ PDRIVER_OBJECT DriverObject, _Out_ PBOOLEAN Result);
+STATIC NTSTATUS ValidateDriverObjects(_In_ PSYSTEM_MODULES SystemModules,
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead);
+STATIC NTSTATUS AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
+	_Inout_ PIRP Irp);
+STATIC NTSTATUS LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext);
+STATIC VOID ApcRundownRoutine(_In_ PRKAPC Apc);
+STATIC VOID ApcKernelRoutine(_In_ PRKAPC Apc, _Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext, _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
+	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2);
+STATIC VOID ApcNormalRoutine(_In_opt_ PVOID NormalContext, _In_opt_ PVOID SystemArgument1,
+	_In_opt_ PVOID SystemArgument2);
+STATIC VOID ValidateThreadViaKernelApcCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, FindSystemModuleByName)
+#pragma alloc_text(PAGE, PopulateWhitelistedModuleBuffer)
+#pragma alloc_text(PAGE, ValidateDriverIOCTLDispatchRegion)
+#pragma alloc_text(PAGE, InitDriverList)
+#pragma alloc_text(PAGE, AddDriverToList)
+#pragma alloc_text(PAGE, RemoveInvalidDriverFromList)
+#pragma alloc_text(PAGE, EnumerateInvalidDrivers)
+#pragma alloc_text(PAGE, ValidateDriverObjectHasBackingModule)
+#pragma alloc_text(PAGE, GetSystemModuleInformation)
+#pragma alloc_text(PAGE, ValidateDriverObjects)
+#pragma alloc_text(PAGE, HandleValidateDriversIOCTL)
+#pragma alloc_text(PAGE, IsInstructionPointerInInvalidRegion)
+#pragma alloc_text(PAGE, AnalyseNmiData)
+#pragma alloc_text(PAGE, LaunchNonMaskableInterrupt)
+#pragma alloc_text(PAGE, HandleNmiIOCTL)
+#pragma alloc_text(PAGE, ApcRundownRoutine)
+#pragma alloc_text(PAGE, ApcKernelRoutine)
+#pragma alloc_text(PAGE, ApcNormalRoutine)
+#pragma alloc_text(PAGE, FlipKThreadMiscFlagsFlag)
+#pragma alloc_text(PAGE, ValidateThreadViaKernelApcCallback)
+#pragma alloc_text(PAGE, ValidateThreadsViaKernelApc)
+#pragma alloc_text(PAGE, FreeApcStackwalkApcContextInformation)
+#endif
+
+#define WHITELISTED_MODULE_TAG 'whte'
+
+#define NMI_DELAY 200 * 10000
+
+#define WHITELISTED_MODULE_COUNT 7
+#define MODULE_MAX_STRING_SIZE 256
+
+#define NTOSKRNL 0
+#define CLASSPNP 1
+#define WDF01000 2
+
+/*
+* The modules seen in the array below have been seen to commonly hook other drivers'
+* IOCTL dispatch routines. Its possible to see this by using WinObjEx64 and checking which
+* module each individual dispatch routine lies in. These modules are then addded to the list
+* (in addition to either the driver itself or ntoskrnl) which is seen as a valid region
+* for a drivers dispatch routine to lie within.
+*/
+CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
+{
+	"ntoskrnl.exe",
+	"CLASSPNP.SYS",
+	"Wdf01000.sys",
+	"HIDCLASS.sys",
+	"storport.sys",
+	"dxgkrnl.sys",
+	"ndis.sys"
+};
+
+#define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
+
+#define REASON_NO_BACKING_MODULE 1
+#define REASON_INVALID_IOCTL_DISPATCH 2
+
 #define SYSTEM_IDLE_PROCESS_ID 0
 #define SYSTEM_PROCESS_ID 4
 #define SVCHOST_PROCESS_ID 8
@@ -132,7 +180,7 @@ FindSystemModuleByName(
 STATIC
 NTSTATUS
 PopulateWhitelistedModuleBuffer(
-	_In_ PVOID Buffer,
+	_Inout_ PVOID Buffer,
 	_In_ PSYSTEM_MODULES SystemModules
 )
 {
@@ -144,6 +192,10 @@ PopulateWhitelistedModuleBuffer(
 		LPCSTR name = WHITELISTED_MODULES[index];
 
 		PRTL_MODULE_EXTENDED_INFO module = FindSystemModuleByName(name, SystemModules);
+
+		/* not everyone will contain all whitelisted modules */
+		if (!module)
+			continue;
 
 		WHITELISTED_REGIONS region;
 		region.base = (UINT64)module->ImageBase;
@@ -165,7 +217,7 @@ ValidateDriverIOCTLDispatchRegion(
 	_In_ PDRIVER_OBJECT Driver,
 	_In_ PSYSTEM_MODULES Modules,
 	_In_ PWHITELISTED_REGIONS WhitelistedRegions,
-	_In_ PBOOLEAN Flag
+	_Out_ PBOOLEAN Flag
 )
 {
 	if (!Modules || !Driver || !Flag || !WhitelistedRegions)
@@ -237,7 +289,7 @@ ValidateDriverIOCTLDispatchRegion(
 STATIC
 VOID
 InitDriverList(
-	_In_ PINVALID_DRIVERS_HEAD ListHead
+	_Inout_ PINVALID_DRIVERS_HEAD ListHead
 )
 {
 	ListHead->count = 0;
@@ -247,7 +299,7 @@ InitDriverList(
 STATIC
 VOID
 AddDriverToList(
-	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
 	_In_ PDRIVER_OBJECT Driver,
 	_In_ INT Reason
 )
@@ -270,7 +322,7 @@ AddDriverToList(
 STATIC
 VOID
 RemoveInvalidDriverFromList(
-	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead
 )
 {
 	if (InvalidDriversHead->first_entry)
@@ -385,7 +437,7 @@ STATIC
 NTSTATUS
 ValidateDriverObjects(
 	_In_ PSYSTEM_MODULES SystemModules,
-	_In_ PINVALID_DRIVERS_HEAD InvalidDriverListHead
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead
 )
 {
 	if (!SystemModules || !InvalidDriverListHead)
@@ -542,7 +594,7 @@ end:
 
 NTSTATUS
 HandleValidateDriversIOCTL(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	NTSTATUS status;
@@ -704,7 +756,7 @@ NTSTATUS
 AnalyseNmiData(
 	_In_ PNMI_CONTEXT NmiContext,
 	_In_ PSYSTEM_MODULES SystemModules,
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	if (!NmiContext || !SystemModules)
@@ -789,7 +841,7 @@ AnalyseNmiData(
 STATIC
 BOOLEAN
 NmiCallback(
-	_In_ PVOID Context,
+	_Inout_opt_ PVOID Context,
 	_In_ BOOLEAN Handled
 )
 {
@@ -799,6 +851,9 @@ NmiCallback(
 	NMI_CALLBACK_DATA thread_data = { 0 };
 	PNMI_CONTEXT nmi_context = (PNMI_CONTEXT)Context;
 	ULONG proc_num = KeGetCurrentProcessorNumber();
+
+	if (!nmi_context)
+		return TRUE;
 
 	/*
 	* Cannot allocate pool in this function as it runs at IRQL >= dispatch level
@@ -841,7 +896,7 @@ NmiCallback(
 STATIC
 NTSTATUS
 LaunchNonMaskableInterrupt(
-	_In_ PNMI_CONTEXT NmiContext
+	_Inout_ PNMI_CONTEXT NmiContext
 )
 {
 	if (!NmiContext)
@@ -896,7 +951,7 @@ LaunchNonMaskableInterrupt(
 
 NTSTATUS
 HandleNmiIOCTL(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	NTSTATUS status;
@@ -1107,7 +1162,7 @@ STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
 	_In_ PEPROCESS Process,
-	_In_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	NTSTATUS status;
@@ -1257,7 +1312,7 @@ ValidateThreadsViaKernelApc()
 
 VOID
 FreeApcStackwalkApcContextInformation(
-	_In_ PAPC_STACKWALK_CONTEXT Context
+	_Inout_ PAPC_STACKWALK_CONTEXT Context
 )
 {
 	if (Context->modules->address)

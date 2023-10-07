@@ -15,12 +15,12 @@ typedef struct _INVALID_PROCESS_ALLOCATION_REPORT
 
 NTSTATUS
 FindUnlinkedProcesses(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 VOID
 GetPsActiveProcessHead(
-	_In_ PUINT64 Address
+	_Out_ PUINT64 Address
 );
 
 PKDDEBUGGER_DATA64

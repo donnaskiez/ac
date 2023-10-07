@@ -15,19 +15,19 @@ typedef struct _DRIVER_INITIATION_INFORMATION
 NTSTATUS
 DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 NTSTATUS
 DeviceClose(
 	_In_ PDEVICE_OBJECT DeviceObject,
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 NTSTATUS
 DeviceCreate(
 	_In_ PDEVICE_OBJECT DeviceObject,
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 #endif

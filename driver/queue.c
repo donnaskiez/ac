@@ -28,7 +28,7 @@ REPORT_QUEUE_CONFIGURATION report_queue_config = { 0 };
 
 VOID
 InitialiseGlobalReportQueue(
-	_In_ PBOOLEAN Status
+	_Out_ PBOOLEAN Status
 )
 {
 	report_queue_config.head.start = NULL;
@@ -59,7 +59,7 @@ InitialiseGlobalReportQueue(
 
 VOID
 QueuePush(
-	_In_ PQUEUE_HEAD Head,
+	_Inout_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 )
 {
@@ -89,7 +89,7 @@ end:
 
 PVOID
 QueuePop(
-	_In_ PQUEUE_HEAD Head
+	_Inout_ PQUEUE_HEAD Head
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
@@ -153,7 +153,7 @@ end:
 */
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	PVOID report = NULL;
@@ -285,7 +285,7 @@ end:
 
 VOID
 ListInit(
-	_In_ PLIST_HEAD ListHead
+	_Inout_ PLIST_HEAD ListHead
 )
 {
 	KeInitializeSpinLock(&ListHead->lock);
@@ -294,8 +294,8 @@ ListInit(
 
 PLIST_ITEM
 ListInsert(
-	_In_ PLIST_HEAD ListHead,
-	_In_ PLIST_ITEM NewEntry
+	_Inout_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM NewEntry
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
@@ -311,7 +311,7 @@ ListInsert(
 
 PVOID
 ListRemoveFirst(
-	_In_ PLIST_HEAD ListHead
+	_Inout_ PLIST_HEAD ListHead
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
@@ -329,7 +329,7 @@ ListRemoveFirst(
 
 PVOID
 ListRemoveItem(
-	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem
 )
 {

@@ -7,6 +7,16 @@
 #include "driver.h"
 #include "queue.h"
 
+STATIC VOID KPRCBThreadValidationProcessCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+STATIC VOID DetectAttachedThreadsProcessCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, KPRCBThreadValidationProcessCallback)
+#pragma alloc_text(PAGE, ValidateKPCRBThreads)
+#pragma alloc_text(PAGE, DetectAttachedThreadsProcessCallback)
+#pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
+#endif
+
 typedef struct _KPRCB_THREAD_VALIDATION_CTX
 {
 	UINT64 current_kpcrb_thread;
@@ -20,7 +30,7 @@ STATIC
 VOID
 KPRCBThreadValidationProcessCallback(
 	_In_ PEPROCESS Process,
-	_Inout_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	NTSTATUS status;
@@ -30,7 +40,7 @@ KPRCBThreadValidationProcessCallback(
 	UINT32 thread_id;
 	PKPRCB_THREAD_VALIDATION_CTX context = (PKPRCB_THREAD_VALIDATION_CTX)Context;
 
-	if (context->finished == TRUE)
+	if (!Context || context->finished == TRUE)
 		return;
 
 	thread_list_head = (PLIST_ENTRY)((UINT64)Process + KPROCESS_THREADLIST_OFFSET);
@@ -81,7 +91,7 @@ KPRCBThreadValidationProcessCallback(
 
 VOID
 ValidateKPCRBThreads(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	NTSTATUS status;
@@ -99,6 +109,11 @@ ValidateKPCRBThreads(
 
 		kpcr = __readmsr(IA32_GS_BASE);
 		kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
+
+		/* sanity check */
+		if (!MmIsAddressValid(kprcb + KPCRB_CURRENT_THREAD))
+			continue;
+
 		context.current_kpcrb_thread = *(UINT64*)(kprcb + KPCRB_CURRENT_THREAD);
 
 		DEBUG_LOG("Proc number: %lx, Current thread: %llx", processor_index, context.current_kpcrb_thread);
@@ -144,7 +159,7 @@ STATIC
 VOID
 DetectAttachedThreadsProcessCallback(
 	_In_ PEPROCESS Process,
-	_In_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	UNREFERENCED_PARAMETER(Context);

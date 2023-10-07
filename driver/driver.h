@@ -80,7 +80,7 @@ IncrementApcCount(
 
 VOID
 FreeApcAndDecrementApcCount(
-	_In_ PRKAPC Apc,
+	_Inout_ PRKAPC Apc,
 	_In_ LONG ContextId
 );
 

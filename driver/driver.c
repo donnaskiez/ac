@@ -307,14 +307,12 @@ IncrementApcCount(
 
 VOID
 FreeApcAndDecrementApcCount(
-	_In_ PRKAPC Apc,
+	_Inout_ PRKAPC Apc,
 	_In_ LONG ContextId
 )
 {
 	PAPC_CONTEXT_HEADER context = NULL;
-
 	ExFreePoolWithTag(Apc, POOL_TAG_APC);
-
 	GetApcContext(&context, ContextId);
 
 	if (!context)
@@ -322,7 +320,6 @@ FreeApcAndDecrementApcCount(
 
 	KeAcquireGuardedMutex(&driver_config.lock);
 	context->count -= 1;
-
 end:
 	KeReleaseGuardedMutex(&driver_config.lock);
 }

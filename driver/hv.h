@@ -13,7 +13,7 @@ typedef struct _HYPERVISOR_DETECTION_REPORT
 
 NTSTATUS
 PerformVirtualizationDetection(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 extern

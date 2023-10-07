@@ -51,18 +51,18 @@ typedef struct _LIST_HEAD
 
 VOID
 QueuePush(
-	_In_ PQUEUE_HEAD Head,
+	_Inout_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 );
 
 PVOID
 QueuePop(
-	_In_ PQUEUE_HEAD Head
+	_Inout_ PQUEUE_HEAD Head
 );
 
 VOID
 InitialiseGlobalReportQueue(
-	_In_ PBOOLEAN Status
+	_Out_ PBOOLEAN Status
 );
 
 VOID
@@ -72,7 +72,7 @@ InsertReportToQueue(
 
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 );
 
 VOID
@@ -80,23 +80,23 @@ FreeGlobalReportQueueObjects();
 
 VOID
 ListInit(
-	_In_ PLIST_HEAD ListHead
+	_Inout_ PLIST_HEAD ListHead
 );
 
 PLIST_ITEM
 ListInsert(
-	_In_ PLIST_HEAD ListHead,
-	_In_ PLIST_ITEM Data
+	_Inout_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_ITEM Data
 );
 
 PVOID
 ListRemoveFirst(
-	_In_ PLIST_HEAD ListHead
+	_Inout_ PLIST_HEAD ListHead
 );
 
 PVOID
 ListRemoveItem(
-	_In_ PLIST_HEAD ListHead,
+	_Inout_ PLIST_HEAD ListHead,
 	_Inout_ PLIST_ITEM ListItem
 );
 

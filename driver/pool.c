@@ -5,6 +5,37 @@
 #include "callbacks.h"
 #include "queue.h"
 
+typedef struct _PROCESS_SCAN_CONTEXT
+{
+	ULONG process_count;
+	PVOID process_buffer;
+
+}PROCESS_SCAN_CONTEXT, * PPROCESS_SCAN_CONTEXT;
+
+STATIC BOOLEAN ValidateIfAddressIsProcessStructure(_In_ PVOID Address, _In_ PPOOL_HEADER PoolHeader);
+STATIC VOID ScanPageForKernelObjectAllocation(_In_ UINT64 PageBase, _In_ ULONG PageSize,
+	_In_ ULONG ObjectIndex, _Inout_ PPROCESS_SCAN_CONTEXT Context);
+STATIC BOOLEAN IsPhysicalAddressInPhysicalMemoryRange(_In_ UINT64 PhysicalAddress,
+	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges);
+STATIC VOID EnumerateKernelLargePages(_In_ UINT64 PageBase, _In_ ULONG PageSize,
+	_In_ PPROCESS_SCAN_CONTEXT Context, _In_ ULONG ObjectIndex);
+STATIC VOID WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context);
+STATIC VOID IncrementProcessCounter(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+STATIC VOID CheckIfProcessAllocationIsInProcessList(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, GetGlobalDebuggerData)
+#pragma alloc_text(PAGE, GetPsActiveProcessHead)
+#pragma alloc_text(PAGE, ValidateIfAddressIsProcessStructure)
+#pragma alloc_text(PAGE, ScanPageForKernelObjectAllocation)
+#pragma alloc_text(PAGE, IsPhysicalAddressInPhysicalMemoryRange)
+#pragma alloc_text(PAGE, EnumerateKernelLargePages)
+#pragma alloc_text(PAGE, WalkKernelPageTables)
+#pragma alloc_text(PAGE, IncrementProcessCounter)
+#pragma alloc_text(PAGE, CheckIfProcessAllocationIsInProcessList)
+#pragma alloc_text(PAGE, FindUnlinkedProcesses)
+#endif
+
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE 0x004
 
@@ -43,13 +74,6 @@ CHAR EXECUTIVE_OBJECT_POOL_TAGS[EXECUTIVE_OBJECT_COUNT][POOL_TAG_LENGTH] =
 	"\x44\x72\x69\x76",		/* Drivers */
 	"\x4C\x69\x6E\x6B"		/* Symbolic links */
 };
-
-typedef struct _PROCESS_SCAN_CONTEXT
-{
-	ULONG process_count;
-	PVOID process_buffer;
-
-}PROCESS_SCAN_CONTEXT, * PPROCESS_SCAN_CONTEXT;
 
 PKDDEBUGGER_DATA64
 GetGlobalDebuggerData()
@@ -96,7 +120,7 @@ end:
 
 VOID
 GetPsActiveProcessHead(
-	_In_ PUINT64 Address
+	_Out_ PUINT64 Address
 )
 {
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
@@ -215,7 +239,7 @@ ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ ULONG ObjectIndex,
-	_In_ PPROCESS_SCAN_CONTEXT Context
+	_Inout_ PPROCESS_SCAN_CONTEXT Context
 )
 {
 	INT length = 0;
@@ -557,7 +581,7 @@ STATIC
 VOID
 IncrementProcessCounter(
 	_In_ PEPROCESS Process,
-	_In_opt_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
@@ -572,7 +596,7 @@ STATIC
 VOID
 CheckIfProcessAllocationIsInProcessList(
 	_In_ PEPROCESS Process,
-	_In_opt_ PVOID Context
+	_Inout_opt_ PVOID Context
 )
 {
 	PUINT64 allocation_address;
@@ -595,7 +619,7 @@ CheckIfProcessAllocationIsInProcessList(
 
 NTSTATUS
 FindUnlinkedProcesses(
-	_In_ PIRP Irp
+	_Inout_ PIRP Irp
 )
 {
 	PUINT64 allocation_address;
@@ -607,7 +631,7 @@ FindUnlinkedProcesses(
 		&context
 	);
 
-	if (context.process_count == NULL)
+	if (context.process_count == 0)
 	{
 		DEBUG_ERROR("Failed to get process count");
 		return STATUS_ABANDONED;
@@ -617,13 +641,13 @@ FindUnlinkedProcesses(
 		ExAllocatePool2(POOL_FLAG_NON_PAGED, context.process_count * 2 * sizeof(UINT64), PROCESS_ADDRESS_LIST_TAG);
 
 	if (!context.process_buffer)
-		return STATUS_ABANDONED;
+		return STATUS_MEMORY_NOT_ALLOCATED;
 
 	WalkKernelPageTables(&context);
 
 	EnumerateProcessListWithCallbackFunction(
 		CheckIfProcessAllocationIsInProcessList,
-		NULL
+		&context
 	);
 
 	allocation_address = (PUINT64)context.process_buffer;
