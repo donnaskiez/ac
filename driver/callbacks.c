@@ -44,12 +44,17 @@ ObPreOpCallbackRoutine(
 	LPCSTR protected_process_name;
 	PCALLBACK_CONFIGURATION configuration = NULL;
 
+	/*
+	* This is to prevent the condition where the thread executing this function is scheduled whilst we 
+	* are cleaning up the callbacks on driver unload. We must hold the driver config lock to ensure the 
+	* pool containing the callback configuration lock is not freed 
+	*/
 	GetCallbackConfigStructure(&configuration);
 
 	if (!configuration)
 		return OB_PREOP_SUCCESS;
 
-	KeAcquireGuardedMutex(&configuration->mutex);
+	KeAcquireGuardedMutex(&configuration->lock);
 	GetProtectedProcessId(&protected_process_id);
 	GetProtectedProcessEProcess(&protected_process);
 
@@ -111,7 +116,7 @@ ObPreOpCallbackRoutine(
 
 end:
 
-	KeReleaseGuardedMutex(&configuration->mutex);
+	KeReleaseGuardedMutex(&configuration->lock);
 	return OB_PREOP_SUCCESS;
 }
 

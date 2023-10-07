@@ -7,18 +7,29 @@
 
 #define NMI_DELAY 200 * 10000
 
-#define WHITELISTED_MODULE_COUNT 3
+#define WHITELISTED_MODULE_COUNT 7
 #define MODULE_MAX_STRING_SIZE 256
 
 #define NTOSKRNL 0
 #define CLASSPNP 1
 #define WDF01000 2
 
+/*
+* The modules seen in the array below have been seen to commonly hook other drivers'
+* IOCTL dispatch routines. Its possible to see this by using WinObjEx64 and checking which
+* module each individual dispatch routine lies in. These modules are then addded to the list
+* (in addition to either the driver itself or ntoskrnl) which is seen as a valid region
+* for a drivers dispatch routine to lie within.
+*/
 CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
 {
 	"ntoskrnl.exe",
 	"CLASSPNP.SYS",
 	"Wdf01000.sys",
+	"HIDCLASS.sys",
+	"storport.sys",
+	"dxgkrnl.sys",
+	"ndis.sys"
 };
 
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128

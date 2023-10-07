@@ -44,8 +44,12 @@ CHAR EXECUTIVE_OBJECT_POOL_TAGS[EXECUTIVE_OBJECT_COUNT][POOL_TAG_LENGTH] =
 	"\x4C\x69\x6E\x6B"		/* Symbolic links */
 };
 
-PVOID process_buffer = NULL;
-ULONG process_count = NULL;
+typedef struct _PROCESS_SCAN_CONTEXT
+{
+	ULONG process_count;
+	PVOID process_buffer;
+
+}PROCESS_SCAN_CONTEXT, * PPROCESS_SCAN_CONTEXT;
 
 PKDDEBUGGER_DATA64
 GetGlobalDebuggerData()
@@ -211,7 +215,7 @@ ScanPageForKernelObjectAllocation(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
 	_In_ ULONG ObjectIndex,
-	_In_ PVOID AddressBuffer
+	_In_ PPROCESS_SCAN_CONTEXT Context
 )
 {
 	INT length = 0;
@@ -270,9 +274,9 @@ ScanPageForKernelObjectAllocation(
 
 				DEBUG_LOG("Process: %llx", (UINT64)process);
 
-				address_list = (PUINT64)AddressBuffer;
+				address_list = (PUINT64)Context->process_buffer;
 
-				for (INT i = 0; i < process_count; i++)
+				for (INT i = 0; i < Context->process_count; i++)
 				{
 					if (address_list[i] == NULL)
 					{
@@ -326,7 +330,7 @@ VOID
 EnumerateKernelLargePages(
 	_In_ UINT64 PageBase,
 	_In_ ULONG PageSize,
-	_In_ PVOID AddressBuffer,
+	_In_ PPROCESS_SCAN_CONTEXT Context,
 	_In_ ULONG ObjectIndex
 )
 {
@@ -339,7 +343,7 @@ EnumerateKernelLargePages(
 			PageBase + (page_index * PAGE_SIZE),
 			PAGE_SIZE,
 			ObjectIndex,
-			AddressBuffer
+			Context
 		);
 	}
 }
@@ -369,7 +373,9 @@ EnumerateKernelLargePages(
 */
 STATIC
 VOID
-WalkKernelPageTables(PVOID AddressBuffer)
+WalkKernelPageTables(
+	_In_ PPROCESS_SCAN_CONTEXT Context
+)
 {
 	CR3 cr3;
 	PML4E pml4_base;
@@ -452,7 +458,7 @@ WalkKernelPageTables(PVOID AddressBuffer)
 				EnumerateKernelLargePages(
 					base_1gb_virtual_page,
 					LARGE_PAGE_1GB_ENTRIES,
-					AddressBuffer,
+					Context,
 					INDEX_PROCESS_POOL_TAG
 				);
 
@@ -494,7 +500,7 @@ WalkKernelPageTables(PVOID AddressBuffer)
 					EnumerateKernelLargePages(
 						base_2mb_virtual_page,
 						LARGE_PAGE_2MB_ENTRIES,
-						AddressBuffer,
+						Context,
 						INDEX_PROCESS_POOL_TAG
 					);
 
@@ -537,7 +543,7 @@ WalkKernelPageTables(PVOID AddressBuffer)
 						base_virtual_page,
 						PAGE_BASE_SIZE,
 						INDEX_PROCESS_POOL_TAG,
-						AddressBuffer
+						Context
 					);
 				}
 			}
@@ -549,27 +555,40 @@ WalkKernelPageTables(PVOID AddressBuffer)
 
 STATIC
 VOID
-IncrementProcessCounter()
+IncrementProcessCounter(
+	_In_ PEPROCESS Process,
+	_In_opt_ PVOID Context
+)
 {
-	process_count++;
+	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
+
+	if (!context)
+		return;
+
+	context->process_count++;
 }
 
 STATIC
 VOID
 CheckIfProcessAllocationIsInProcessList(
-	_In_ PEPROCESS Process
+	_In_ PEPROCESS Process,
+	_In_opt_ PVOID Context
 )
 {
 	PUINT64 allocation_address;
+	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
-	for (INT i = 0; i < process_count; i++)
+	if (!context)
+		return;
+
+	for (INT i = 0; i < context->process_count; i++)
 	{
-		allocation_address = (PUINT64)process_buffer;
+		allocation_address = (PUINT64)context->process_buffer;
 
 		if ((UINT64)Process >= allocation_address[i] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
 			(UINT64)Process <= allocation_address[i] + PROCESS_OBJECT_ALLOCATION_MARGIN)
 		{
-			RtlZeroMemory((UINT64)process_buffer + i * sizeof(UINT64), sizeof(UINT64));
+			RtlZeroMemory((UINT64)context->process_buffer + i * sizeof(UINT64), sizeof(UINT64));
 		}
 	}
 }
@@ -580,34 +599,36 @@ FindUnlinkedProcesses(
 )
 {
 	PUINT64 allocation_address;
+	PROCESS_SCAN_CONTEXT context = { 0 };
 	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;
 
 	EnumerateProcessListWithCallbackFunction(
 		IncrementProcessCounter,
-		NULL
+		&context
 	);
 
-	if (process_count == NULL)
+	if (context.process_count == NULL)
 	{
-		DEBUG_ERROR("Faield to get process count ");
+		DEBUG_ERROR("Failed to get process count");
 		return STATUS_ABANDONED;
 	}
 
-	process_buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, process_count * 2 * sizeof(UINT64), PROCESS_ADDRESS_LIST_TAG);
+	context.process_buffer = 
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, context.process_count * 2 * sizeof(UINT64), PROCESS_ADDRESS_LIST_TAG);
 
-	if (!process_buffer)
+	if (!context.process_buffer)
 		return STATUS_ABANDONED;
 
-	WalkKernelPageTables(process_buffer);
+	WalkKernelPageTables(&context);
 
 	EnumerateProcessListWithCallbackFunction(
 		CheckIfProcessAllocationIsInProcessList,
 		NULL
 	);
 
-	allocation_address = (PUINT64)process_buffer;
+	allocation_address = (PUINT64)context.process_buffer;
 
-	for (INT i = 0; i < process_count; i++)
+	for (INT i = 0; i < context.process_count; i++)
 	{
 		if (allocation_address[i] == NULL)
 			continue;
@@ -619,7 +640,8 @@ FindUnlinkedProcesses(
 		*/
 		DEBUG_ERROR("INVALID POOL proc OMGGG");
 
-		report_buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
+		report_buffer = 
+			ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
 
 		if (!report_buffer)
 			goto end;
@@ -637,12 +659,8 @@ FindUnlinkedProcesses(
 
 end:
 
-	if (process_buffer)
-		ExFreePoolWithTag(process_buffer, PROCESS_ADDRESS_LIST_TAG);
-
-	/* todo: make use of the new context variable in the enum proc func */
-	process_count = NULL;
-	process_buffer = NULL;
+	if (context.process_buffer)
+		ExFreePoolWithTag(context.process_buffer, PROCESS_ADDRESS_LIST_TAG);
 
 	return STATUS_SUCCESS;
 }

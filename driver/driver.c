@@ -52,11 +52,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
 #pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
 #endif
 
-/*
-* This structure is strictly for driver related stuff
-* that should only be written at driver entry.
-*/
-
 #define MAXIMUM_APC_CONTEXTS 10
 
 typedef struct _DRIVER_CONFIG
@@ -69,7 +64,7 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
 	PVOID apc_contexts[MAXIMUM_APC_CONTEXTS];
-	PCALLBACK_CONFIGURATION callback_config;
+	CALLBACK_CONFIGURATION callback_config;
 	KGUARDED_MUTEX lock;
 
 }DRIVER_CONFIG, * PDRIVER_CONFIG;
@@ -107,7 +102,6 @@ EnableCallbackRoutinesOnProcessRun()
 	NTSTATUS status;
 
 	KeAcquireGuardedMutex(&driver_config.lock);
-	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
 
 	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
 	OB_OPERATION_REGISTRATION operation_registration = { 0 };
@@ -124,7 +118,7 @@ EnableCallbackRoutinesOnProcessRun()
 
 	status = ObRegisterCallbacks(
 		&callback_registration,
-		&driver_config.callback_config->registration_handle
+		&driver_config.callback_config.registration_handle
 	);
 
 	if (!NT_SUCCESS(status))
@@ -142,7 +136,6 @@ EnableCallbackRoutinesOnProcessRun()
 	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
 
 end:
-	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
 	KeReleaseGuardedMutex(&driver_config.lock);
 	return status;
 }
@@ -151,41 +144,26 @@ STATIC
 NTSTATUS
 AllocateCallbackStructure()
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
-
-	driver_config.callback_config =
-		ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(CALLBACK_CONFIGURATION), POOL_TAG_CONFIG);
-
-	if (!driver_config.callback_config)
-	{
-		KeReleaseGuardedMutex(&driver_config.lock);
-		return STATUS_MEMORY_NOT_ALLOCATED;
-	}
-
 	/*
 	* This mutex ensures we don't unregister our ObRegisterCallbacks while
 	* the callback function is running since this might cause some funny stuff
 	* to happen. Better to be safe then sorry :)
 	*/
-	KeInitializeGuardedMutex(&driver_config.callback_config->mutex);
-	KeReleaseGuardedMutex(&driver_config.lock);
-	return STATUS_SUCCESS;
+	KeInitializeGuardedMutex(&driver_config.callback_config.lock);
 }
 
 VOID
 UnregisterCallbacksOnProcessTermination()
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
-	KeAcquireGuardedMutex(&driver_config.callback_config->mutex);
+	KeAcquireGuardedMutex(&driver_config.callback_config.lock);
 
-	if (driver_config.callback_config->registration_handle)
+	if (driver_config.callback_config.registration_handle)
 	{
-		ObUnRegisterCallbacks(driver_config.callback_config->registration_handle);
-		driver_config.callback_config->registration_handle = NULL;
+		ObUnRegisterCallbacks(driver_config.callback_config.registration_handle);
+		driver_config.callback_config.registration_handle = NULL;
 	}
 
-	KeReleaseGuardedMutex(&driver_config.callback_config->mutex);
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseGuardedMutex(&driver_config.callback_config.lock);
 }
 
 /*
@@ -201,11 +179,7 @@ STATIC
 VOID
 CleanupDriverCallbacksOnDriverUnload()
 {
-	/* UnRegisterCallbacksOnProcessTermination acquires the driver lock, so must acquire it after */
 	UnregisterCallbacksOnProcessTermination();
-	KeAcquireGuardedMutex(&driver_config.lock);
-	ExFreePoolWithTag(driver_config.callback_config, POOL_TAG_CONFIG);
-	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -221,7 +195,7 @@ GetCallbackConfigStructure(
 		return;
 
 	*CallbackConfiguration = NULL;
-	InterlockedExchangePointer(CallbackConfiguration, driver_config.callback_config);
+	InterlockedExchangePointer(CallbackConfiguration, &driver_config.callback_config);
 }
 
 /*
@@ -435,7 +409,6 @@ InsertApcContext(
 			goto end;
 		}
 	}
-
 end:
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
