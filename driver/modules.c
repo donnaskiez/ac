@@ -7,7 +7,7 @@
 
 #define NMI_DELAY 200 * 10000
 
-#define WHITELISTED_MODULE_COUNT 7
+#define WHITELISTED_MODULE_COUNT 11
 #define MODULE_MAX_STRING_SIZE 256
 
 #define NTOSKRNL 0
@@ -26,10 +26,14 @@ CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
 	"ntoskrnl.exe",
 	"CLASSPNP.SYS",
 	"Wdf01000.sys",
-	"HIDCLASS.sys",
+	"HIDCLASS.SYS",
 	"storport.sys",
 	"dxgkrnl.sys",
-	"ndis.sys"
+	"ndis.sys",
+	"ks.sys",
+	"portcls.sys",
+	"rdbss.sys",
+	"LXCORE.SYS"
 };
 
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
@@ -1124,7 +1128,7 @@ ApcKernelRoutine(
 
 	context = (PAPC_STACKWALK_CONTEXT)Apc->NormalContext;
 
-	buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, 0x200, POOL_TAG_APC);
+	buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, STACK_FRAME_POOL_SIZE, POOL_TAG_APC);
 
 	if (!buffer)
 		goto free;
@@ -1161,7 +1165,8 @@ ApcKernelRoutine(
 
 		if (flag == FALSE)
 		{
-			PAPC_STACKWALK_REPORT report = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), POOL_TAG_APC);
+			PAPC_STACKWALK_REPORT report = 
+				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), POOL_TAG_APC);
 
 			if (!report)
 				goto free;
@@ -1202,7 +1207,7 @@ ApcNormalRoutine(
 
 }
 
-BOOLEAN
+VOID
 FlipKThreadMiscFlagsFlag(
 	_In_ PKTHREAD Thread,
 	_In_ LONG FlagIndex,
@@ -1212,16 +1217,15 @@ FlipKThreadMiscFlagsFlag(
 	PLONG misc_flags = (PLONG)((UINT64)Thread + KTHREAD_MISC_FLAGS_OFFSET);
 	LONG mask = 1U << FlagIndex;
 
-	if (!MmIsAddressValid(misc_flags))
-		return FALSE;
-
 	if (NewValue)
 		*misc_flags |= mask;
 	else
 		*misc_flags &= ~mask;
-
-	return TRUE;
 }
+
+#define THREAD_STATE_TERMINATED 4
+#define THREAD_STATE_WAIT 5
+#define THREAD_STATE_INIT 0
 
 STATIC
 VOID
@@ -1237,20 +1241,28 @@ ValidateThreadViaKernelApcCallback(
 	PKAPC apc = NULL;
 	BOOLEAN apc_status;
 	PLONG misc_flags = NULL;
+	PCHAR previous_mode = NULL;
+	PUCHAR state = NULL;
 	BOOLEAN apc_queueable = FALSE;
 	PAPC_STACKWALK_CONTEXT context = (PAPC_STACKWALK_CONTEXT)Context;
 	LPCSTR process_name = PsGetProcessImageFileName(Process);
 
 	/* we dont want to schedule an apc to threads owned by the kernel */
-	if (Process == PsInitialSystemProcess)
+	if (Process == PsInitialSystemProcess || !Context)
 		return;
 
 	/* We are not interested in these processess.. for now lol */
 	if (!strcmp(process_name, "svchost.exe") ||
 		!strcmp(process_name, "Registry") ||
 		!strcmp(process_name, "smss.exe") ||
-		!strcmp(process_name, "csrss.exe"))
+		!strcmp(process_name, "csrss.exe") ||
+		!strcmp(process_name, "explorer.exe") ||
+		!strcmp(process_name, "svchost.exe") ||
+		!strcmp(process_name, "lsass.exe") ||
+		!strcmp(process_name, "MemCompression"))
 		return;
+
+	DEBUG_LOG("Process: %s", process_name);
 
 	thread_list_head = (PLIST_ENTRY)((UINT64)Process + KPROCESS_THREADLIST_OFFSET);
 	thread_list_entry = thread_list_head->Flink;
@@ -1263,7 +1275,6 @@ ValidateThreadViaKernelApcCallback(
 
 		if (current_thread == KeGetCurrentThread() || !current_thread)
 			goto increment;
-
 		/*
 		* Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
 		* queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
@@ -1271,22 +1282,54 @@ ValidateThreadViaKernelApcCallback(
 		* threads this should be fine... c:
 		*/
 		misc_flags = (PLONG)((UINT64)current_thread + KTHREAD_MISC_FLAGS_OFFSET);
+		previous_mode = (PCHAR)((UINT64)current_thread + KTHREAD_PREVIOUS_MODE_OFFSET);
+		state = (PUCHAR)((UINT64)current_thread + KTHREAD_STATE_OFFSET);
 
-		/* sanity check */
-		if (!MmIsAddressValid(misc_flags))
+		if (!MmIsAddressValid(current_thread))
 			goto increment;
+
+		/* we dont care about user mode threads */
+		//if (*previous_mode == UserMode)
+		//	goto increment;
 
 		/* todo: We should also flag all threads that have the flag set to false */
 		if (*misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE)
-		{
-			if (!FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE))
-				goto increment;
-		}
+			FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
 
+		/* force thread into an alertable state */
+		if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
+			FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
+		
 		apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
 
 		if (!apc)
 			goto increment;
+
+		/*
+		* KTHREAD->State values:
+		* 
+		*  0 is INITIALIZED;
+		*  1 is READY;
+		*  2 is RUNNING;
+		*  3 is STANDBY;
+		*  4 is TERMINATED;
+		*  5 is WAIT;
+		*  6 is TRANSITION.
+		* 
+		* Since we are unsafely enumerating the threads linked list, it's best just
+		* to make sure we don't queue an APC to a terminated thread. We also check after
+		* we've allocated memory for the apc to ensure the window between queuing our APC
+		* and checking the thread state is as small as possible.
+		*/
+
+		if (*state == THREAD_STATE_TERMINATED || THREAD_STATE_INIT)
+		{
+			ExFreePoolWithTag(apc, POOL_TAG_APC);
+			apc = NULL;
+			goto increment;
+		}
+
+		DEBUG_LOG("Apc: %llx", (UINT64)apc);
 
 		KeInitializeApc(
 			apc,

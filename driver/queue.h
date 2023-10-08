@@ -34,19 +34,6 @@ typedef struct _REPORT_HEADER
 
 }REPORT_HEADER, * PREPORT_HEADER;
 
-typedef struct _LIST_ITEM
-{
-	struct _LIST_ITEM* next;
-
-}LIST_ITEM, * PLIST_ITEM;
-
-typedef struct _LIST_HEAD
-{
-	PLIST_ITEM start;
-	KSPIN_LOCK lock;
-
-}LIST_HEAD, * PLIST_HEAD;
-
 #define LIST_POOL_TAG 'list'
 
 VOID
@@ -80,24 +67,34 @@ FreeGlobalReportQueueObjects();
 
 VOID
 ListInit(
-	_Inout_ PLIST_HEAD ListHead
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PKSPIN_LOCK Lock
 );
 
-PLIST_ITEM
+VOID
 ListInsert(
-	_Inout_ PLIST_HEAD ListHead,
-	_Inout_ PLIST_ITEM Data
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PSINGLE_LIST_ENTRY NewEntry,
+	_In_ PKSPIN_LOCK Lock
 );
 
-PVOID
-ListRemoveFirst(
-	_Inout_ PLIST_HEAD ListHead
+BOOLEAN
+ListFreeFirstEntry(
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_In_ PKSPIN_LOCK Lock
 );
 
-PVOID
-ListRemoveItem(
-	_Inout_ PLIST_HEAD ListHead,
-	_Inout_ PLIST_ITEM ListItem
+VOID
+ListRemoveEntry(
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PSINGLE_LIST_ENTRY Entry,
+	_In_ PKSPIN_LOCK Lock
+);
+
+VOID
+EnumerateThreadListWithCallbackRoutine(
+	_In_ PVOID CallbackRoutine,
+	_In_opt_ PVOID Context
 );
 
 #endif

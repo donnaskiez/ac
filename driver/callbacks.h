@@ -80,4 +80,17 @@ EnumerateProcessHandles(
 	_In_ PEPROCESS Process
 );
 
+NTSTATUS
+InitialiseThreadList();
+
+VOID
+ThreadCreateNotifyRoutine(
+	_In_ HANDLE ProcessId,
+	_In_ HANDLE ThreadId,
+	_In_ BOOLEAN Create
+);
+
+VOID
+CleanupThreadListOnDriverUnload();
+
 #endif

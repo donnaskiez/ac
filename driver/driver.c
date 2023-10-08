@@ -141,6 +141,7 @@ EnableCallbackRoutinesOnProcessRun()
 
 	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
 	OB_OPERATION_REGISTRATION operation_registration = { 0 };
+	PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine = { 0 };
 
 	operation_registration.ObjectType = PsProcessType;
 	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
@@ -173,6 +174,28 @@ EnableCallbackRoutinesOnProcessRun()
 
 end:
 	KeReleaseGuardedMutex(&driver_config.lock);
+	return status;
+}
+
+STATIC
+NTSTATUS
+EnableCallbackRoutinesOnDriverEntry()
+{
+	NTSTATUS status;
+
+	status = InitialiseThreadList();
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
+		return status;
+	}
+
+	status = PsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+
+	if (!NT_SUCCESS(status))
+		DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
+
 	return status;
 }
 
@@ -843,6 +866,7 @@ DriverUnload(
 
 	/* This is safe to call even if the callbacks have already been disabled */
 	CleanupDriverCallbacksOnDriverUnload();
+	CleanupThreadListOnDriverUnload();
 
 	CleanupDriverConfigOnUnload();
 	IoDeleteDevice(DriverObject->DeviceObject);
@@ -941,6 +965,18 @@ DriverEntry(
 	if (!flag)
 	{
 		DEBUG_ERROR("failed to init report queue");
+		FreeDriverConfigurationStringBuffers();
+		IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
+		IoDeleteDevice(DriverObject->DeviceObject);
+		return STATUS_FAILED_DRIVER_ENTRY;
+	}
+
+	status = EnableCallbackRoutinesOnDriverEntry();
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("failed to init callback routines on driver entry");
+		FreeGlobalReportQueueObjects();
 		FreeDriverConfigurationStringBuffers();
 		IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 		IoDeleteDevice(DriverObject->DeviceObject);

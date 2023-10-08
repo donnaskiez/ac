@@ -71,7 +71,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
                         kmanager.CheckForAttachedThreads();
                         break;
                 case 7:
-                        //kmanager.InitiateApcStackwalkOperation();
+                        kmanager.InitiateApcStackwalkOperation();
                         break;
                 case 8:
                         kmanager.CheckForHiddenThreads();
@@ -81,6 +81,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
                         break;
                 }
 
+                kmanager.InitiateApcStackwalkOperation();
                 kmanager.MonitorCallbackReports();
 
                 std::this_thread::sleep_for(std::chrono::seconds(10));

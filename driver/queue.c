@@ -285,81 +285,88 @@ end:
 
 VOID
 ListInit(
-	_Inout_ PLIST_HEAD ListHead
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PKSPIN_LOCK Lock
 )
 {
-	KeInitializeSpinLock(&ListHead->lock);
-	ListHead->start = NULL;
+	KeInitializeSpinLock(Lock);
+	Head->Next = NULL;
 }
 
-PLIST_ITEM
+VOID
 ListInsert(
-	_Inout_ PLIST_HEAD ListHead,
-	_Inout_ PLIST_ITEM NewEntry
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PSINGLE_LIST_ENTRY NewEntry,
+	_In_ PKSPIN_LOCK Lock
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&ListHead->lock, &irql);
+	KeAcquireSpinLock(Lock, &irql);
 
-	PLIST_ITEM old_entry = ListHead->start;
+	PSINGLE_LIST_ENTRY old_entry = Head->Next;
 
-	ListHead->start = NewEntry;
-	NewEntry->next = old_entry;
+	Head->Next = NewEntry;
+	NewEntry->Next = old_entry;
 
-	KeReleaseSpinLock(&ListHead->lock, irql);
+	KeReleaseSpinLock(Lock, irql);
 }
 
-PVOID
-ListRemoveFirst(
-	_Inout_ PLIST_HEAD ListHead
+BOOLEAN
+ListFreeFirstEntry(
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_In_ PKSPIN_LOCK Lock
 )
 {
+	BOOLEAN result = FALSE;
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&ListHead->lock, &irql);
+	KeAcquireSpinLock(Lock, &irql);
 
-	if (ListHead->start)
+	if (Head->Next)
 	{
-		PLIST_ITEM entry = ListHead->start;
-		ListHead->start = ListHead->start->next;
-		ExFreePoolWithTag(entry, POOL_TAG_APC);
+		PSINGLE_LIST_ENTRY entry = Head->Next;
+		Head->Next = Head->Next->Next;
+		ExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
+		result = TRUE;
 	}
 
-	KeReleaseSpinLock(&ListHead->lock, irql);
+	KeReleaseSpinLock(Lock, irql);
+	return result;
 }
 
-PVOID
-ListRemoveItem(
-	_Inout_ PLIST_HEAD ListHead,
-	_Inout_ PLIST_ITEM ListItem
+VOID
+ListRemoveEntry(
+	_Inout_ PSINGLE_LIST_ENTRY Head,
+	_Inout_ PSINGLE_LIST_ENTRY Entry,
+	_In_ PKSPIN_LOCK Lock
 )
 {
 	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&ListHead->lock, &irql);
+	KeAcquireSpinLock(Lock, &irql);
 
-	PLIST_ITEM entry = ListHead->start;
+	PSINGLE_LIST_ENTRY entry = Head->Next;
 
 	if (!entry)
 		goto unlock;
 
-	if (entry == ListItem)
+	if (entry == Entry)
 	{
-		ListHead->start = entry->next;
-		ExFreePoolWithTag(ListItem, POOL_TAG_APC);
+		Head->Next = entry->Next;
+		ExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
 		goto unlock;
 	}
 
-	while (entry->next)
+	while (entry->Next)
 	{
-		if (entry->next == ListItem)
+		if (entry->Next == Entry)
 		{
-			entry->next = ListItem->next;
-			ExFreePoolWithTag(ListItem, POOL_TAG_APC);
+			entry->Next = Entry->Next;
+			ExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
 			goto unlock;
 		}
 
-		entry = entry->next;
+		entry = entry->Next;
 	}
 
 unlock:
-	KeReleaseSpinLock(&ListHead->lock, irql);
+	KeReleaseSpinLock(Lock, irql);
 }
