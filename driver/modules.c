@@ -3,6 +3,44 @@
 #include "callbacks.h"
 #include "driver.h"
 
+#define WHITELISTED_MODULE_TAG 'whte'
+
+#define NMI_DELAY 200 * 10000
+
+#define WHITELISTED_MODULE_COUNT 7
+#define MODULE_MAX_STRING_SIZE 256
+
+#define NTOSKRNL 0
+#define CLASSPNP 1
+#define WDF01000 2
+
+/*
+* The modules seen in the array below have been seen to commonly hook other drivers'
+* IOCTL dispatch routines. Its possible to see this by using WinObjEx64 and checking which
+* module each individual dispatch routine lies in. These modules are then addded to the list
+* (in addition to either the driver itself or ntoskrnl) which is seen as a valid region
+* for a drivers dispatch routine to lie within.
+*/
+CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
+{
+	"ntoskrnl.exe",
+	"CLASSPNP.SYS",
+	"Wdf01000.sys",
+	"HIDCLASS.sys",
+	"storport.sys",
+	"dxgkrnl.sys",
+	"ndis.sys"
+};
+
+#define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
+
+#define REASON_NO_BACKING_MODULE 1
+#define REASON_INVALID_IOCTL_DISPATCH 2
+
+#define SYSTEM_IDLE_PROCESS_ID 0
+#define SYSTEM_PROCESS_ID 4
+#define SVCHOST_PROCESS_ID 8
+
 typedef struct _WHITELISTED_REGIONS
 {
 	UINT64 base;
@@ -47,7 +85,7 @@ typedef struct _NMI_CALLBACK_DATA
 	UINT64		stack_limit;
 	UINT64		stack_base;
 	uintptr_t	stack_frames_offset;
-	INT			num_frames_captured;
+	INT		num_frames_captured;
 	UINT64		cr3;
 
 }NMI_CALLBACK_DATA, * PNMI_CALLBACK_DATA;
@@ -67,28 +105,93 @@ typedef struct _INVALID_DRIVERS_HEAD
 
 }INVALID_DRIVERS_HEAD, * PINVALID_DRIVERS_HEAD;
 
-STATIC NTSTATUS PopulateWhitelistedModuleBuffer(_Inout_ PVOID Buffer, _In_ PSYSTEM_MODULES SystemModules);
-STATIC NTSTATUS ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT Driver, _In_ PSYSTEM_MODULES Modules,
-	_In_ PWHITELISTED_REGIONS WhitelistedRegions, _Out_ PBOOLEAN Flag);
-STATIC VOID InitDriverList(_Inout_ PINVALID_DRIVERS_HEAD ListHead);
-STATIC VOID AddDriverToList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead, _In_ PDRIVER_OBJECT Driver,
+STATIC 
+NTSTATUS 
+PopulateWhitelistedModuleBuffer(
+	_Inout_ PVOID Buffer, 
+	_In_ PSYSTEM_MODULES SystemModules);
+
+STATIC 
+NTSTATUS 
+ValidateDriverIOCTLDispatchRegion(
+	_In_ PDRIVER_OBJECT Driver, 
+	_In_ PSYSTEM_MODULES Modules,
+	_In_ PWHITELISTED_REGIONS WhitelistedRegions, 
+	_Out_ PBOOLEAN Flag);
+
+STATIC 
+VOID 
+InitDriverList(
+	_Inout_ PINVALID_DRIVERS_HEAD ListHead);
+
+STATIC 
+VOID 
+AddDriverToList(
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead, 
+	_In_ PDRIVER_OBJECT Driver,
 	_In_ INT Reason);
-STATIC VOID RemoveInvalidDriverFromList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
-STATIC VOID EnumerateInvalidDrivers(_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
-STATIC NTSTATUS ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
-	_In_ PDRIVER_OBJECT DriverObject, _Out_ PBOOLEAN Result);
-STATIC NTSTATUS ValidateDriverObjects(_In_ PSYSTEM_MODULES SystemModules,
+
+STATIC 
+VOID 
+RemoveInvalidDriverFromList(
+	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
+
+STATIC 
+VOID 
+EnumerateInvalidDrivers(
+	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
+
+STATIC 
+NTSTATUS 
+ValidateDriverObjectHasBackingModule(
+	_In_ PSYSTEM_MODULES ModuleInformation,
+	_In_ PDRIVER_OBJECT DriverObject, 
+	_Out_ PBOOLEAN Result);
+
+STATIC 
+NTSTATUS 
+ValidateDriverObjects(
+	_In_ PSYSTEM_MODULES SystemModules,
 	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead);
-STATIC NTSTATUS AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
+
+STATIC 
+NTSTATUS 
+AnalyseNmiData(
+	_In_ PNMI_CONTEXT NmiContext, 
+	_In_ PSYSTEM_MODULES SystemModules,
 	_Inout_ PIRP Irp);
-STATIC NTSTATUS LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext);
-STATIC VOID ApcRundownRoutine(_In_ PRKAPC Apc);
-STATIC VOID ApcKernelRoutine(_In_ PRKAPC Apc, _Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
-	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext, _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
+
+STATIC 
+NTSTATUS 
+LaunchNonMaskableInterrupt(
+	_Inout_ PNMI_CONTEXT NmiContext);
+
+STATIC 
+VOID 
+ApcRundownRoutine(
+	_In_ PRKAPC Apc);
+
+STATIC 
+VOID 
+ApcKernelRoutine(
+	_In_ PRKAPC Apc, 
+	_Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+	_Inout_ _Deref_pre_maybenull_ PVOID* NormalContext, 
+	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2);
-STATIC VOID ApcNormalRoutine(_In_opt_ PVOID NormalContext, _In_opt_ PVOID SystemArgument1,
+
+STATIC 
+VOID 
+ApcNormalRoutine(
+	_In_opt_ PVOID NormalContext, 
+	_In_opt_ PVOID SystemArgument1,
 	_In_opt_ PVOID SystemArgument2);
-STATIC VOID ValidateThreadViaKernelApcCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
+
+STATIC 
+VOID 
+ValidateThreadViaKernelApcCallback(
+	_In_ PEPROCESS Process, 
+	_Inout_opt_ PVOID Context);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, FindSystemModuleByName)
@@ -114,44 +217,6 @@ STATIC VOID ValidateThreadViaKernelApcCallback(_In_ PEPROCESS Process, _Inout_op
 #pragma alloc_text(PAGE, ValidateThreadsViaKernelApc)
 #pragma alloc_text(PAGE, FreeApcStackwalkApcContextInformation)
 #endif
-
-#define WHITELISTED_MODULE_TAG 'whte'
-
-#define NMI_DELAY 200 * 10000
-
-#define WHITELISTED_MODULE_COUNT 7
-#define MODULE_MAX_STRING_SIZE 256
-
-#define NTOSKRNL 0
-#define CLASSPNP 1
-#define WDF01000 2
-
-/*
-* The modules seen in the array below have been seen to commonly hook other drivers'
-* IOCTL dispatch routines. Its possible to see this by using WinObjEx64 and checking which
-* module each individual dispatch routine lies in. These modules are then addded to the list
-* (in addition to either the driver itself or ntoskrnl) which is seen as a valid region
-* for a drivers dispatch routine to lie within.
-*/
-CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] =
-{
-	"ntoskrnl.exe",
-	"CLASSPNP.SYS",
-	"Wdf01000.sys",
-	"HIDCLASS.sys",
-	"storport.sys",
-	"dxgkrnl.sys",
-	"ndis.sys"
-};
-
-#define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
-
-#define REASON_NO_BACKING_MODULE 1
-#define REASON_INVALID_IOCTL_DISPATCH 2
-
-#define SYSTEM_IDLE_PROCESS_ID 0
-#define SYSTEM_PROCESS_ID 4
-#define SVCHOST_PROCESS_ID 8
 
 /*
 * TODO: this needs to be refactored to just return the entry not the whole fukin thing

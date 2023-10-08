@@ -9,7 +9,10 @@
 #include "queue.h"
 #include "hv.h"
 
-STATIC NTSTATUS DispatchApcOperation(PAPC_OPERATION_ID Operation);
+STATIC 
+NTSTATUS 
+DispatchApcOperation(
+	_In_ PAPC_OPERATION_ID Operation);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, DispatchApcOperation)
@@ -40,7 +43,9 @@ STATIC NTSTATUS DispatchApcOperation(PAPC_OPERATION_ID Operation);
 
 STATIC
 NTSTATUS
-DispatchApcOperation(PAPC_OPERATION_ID Operation)
+DispatchApcOperation(
+	_In_ PAPC_OPERATION_ID Operation
+)
 {
 	NTSTATUS status;
 

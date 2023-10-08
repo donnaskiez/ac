@@ -10,17 +10,53 @@
 #include "modules.h"
 #include "integrity.h"
 
-STATIC NTSTATUS AllocateCallbackStructure();
-STATIC VOID CleanupDriverCallbacksOnDriverUnload();
-STATIC NTSTATUS RegistryPathQueryCallbackRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData, 
-	IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext);
-STATIC VOID FreeDriverConfigurationStringBuffers();
-STATIC BOOLEAN FreeAllApcContextStructures();
-STATIC VOID DriverUnload(_In_ PDRIVER_OBJECT DriverObject);
-STATIC VOID InitialiseProcessConfigOnDriverEntry();
-STATIC VOID CleanupDriverConfigOnUnload();
-STATIC NTSTATUS InitialiseDriverConfigOnDriverEntry(_In_ PUNICODE_STRING RegistryPath);
-NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
+STATIC 
+NTSTATUS 
+AllocateCallbackStructure();
+
+STATIC 
+VOID 
+CleanupDriverCallbacksOnDriverUnload();
+
+STATIC 
+VOID 
+FreeDriverConfigurationStringBuffers();
+
+STATIC 
+BOOLEAN 
+FreeAllApcContextStructures();
+
+STATIC 
+VOID 
+InitialiseProcessConfigOnDriverEntry();
+
+STATIC 
+VOID 
+CleanupDriverConfigOnUnload();
+
+STATIC 
+VOID 
+DriverUnload(
+	_In_ PDRIVER_OBJECT DriverObject);
+
+STATIC 
+NTSTATUS 
+InitialiseDriverConfigOnDriverEntry(
+	_In_ PUNICODE_STRING RegistryPath);
+
+NTSTATUS 
+DriverEntry(
+	_In_ PDRIVER_OBJECT DriverObject, 
+	_In_ PUNICODE_STRING RegistryPath);
+
+STATIC 
+NTSTATUS RegistryPathQueryCallbackRoutine(
+	IN PWSTR ValueName,
+	IN ULONG ValueType,
+	IN PVOID ValueData,
+	IN ULONG ValueLength,
+	IN PVOID Context,
+	IN PVOID EntryContext);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
@@ -195,7 +231,9 @@ GetCallbackConfigStructure(
 		return;
 
 	*CallbackConfiguration = NULL;
-	InterlockedExchangePointer(CallbackConfiguration, &driver_config.callback_config);
+	KeAcquireGuardedMutex(&driver_config.lock);
+	*CallbackConfiguration = &driver_config.callback_config;
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -446,7 +484,9 @@ GetApcContextByIndex(
 		return;
 
 	*Context = NULL;
-	InterlockedExchangePointer(Context, driver_config.apc_contexts[Index]);
+	KeAcquireGuardedMutex(&driver_config.lock);
+	*Context = driver_config.apc_contexts[Index];
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 VOID
@@ -471,7 +511,9 @@ GetProtectedProcessEProcess(
 		return;
 
 	*Process = NULL;
-	InterlockedExchangePointer(Process, process_config.protected_process_eprocess);
+	KeAcquireGuardedMutex(&process_config.lock);
+	*Process = process_config.protected_process_eprocess;
+	KeReleaseGuardedMutex(&process_config.lock);
 }
 
 VOID
@@ -506,7 +548,9 @@ GetDriverName(
 		return;
 
 	*DriverName = NULL;
-	InterlockedExchangePointer(DriverName, driver_config.ansi_driver_name.Buffer);
+	KeAcquireGuardedMutex(&driver_config.lock);
+	*DriverName = driver_config.ansi_driver_name.Buffer;
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 VOID
@@ -562,7 +606,9 @@ GetDriverConfigSystemInformation(
 		return;
 
 	*SystemInformation = NULL;
-	InterlockedExchangePointer(SystemInformation, &driver_config.system_information);
+	KeAcquireGuardedMutex(&driver_config.lock);
+	*SystemInformation = &driver_config.system_information;
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 STATIC

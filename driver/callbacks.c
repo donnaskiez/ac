@@ -6,8 +6,13 @@
 #include "pool.h"
 #include "thread.h"
 
-STATIC BOOLEAN EnumHandleCallback(_In_ PHANDLE_TABLE HandleTable, _In_ PHANDLE_TABLE_ENTRY Entry,
-	_In_ HANDLE Handle, _In_ PVOID Context);
+STATIC 
+BOOLEAN 
+EnumHandleCallback(
+	_In_ PHANDLE_TABLE HandleTable, 
+	_In_ PHANDLE_TABLE_ENTRY Entry,
+	_In_ HANDLE Handle, 
+	_In_ PVOID Context);
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, ObPostOpCallbackRoutine)

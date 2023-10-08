@@ -8,47 +8,6 @@
 #include <initguid.h>
 #include <devpkey.h>
 
-STATIC NTSTATUS GetModuleInformationByName(_Inout_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, 
-        _In_ LPCSTR ModuleName);
-STATIC NTSTATUS StoreModuleExecutableRegionsInBuffer(_Inout_ PVOID* Buffer, _In_ PVOID ModuleBase,
-        _In_ SIZE_T ModuleSize, _Inout_ PSIZE_T BytesWritten);
-STATIC NTSTATUS MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle, _Inout_ PVOID* Section,
-        _In_ PUNICODE_STRING Path, _Inout_ PSIZE_T Size);
-STATIC NTSTATUS ComputeHashOfBuffer(_In_ PVOID Buffer, _In_ ULONG BufferSize, _Inout_ PVOID* HashResult,
-        _Inout_ PULONG HashResultSize);
-STATIC VOID GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure);
-STATIC NTSTATUS GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table, _In_ INT Index,
-        _In_ PVOID Buffer, _In_ SIZE_T BufferSize);
-STATIC UINT64 MeasureInstructionRead(_In_ PVOID InstructionAddress);
-STATIC UINT64 MeasureReads(_In_ PVOID Address, _In_ ULONG Count);
-STATIC NTSTATUS GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Inout_ PUINT64 AverageTime);
-STATIC NTSTATUS InitiateEptFunctionAddressArrays();
-STATIC NTSTATUS RegistryPathQueryTestSigningCallback(IN PWSTR ValueName, IN ULONG ValueType,
-        IN PVOID ValueData, IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext);
-
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, GetDriverImageSize)
-#pragma alloc_text(PAGE, GetModuleInformationByName)
-#pragma alloc_text(PAGE, StoreModuleExecutableRegionsInBuffer)
-#pragma alloc_text(PAGE, MapDiskImageIntoVirtualAddressSpace)
-#pragma alloc_text(PAGE, ComputeHashOfBuffer)
-#pragma alloc_text(PAGE, VerifyInMemoryImageVsDiskImage)
-#pragma alloc_text(PAGE, RetrieveInMemoryModuleExecutableSections)
-#pragma alloc_text(PAGE, GetNextSMBIOSStructureInTable)
-#pragma alloc_text(PAGE, GetStringAtIndexFromSMBIOSTable)
-#pragma alloc_text(PAGE, ParseSMBIOSTable)
-#pragma alloc_text(PAGE, ValidateProcessLoadedModule)
-#pragma alloc_text(PAGE, GetHardDiskDriveSerialNumber)
-#pragma alloc_text(PAGE, ScanForSignature)
-#pragma alloc_text(PAGE, MeasureInstructionRead)
-#pragma alloc_text(PAGE, MeasureReads)
-#pragma alloc_text(PAGE, GetAverageReadTimeAtRoutine)
-#pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
-#pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
-#pragma alloc_text(PAGE, RegistryPathQueryTestSigningCallback)
-#pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
-#endif
-
 #define SMBIOS_TABLE 'RSMB'
 
 /* for generic intel */
@@ -83,6 +42,90 @@ typedef struct _PROCESS_MODULE_VALIDATION_RESULT
         INT is_module_valid;
 
 }PROCESS_MODULE_VALIDATION_RESULT, * PPROCESS_MODULE_VALIDATION_RESULT;
+
+STATIC 
+NTSTATUS 
+InitiateEptFunctionAddressArrays();
+
+STATIC 
+NTSTATUS 
+GetModuleInformationByName(
+        _Inout_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, 
+        _In_ LPCSTR ModuleName);
+
+STATIC 
+NTSTATUS 
+StoreModuleExecutableRegionsInBuffer(
+        _Inout_ PVOID* Buffer, 
+        _In_ PVOID ModuleBase,
+        _In_ SIZE_T ModuleSize, 
+        _Inout_ PSIZE_T BytesWritten);
+
+STATIC 
+NTSTATUS 
+MapDiskImageIntoVirtualAddressSpace(
+        _Inout_ PHANDLE SectionHandle,
+        _Inout_ PVOID* Section,
+        _In_ PUNICODE_STRING Path, 
+        _Inout_ PSIZE_T Size);
+
+STATIC 
+NTSTATUS 
+ComputeHashOfBuffer(
+        _In_ PVOID Buffer, 
+        _In_ ULONG BufferSize, 
+        _Inout_ PVOID* HashResult,
+        _Inout_ PULONG HashResultSize);
+
+STATIC 
+VOID 
+GetNextSMBIOSStructureInTable(
+        _Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure);
+
+STATIC 
+NTSTATUS 
+GetStringAtIndexFromSMBIOSTable(
+        _In_ PSMBIOS_TABLE_HEADER Table, 
+        _In_ INT Index,
+        _In_ PVOID Buffer, 
+        _In_ SIZE_T BufferSize);
+
+STATIC 
+NTSTATUS 
+GetAverageReadTimeAtRoutine(
+        _In_ PVOID RoutineAddress, 
+        _Inout_ PUINT64 AverageTime);
+
+STATIC 
+NTSTATUS 
+RegistryPathQueryTestSigningCallback(
+        IN PWSTR ValueName, 
+        IN ULONG ValueType,
+        IN PVOID ValueData, 
+        IN ULONG ValueLength, 
+        IN PVOID Context, 
+        IN PVOID EntryContext);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, GetDriverImageSize)
+#pragma alloc_text(PAGE, GetModuleInformationByName)
+#pragma alloc_text(PAGE, StoreModuleExecutableRegionsInBuffer)
+#pragma alloc_text(PAGE, MapDiskImageIntoVirtualAddressSpace)
+#pragma alloc_text(PAGE, ComputeHashOfBuffer)
+#pragma alloc_text(PAGE, VerifyInMemoryImageVsDiskImage)
+#pragma alloc_text(PAGE, RetrieveInMemoryModuleExecutableSections)
+#pragma alloc_text(PAGE, GetNextSMBIOSStructureInTable)
+#pragma alloc_text(PAGE, GetStringAtIndexFromSMBIOSTable)
+#pragma alloc_text(PAGE, ParseSMBIOSTable)
+#pragma alloc_text(PAGE, ValidateProcessLoadedModule)
+#pragma alloc_text(PAGE, GetHardDiskDriveSerialNumber)
+#pragma alloc_text(PAGE, ScanForSignature)
+#pragma alloc_text(PAGE, GetAverageReadTimeAtRoutine)
+#pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
+#pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
+#pragma alloc_text(PAGE, RegistryPathQueryTestSigningCallback)
+#pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
+#endif
 
 /*
 * note: this can be put into its own function wihtout an IRP as argument then it can be used

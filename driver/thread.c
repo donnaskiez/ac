@@ -7,16 +7,6 @@
 #include "driver.h"
 #include "queue.h"
 
-STATIC VOID KPRCBThreadValidationProcessCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
-STATIC VOID DetectAttachedThreadsProcessCallback(_In_ PEPROCESS Process, _Inout_opt_ PVOID Context);
-
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, KPRCBThreadValidationProcessCallback)
-#pragma alloc_text(PAGE, ValidateKPCRBThreads)
-#pragma alloc_text(PAGE, DetectAttachedThreadsProcessCallback)
-#pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
-#endif
-
 typedef struct _KPRCB_THREAD_VALIDATION_CTX
 {
 	UINT64 current_kpcrb_thread;
@@ -25,6 +15,25 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 	BOOLEAN finished;
 
 }KPRCB_THREAD_VALIDATION_CTX, * PKPRCB_THREAD_VALIDATION_CTX;
+
+STATIC 
+VOID 
+KPRCBThreadValidationProcessCallback(
+	_In_ PEPROCESS Process, 
+	_Inout_opt_ PVOID Context);
+
+STATIC 
+VOID 
+DetectAttachedThreadsProcessCallback(
+	_In_ PEPROCESS Process, 
+	_Inout_opt_ PVOID Context);
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, KPRCBThreadValidationProcessCallback)
+#pragma alloc_text(PAGE, ValidateKPCRBThreads)
+#pragma alloc_text(PAGE, DetectAttachedThreadsProcessCallback)
+#pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
+#endif
 
 STATIC
 VOID
