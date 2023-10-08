@@ -124,6 +124,8 @@ FindThreadListEntryByThreadAddress(
 			*Entry = entry;
 			goto unlock;
 		}
+
+		entry = entry->list.Next;
 	}
 unlock:
 	KeReleaseSpinLock(&thread_list->lock, irql);
@@ -155,12 +157,17 @@ ThreadCreateNotifyRoutine(
 		if (!entry)
 			return;
 
+		entry->thread = thread;
 		ListInsert(&thread_list->start, &entry->list, &thread_list->lock);
 		DEBUG_LOG("Thread inserted: %llx", (UINT64)thread);
 	}
 	else
 	{
 		FindThreadListEntryByThreadAddress(thread, &entry);
+
+		if (!entry)
+			return;
+
 		ListRemoveEntry(&thread_list->start, entry, &thread_list->lock);
 		DEBUG_LOG("Thread removed: %llx", (UINT64)thread);
 	}
