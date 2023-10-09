@@ -26,14 +26,15 @@ typedef struct _SYSTEM_INFORMATION
 
 }SYSTEM_INFORMATION, * PSYSTEM_INFORMATION;
 
-typedef struct _CALLBACKS_CONFIGURATION
+typedef struct _OB_CALLBACKS_CONFIG
 {
 	PVOID registration_handle;
 	KGUARDED_MUTEX lock;
 
-}CALLBACK_CONFIGURATION, * PCALLBACK_CONFIGURATION;
+}OB_CALLBACKS_CONFIG, * POB_CALLBACKS_CONFIG;
 
-NTSTATUS InitialiseProcessConfigOnProcessLaunch(
+NTSTATUS
+ProcLoadInitialiseProcessConfig(
 	_In_ PIRP Irp
 );
 
@@ -91,28 +92,20 @@ QueryActiveApcContextsForCompletion(
 );
 
 VOID
-TerminateProtectedProcessOnViolation(
-
-);
-
-VOID
-ClearProcessConfigOnProcessTermination(
-	
-);
+TerminateProtectedProcessOnViolation();
 
 NTSTATUS
-EnableCallbackRoutinesOnProcessRun(
-
-);
+ProcLoadEnableObCallbacks();
 
 VOID
-UnregisterCallbacksOnProcessTermination(
+ProcCloseDisableObCallbacks();
 
-);
+VOID
+ProcCloseClearProcessConfiguration();
 
 VOID
 GetCallbackConfigStructure(
-	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
+	_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration
 );
 
 VOID

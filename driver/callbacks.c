@@ -206,7 +206,7 @@ ObPreOpCallbackRoutine(
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
 	LPCSTR protected_process_name;
-	PCALLBACK_CONFIGURATION configuration = NULL;
+	POB_CALLBACKS_CONFIG configuration = NULL;
 
 	/*
 	* This is to prevent the condition where the thread executing this function is scheduled whilst we 

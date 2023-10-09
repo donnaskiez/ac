@@ -1287,7 +1287,10 @@ ValidateThreadViaKernelApcCallback(
 	if (*misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE)
 		FlipKThreadMiscFlagsFlag(ThreadListEntry->thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
 
-	/* force thread into an alertable state */
+	/* 
+	* force thread into an alertable state, noting that this does not guarantee that our APC will be 
+	* run.
+	*/
 	if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
 		FlipKThreadMiscFlagsFlag(ThreadListEntry->thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
 

@@ -74,7 +74,6 @@ ValidateKPCRBThreads(
 	_Inout_ PIRP Irp
 )
 {
-	NTSTATUS status;
 	UINT64 kpcr;
 	UINT64 kprcb;
 	KAFFINITY old_affinity = { 0 };

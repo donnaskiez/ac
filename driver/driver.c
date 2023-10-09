@@ -11,38 +11,9 @@
 #include "integrity.h"
 
 STATIC 
-NTSTATUS 
-AllocateCallbackStructure();
-
-STATIC 
-VOID 
-CleanupDriverCallbacksOnDriverUnload();
-
-STATIC 
-VOID 
-FreeDriverConfigurationStringBuffers();
-
-STATIC 
-BOOLEAN 
-FreeAllApcContextStructures();
-
-STATIC 
-VOID 
-InitialiseProcessConfigOnDriverEntry();
-
-STATIC 
-VOID 
-CleanupDriverConfigOnUnload();
-
-STATIC 
 VOID 
 DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject);
-
-STATIC 
-NTSTATUS 
-InitialiseDriverConfigOnDriverEntry(
-	_In_ PUNICODE_STRING RegistryPath);
 
 NTSTATUS 
 DriverEntry(
@@ -58,17 +29,54 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 	IN PVOID Context,
 	IN PVOID EntryContext);
 
+STATIC
+VOID
+DrvUnloadUnregisterObCallbacks();
+
+STATIC
+VOID
+DrvUnloadFreeConfigStrings();
+
+STATIC
+VOID
+DrvUnloadFreeSymbolicLink();
+
+STATIC
+VOID
+DrvUnloadFreeGlobalReportQueue();
+
+STATIC
+VOID
+DrvUnloadFreeThreadList();
+
+STATIC
+NTSTATUS
+DrvLoadEnableNotifyRoutines();
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseObCbConfig();
+
+STATIC
+VOID
+DrvLoadInitialiseReportQueue(
+	_In_ PBOOLEAN Flag
+);
+
+STATIC
+VOID
+DrvLoadInitialiseProcessConfig();
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseDriverConfig(
+	_In_ PUNICODE_STRING RegistryPath
+);
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-#pragma alloc_text(PAGE, EnableCallbackRoutinesOnProcessRun)
-#pragma alloc_text(PAGE, AllocateCallbackStructure)
-#pragma alloc_text(PAGE, UnregisterCallbacksOnProcessTermination)
-#pragma alloc_text(PAGE, CleanupDriverCallbacksOnDriverUnload)
-#pragma alloc_text(PAGE, GetCallbackConfigStructure)
-#pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
 #pragma alloc_text(PAGE, GetProtectedProcessEProcess)
 #pragma alloc_text(PAGE, GetProtectedProcessId)
-#pragma alloc_text(PAGE, ClearProcessConfigOnProcessTermination)
 #pragma alloc_text(PAGE, GetDriverName)
 #pragma alloc_text(PAGE, GetDriverPath)
 #pragma alloc_text(PAGE, GetDriverRegistryPath)
@@ -76,13 +84,21 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 #pragma alloc_text(PAGE, GetDriverSymbolicLink)
 #pragma alloc_text(PAGE, GetDriverConfigSystemInformation)
 #pragma alloc_text(PAGE, RegistryPathQueryCallbackRoutine)
-#pragma alloc_text(PAGE, FreeDriverConfigurationStringBuffers)
-#pragma alloc_text(PAGE, InitialiseDriverConfigOnDriverEntry)
-#pragma alloc_text(PAGE, InitialiseProcessConfigOnProcessLaunch)
-#pragma alloc_text(PAGE, InitialiseProcessConfigOnDriverEntry)
-#pragma alloc_text(PAGE, CleanupDriverConfigOnUnload)
-#pragma alloc_text(PAGE, DriverUnload)
 #pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
+#pragma alloc_text(PAGE, ProcCloseDisableObCallbacks)
+#pragma alloc_text(PAGE, ProcCloseClearProcessConfiguration)
+#pragma alloc_text(PAGE, ProcLoadEnableObCallbacks)
+#pragma alloc_text(PAGE, ProcLoadInitialiseProcessConfig)
+#pragma alloc_text(PAGE, DrvUnloadUnregisterObCallbacks)
+#pragma alloc_text(PAGE, DrvUnloadFreeConfigStrings)
+#pragma alloc_text(PAGE, DrvUnloadFreeSymbolicLink)
+#pragma alloc_text(PAGE, DrvUnloadFreeGlobalReportQueue)
+#pragma alloc_text(PAGE, DrvUnloadFreeThreadList)
+#pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
+#pragma alloc_text(PAGE, DrvLoadInitialiseObCbConfig)
+#pragma alloc_text(PAGE, DrvLoadInitialiseReportQueue)
+#pragma alloc_text(PAGE, DrvLoadInitialiseProcessConfig)
+#pragma alloc_text(PAGE, DrvLoadInitialiseDriverConfig)
 #endif
 
 #define MAXIMUM_APC_CONTEXTS 10
@@ -97,7 +113,6 @@ typedef struct _DRIVER_CONFIG
 	UNICODE_STRING registry_path;
 	SYSTEM_INFORMATION system_information;
 	PVOID apc_contexts[MAXIMUM_APC_CONTEXTS];
-	CALLBACK_CONFIGURATION callback_config;
 	volatile BOOLEAN unload_in_progress;
 	KGUARDED_MUTEX lock;
 	KSPIN_LOCK spin_lock;
@@ -113,7 +128,8 @@ typedef struct _PROCESS_CONFIG
 	BOOLEAN initialised;
 	LONG um_handle;
 	LONG km_handle;
-	PEPROCESS protected_process_eprocess;
+	PEPROCESS process;
+	OB_CALLBACKS_CONFIG ob_cb_config;
 	KGUARDED_MUTEX lock;
 
 }PROCESS_CONFIG, * PPROCESS_CONFIG;
@@ -124,195 +140,105 @@ PROCESS_CONFIG process_config = { 0 };
 #define POOL_TAG_CONFIG 'conf'
 
 /*
-* The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
-* to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have moved
-* them here. This way, we can make use of both locks (which is very ugly and I am pretty sure means
-* I have made a mistake implementation wise but alas) ensuring we get rid of any race conditions
-* aswell as the sturcture being paged out as we allocate in a non-paged pool meaning theres no
-* chance our mutex will cause an IRQL bug check due to being paged out during acquisition.
+* Regular routines
 */
-NTSTATUS
-EnableCallbackRoutinesOnProcessRun()
+
+VOID
+TerminateProtectedProcessOnViolation()
 {
 	NTSTATUS status;
+	ULONG process_id = 0;
 
-	KeAcquireGuardedMutex(&driver_config.lock);
+	GetProtectedProcessId(&process_id);
 
-	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
-	OB_OPERATION_REGISTRATION operation_registration = { 0 };
-	PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine = { 0 };
-
-	operation_registration.ObjectType = PsProcessType;
-	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
-	operation_registration.PreOperation = ObPreOpCallbackRoutine;
-	operation_registration.PostOperation = ObPostOpCallbackRoutine;
-
-	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
-	callback_registration.OperationRegistration = &operation_registration;
-	callback_registration.OperationRegistrationCount = 1;
-	callback_registration.RegistrationContext = NULL;
-
-	status = ObRegisterCallbacks(
-		&callback_registration,
-		&driver_config.callback_config.registration_handle
-	);
-
-	if (!NT_SUCCESS(status))
+	if (!process_id)
 	{
-		DEBUG_ERROR("failed to launch obregisters with status %x", status);
-		goto end;
+		DEBUG_ERROR("Failed to terminate process as process id is null");
+		return;
 	}
 
-	//status = PsSetCreateProcessNotifyRoutine(
-	//	ProcessCreateNotifyRoutine,
-	//	FALSE
-	//);
-
-	//if ( !NT_SUCCESS( status ) )
-	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
-
-end:
-	KeReleaseGuardedMutex(&driver_config.lock);
-	return status;
-}
-
-STATIC
-NTSTATUS
-EnableCallbackRoutinesOnDriverEntry()
-{
-	NTSTATUS status;
-
-	status = InitialiseThreadList();
-
-	if (!NT_SUCCESS(status))
-	{
-		DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
-		return status;
-	}
-
-	status = PsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
-
-	if (!NT_SUCCESS(status))
-		DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
-
-	return status;
-}
-
-STATIC
-NTSTATUS
-AllocateCallbackStructure()
-{
 	/*
-	* This mutex ensures we don't unregister our ObRegisterCallbacks while
-	* the callback function is running since this might cause some funny stuff
-	* to happen. Better to be safe then sorry :)
+	* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle.
 	*/
-	KeInitializeGuardedMutex(&driver_config.callback_config.lock);
-}
+	status = ZwTerminateProcess(process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
 
-VOID
-UnregisterCallbacksOnProcessTermination()
-{
-	KeAcquireGuardedMutex(&driver_config.callback_config.lock);
-
-	if (driver_config.callback_config.registration_handle)
+	if (!NT_SUCCESS(status))
 	{
-		ObUnRegisterCallbacks(driver_config.callback_config.registration_handle);
-		driver_config.callback_config.registration_handle = NULL;
+		/*
+		* We don't want to clear the process config if ZwTerminateProcess fails
+		* so we can try again.
+		*/
+		DEBUG_ERROR("ZwTerminateProcess failed with status %x", status);
+		return;
 	}
-
-	KeReleaseGuardedMutex(&driver_config.callback_config.lock);
+	/* this wont be needed when procloadstuff is implemented */
+	ProcCloseClearProcessConfiguration();
 }
 
-/*
-* The question is, What happens if we attempt to register our callbacks after we
-* unregister them but before we free the pool? Hm.. No Good.
-*
-* Okay to solve this well acquire the driver lock aswell, we could also just
-* store the structure in the .data section but i ceebs atm.
-*
-* This definitely doesn't seem optimal, but it works ...
-*/
 STATIC
-VOID
-CleanupDriverCallbacksOnDriverUnload()
-{
-	UnregisterCallbacksOnProcessTermination();
-}
-
-/*
-* Can return a null value if we attempt to read the value is underway whilst we are 
-* freeing the structure, hence the use of the 2 locks.
-*/
-VOID
-GetCallbackConfigStructure(
-	_Out_ PCALLBACK_CONFIGURATION* CallbackConfiguration
+NTSTATUS
+RegistryPathQueryCallbackRoutine(
+	IN PWSTR ValueName,
+	IN ULONG ValueType,
+	IN PVOID ValueData,
+	IN ULONG ValueLength,
+	IN PVOID Context,
+	IN PVOID EntryContext
 )
 {
-	if (!CallbackConfiguration)
-		return;
+	UNICODE_STRING value_name;
+	UNICODE_STRING image_path = RTL_CONSTANT_STRING(L"ImagePath");
+	UNICODE_STRING display_name = RTL_CONSTANT_STRING(L"DisplayName");
+	UNICODE_STRING value;
+	PVOID temp_buffer;
 
-	*CallbackConfiguration = NULL;
-	KeAcquireGuardedMutex(&driver_config.lock);
-	*CallbackConfiguration = &driver_config.callback_config;
-	KeReleaseGuardedMutex(&driver_config.lock);
+	RtlInitUnicodeString(&value_name, ValueName);
+
+	if (RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE)
+	{
+		temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
+
+		if (!temp_buffer)
+			return STATUS_MEMORY_NOT_ALLOCATED;
+
+		RtlCopyMemory(
+			temp_buffer,
+			ValueData,
+			ValueLength
+		);
+
+		driver_config.driver_path.Buffer = (PWCH)temp_buffer;
+		driver_config.driver_path.Length = ValueLength;
+		driver_config.driver_path.MaximumLength = ValueLength + 1;
+	}
+
+	if (RtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
+	{
+		temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
+
+		if (!temp_buffer)
+			return STATUS_MEMORY_NOT_ALLOCATED;
+
+		RtlCopyMemory(
+			temp_buffer,
+			ValueData,
+			ValueLength
+		);
+
+		driver_config.unicode_driver_name.Buffer = (PWCH)temp_buffer;
+		driver_config.unicode_driver_name.Length = ValueLength;
+		driver_config.unicode_driver_name.MaximumLength = ValueLength + 1;
+	}
+
+	return STATUS_SUCCESS;
 }
 
 /*
-* The driver config structure holds an array of pointers to APC context structures. These
-* APC context structures are unique to each APC operation that this driver will perform. For
-* example, a single context will manage all APCs that are used to stackwalk, whilst another
-* context will be used to manage all APCs used to query a threads memory for example.
-*
-* Due to the nature of APCs, its important to keep a total or count of the number of APCs we
-* have allocated and queued to threads. This information is stored in the APC_CONTEXT_HEADER which
-* all APC context structures will contain as the first entry in their structure. It holds the ContextId
-* which is a unique identifier for the type of APC operation it is managing aswell as the number of
-* currently queued APCs.
-*
-* When an APC is allocated a queued, we increment this count. When an APC is completed and freed, we
-* decrement this counter and free the APC itself. If all APCs have been freed and the counter is 0,the
-* following objects will be freed:
-*
-* 1. Any additional allocations used by the APC stored in the context structure
-* 2. The APC context structure for the given APC operation
-* 3. The APC context entry in driver_config->apc_contexts will be zero'd.
-*
-* It's important to remember that the driver can unload when pending APC's have not been freed due to the
-* limitations windows places on APCs, however I am in the process of finding a solution for this.
+* 
+* 
+* APC related routines
+* 
 */
-
-STATIC
-BOOLEAN
-FreeAllApcContextStructures()
-{
-	BOOLEAN flag = TRUE;
-	KIRQL irql = KeGetCurrentIrql();
-
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
-
-	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
-	{
-		PUINT64 entry = driver_config.apc_contexts;
-
-		if (entry[index] != NULL)
-		{
-			PAPC_CONTEXT_HEADER context = entry[index];
-
-			if (context->count > 0)
-			{
-				flag = FALSE;
-				goto unlock;
-			}
-
-			ExFreePoolWithTag(entry, POOL_TAG_APC);
-		}
-	}
-
-unlock:
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
-	return flag;
-}
 
 /*
 * No need to hold the lock here as the thread freeing the APCs will
@@ -463,7 +389,7 @@ InsertApcContext(
 
 	PAPC_CONTEXT_HEADER header = Context;
 
-	/* 
+	/*
 	* prevents the race condition where the driver is unloaded whilst a new apc operation
 	* is attempted to start, ensuring that even if it holds
 	*/
@@ -532,53 +458,23 @@ GetApcContextByIndex(
 	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
+/*
+* 
+* Config getters
+* 
+*/
+
 VOID
-ReadProcessInitialisedConfigFlag(
-	_Out_ PBOOLEAN Flag
+GetCallbackConfigStructure(
+	_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration
 )
 {
-	if (Flag == NULL)
+	if (!CallbackConfiguration)
 		return;
 
+	*CallbackConfiguration = NULL;
 	KeAcquireGuardedMutex(&process_config.lock);
-	*Flag = process_config.initialised;
-	KeReleaseGuardedMutex(&process_config.lock);
-}
-
-VOID
-GetProtectedProcessEProcess(
-	_Out_ PEPROCESS* Process
-)
-{
-	if (Process == NULL)
-		return;
-
-	*Process = NULL;
-	KeAcquireGuardedMutex(&process_config.lock);
-	*Process = process_config.protected_process_eprocess;
-	KeReleaseGuardedMutex(&process_config.lock);
-}
-
-VOID
-GetProtectedProcessId(
-	_Out_ PLONG ProcessId
-)
-{
-	KeAcquireGuardedMutex(&process_config.lock);
-	RtlZeroMemory(ProcessId, sizeof(LONG));
-	*ProcessId = process_config.km_handle;
-	KeReleaseGuardedMutex(&process_config.lock);
-}
-
-VOID
-ClearProcessConfigOnProcessTermination()
-{
-	DEBUG_LOG("Process closed, clearing driver process_configuration");
-	KeAcquireGuardedMutex(&process_config.lock);
-	process_config.km_handle = NULL;
-	process_config.um_handle = NULL;
-	process_config.protected_process_eprocess = NULL;
-	process_config.initialised = FALSE;
+	*CallbackConfiguration = &process_config.ob_cb_config;
 	KeReleaseGuardedMutex(&process_config.lock);
 }
 
@@ -654,67 +550,243 @@ GetDriverConfigSystemInformation(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
-STATIC
-NTSTATUS
-RegistryPathQueryCallbackRoutine(
-	IN PWSTR ValueName,
-	IN ULONG ValueType,
-	IN PVOID ValueData,
-	IN ULONG ValueLength,
-	IN PVOID Context,
-	IN PVOID EntryContext
+VOID
+ReadProcessInitialisedConfigFlag(
+	_Out_ PBOOLEAN Flag
 )
 {
-	UNICODE_STRING value_name;
-	UNICODE_STRING image_path = RTL_CONSTANT_STRING(L"ImagePath");
-	UNICODE_STRING display_name = RTL_CONSTANT_STRING(L"DisplayName");
-	UNICODE_STRING value;
-	PVOID temp_buffer;
+	if (Flag == NULL)
+		return;
 
-	RtlInitUnicodeString(&value_name, ValueName);
+	KeAcquireGuardedMutex(&process_config.lock);
+	*Flag = process_config.initialised;
+	KeReleaseGuardedMutex(&process_config.lock);
+}
 
-	if (RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE)
+VOID
+GetProtectedProcessEProcess(
+	_Out_ PEPROCESS* Process
+)
+{
+	if (Process == NULL)
+		return;
+
+	*Process = NULL;
+	KeAcquireGuardedMutex(&process_config.lock);
+	*Process = process_config.process;
+	KeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+GetProtectedProcessId(
+	_Out_ PLONG ProcessId
+)
+{
+	KeAcquireGuardedMutex(&process_config.lock);
+	RtlZeroMemory(ProcessId, sizeof(LONG));
+	*ProcessId = process_config.km_handle;
+	KeReleaseGuardedMutex(&process_config.lock);
+}
+
+/*
+* 
+* Routines run at process close
+* 
+*/
+
+VOID
+ProcCloseDisableObCallbacks()
+{
+	KeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
+
+	if (process_config.ob_cb_config.registration_handle)
 	{
-		temp_buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, ValueLength, POOL_TAG_STRINGS);
-
-		if (!temp_buffer)
-			return STATUS_MEMORY_NOT_ALLOCATED;
-
-		RtlCopyMemory(
-			temp_buffer,
-			ValueData,
-			ValueLength
-		);
-
-		driver_config.driver_path.Buffer = (PWCH)temp_buffer;
-		driver_config.driver_path.Length = ValueLength;
-		driver_config.driver_path.MaximumLength = ValueLength + 1;
+		ObUnRegisterCallbacks(process_config.ob_cb_config.registration_handle);
+		process_config.ob_cb_config.registration_handle = NULL;
 	}
 
-	if (RtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
+	KeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
+}
+
+VOID
+ProcCloseClearProcessConfiguration()
+{
+	DEBUG_LOG("Process closed, clearing driver process_configuration");
+	KeAcquireGuardedMutex(&process_config.lock);
+	process_config.km_handle = NULL;
+	process_config.um_handle = NULL;
+	process_config.process = NULL;
+	process_config.initialised = FALSE;
+	KeReleaseGuardedMutex(&process_config.lock);
+}
+
+/*
+* 
+* Routines run at process load
+* 
+*/
+
+/*
+* The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
+* to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have moved
+* them here. This way, we can make use of both locks (which is very ugly and I am pretty sure means
+* I have made a mistake implementation wise but alas) ensuring we get rid of any race conditions
+* aswell as the sturcture being paged out as we allocate in a non-paged pool meaning theres no
+* chance our mutex will cause an IRQL bug check due to being paged out during acquisition.
+*/
+NTSTATUS
+ProcLoadEnableObCallbacks()
+{
+	NTSTATUS status;
+
+	KeAcquireGuardedMutex(&process_config.lock);
+
+	OB_CALLBACK_REGISTRATION callback_registration = { 0 };
+	OB_OPERATION_REGISTRATION operation_registration = { 0 };
+	PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine = { 0 };
+
+	operation_registration.ObjectType = PsProcessType;
+	operation_registration.Operations = OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
+	operation_registration.PreOperation = ObPreOpCallbackRoutine;
+	operation_registration.PostOperation = ObPostOpCallbackRoutine;
+
+	callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
+	callback_registration.OperationRegistration = &operation_registration;
+	callback_registration.OperationRegistrationCount = 1;
+	callback_registration.RegistrationContext = NULL;
+
+	status = ObRegisterCallbacks(
+		&callback_registration,
+		&process_config.ob_cb_config.registration_handle
+	);
+
+	if (!NT_SUCCESS(status))
 	{
-		temp_buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, ValueLength, POOL_TAG_STRINGS);
-
-		if (!temp_buffer)
-			return STATUS_MEMORY_NOT_ALLOCATED;
-
-		RtlCopyMemory(
-			temp_buffer,
-			ValueData,
-			ValueLength
-		);
-
-		driver_config.unicode_driver_name.Buffer = (PWCH)temp_buffer;
-		driver_config.unicode_driver_name.Length = ValueLength;
-		driver_config.unicode_driver_name.MaximumLength = ValueLength + 1;
+		DEBUG_ERROR("failed to launch obregisters with status %x", status);
+		goto end;
 	}
 
-	return STATUS_SUCCESS;
+	//status = PsSetCreateProcessNotifyRoutine(
+	//	ProcessCreateNotifyRoutine,
+	//	FALSE
+	//);
+
+	//if ( !NT_SUCCESS( status ) )
+	//	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
+
+end:
+	KeReleaseGuardedMutex(&process_config.lock);
+	return status;
+}
+
+NTSTATUS
+ProcLoadInitialiseProcessConfig(
+	_In_ PIRP Irp
+)
+{
+	NTSTATUS status;
+	PEPROCESS eprocess;
+	PDRIVER_INITIATION_INFORMATION information;
+
+	information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+
+	status = PsLookupProcessByProcessId(information->protected_process_id, &eprocess);
+
+	if (!NT_SUCCESS(status))
+		return status;
+
+	KeAcquireGuardedMutex(&process_config.lock);
+
+	process_config.process = eprocess;
+	process_config.um_handle = information->protected_process_id;
+	process_config.km_handle = PsGetProcessId(eprocess);
+	process_config.initialised = TRUE;
+
+	KeReleaseGuardedMutex(&process_config.lock);
+
+	return status;
+}
+
+/*
+* 
+* Routines run at driver unload
+* 
+*/
+
+/*
+* The question is, What happens if we attempt to register our callbacks after we
+* unregister them but before we free the pool? Hm.. No Good.
+*
+* Okay to solve this well acquire the driver lock aswell, we could also just
+* store the structure in the .data section but i ceebs atm.
+*
+* This definitely doesn't seem optimal, but it works ...
+*/
+STATIC
+VOID
+DrvUnloadUnregisterObCallbacks()
+{
+	ProcCloseDisableObCallbacks();
+}
+
+/*
+* The driver config structure holds an array of pointers to APC context structures. These
+* APC context structures are unique to each APC operation that this driver will perform. For
+* example, a single context will manage all APCs that are used to stackwalk, whilst another
+* context will be used to manage all APCs used to query a threads memory for example.
+*
+* Due to the nature of APCs, its important to keep a total or count of the number of APCs we
+* have allocated and queued to threads. This information is stored in the APC_CONTEXT_HEADER which
+* all APC context structures will contain as the first entry in their structure. It holds the ContextId
+* which is a unique identifier for the type of APC operation it is managing aswell as the number of
+* currently queued APCs.
+*
+* When an APC is allocated a queued, we increment this count. When an APC is completed and freed, we
+* decrement this counter and free the APC itself. If all APCs have been freed and the counter is 0,the
+* following objects will be freed:
+*
+* 1. Any additional allocations used by the APC stored in the context structure
+* 2. The APC context structure for the given APC operation
+* 3. The APC context entry in driver_config->apc_contexts will be zero'd.
+*
+* It's important to remember that the driver can unload when pending APC's have not been freed due to the
+* limitations windows places on APCs, however I am in the process of finding a solution for this.
+*/
+STATIC
+BOOLEAN
+DrvUnloadFreeAllApcContextStructures()
+{
+	BOOLEAN flag = TRUE;
+	KIRQL irql = KeGetCurrentIrql();
+
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+
+	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
+	{
+		PUINT64 entry = driver_config.apc_contexts;
+
+		if (entry[index] != NULL)
+		{
+			PAPC_CONTEXT_HEADER context = entry[index];
+
+			if (context->count > 0)
+			{
+				flag = FALSE;
+				goto unlock;
+			}
+
+			ExFreePoolWithTag(entry, POOL_TAG_APC);
+		}
+	}
+
+unlock:
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	return flag;
 }
 
 STATIC
 VOID
-FreeDriverConfigurationStringBuffers()
+DrvUnloadFreeConfigStrings()
 {
 	if (driver_config.unicode_driver_name.Buffer)
 		ExFreePoolWithTag(driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS);
@@ -727,8 +799,110 @@ FreeDriverConfigurationStringBuffers()
 }
 
 STATIC
+VOID
+DrvUnloadFreeSymbolicLink()
+{
+	IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
+}
+
+STATIC
+VOID
+DrvUnloadFreeGlobalReportQueue()
+{
+	FreeGlobalReportQueueObjects();
+}
+
+STATIC
+VOID
+DrvUnloadFreeThreadList()
+{
+	CleanupThreadListOnDriverUnload();
+}
+
+STATIC
+VOID
+DriverUnload(
+	_In_ PDRIVER_OBJECT DriverObject
+)
+{
+	InterlockedExchange(&driver_config.unload_in_progress, TRUE);
+
+	DEBUG_LOG("Unloading driver...");
+
+	/* dont unload while we have active APC operations */
+	while (DrvUnloadFreeAllApcContextStructures() == FALSE)
+		YieldProcessor();
+
+	DrvUnloadUnregisterObCallbacks();
+	DrvUnloadFreeThreadList();
+	DrvUnloadFreeConfigStrings();
+	DrvUnloadFreeGlobalReportQueue();
+	DrvUnloadFreeSymbolicLink();
+
+	IoDeleteDevice(DriverObject->DeviceObject);
+
+	DEBUG_LOG("Driver unloaded");
+}
+
+/*
+* 
+* Routines that are run at driver load 
+* 
+*/
+
+STATIC
 NTSTATUS
-InitialiseDriverConfigOnDriverEntry(
+DrvLoadEnableNotifyRoutines()
+{
+	NTSTATUS status;
+
+	status = InitialiseThreadList();
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
+		return status;
+	}
+
+	status = PsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+
+	if (!NT_SUCCESS(status))
+		DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
+
+	return status;
+}
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseObCbConfig()
+{
+	/*
+	* This mutex ensures we don't unregister our ObRegisterCallbacks while
+	* the callback function is running since this might cause some funny stuff
+	* to happen. Better to be safe then sorry :)
+	*/
+	KeInitializeGuardedMutex(&process_config.ob_cb_config.lock);
+}
+
+STATIC
+VOID
+DrvLoadInitialiseReportQueue(
+	_In_ PBOOLEAN Flag
+)
+{
+	InitialiseGlobalReportQueue(Flag);
+}
+
+STATIC
+VOID
+DrvLoadInitialiseProcessConfig()
+{
+	KeInitializeGuardedMutex(&process_config.lock);
+}
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseDriverConfig(
 	_In_ PUNICODE_STRING RegistryPath
 )
 {
@@ -772,7 +946,7 @@ InitialiseDriverConfigOnDriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return status;
 	}
 
@@ -785,7 +959,7 @@ InitialiseDriverConfigOnDriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("Failed to convert unicode string to ansi string");
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return status;
 	}
 
@@ -797,7 +971,7 @@ InitialiseDriverConfigOnDriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return status;
 	}
 
@@ -809,16 +983,16 @@ InitialiseDriverConfigOnDriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("GetHardDiskDriverSerialNumber failed with status %x", status);
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return status;
 	}
 
-	status = AllocateCallbackStructure();
+	status = DrvLoadInitialiseObCbConfig();
 
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("AllocateCallbackStructure failed with status %x", status);
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return status;
 	}
 
@@ -826,108 +1000,6 @@ InitialiseDriverConfigOnDriverEntry(
 	DEBUG_LOG("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
 
 	return status;
-}
-
-NTSTATUS
-InitialiseProcessConfigOnProcessLaunch(
-	_In_ PIRP Irp
-)
-{
-	NTSTATUS status;
-	PEPROCESS eprocess;
-	PDRIVER_INITIATION_INFORMATION information;
-
-	information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
-
-	status = PsLookupProcessByProcessId(information->protected_process_id, &eprocess);
-
-	if (!NT_SUCCESS(status))
-		return status;
-
-	KeAcquireGuardedMutex(&process_config.lock);
-
-	process_config.protected_process_eprocess = eprocess;
-	process_config.um_handle = information->protected_process_id;
-	process_config.km_handle = PsGetProcessId(eprocess);
-	process_config.initialised = TRUE;
-
-	KeReleaseGuardedMutex(&process_config.lock);
-
-	return status;
-}
-
-STATIC
-VOID
-InitialiseProcessConfigOnDriverEntry()
-{
-	KeInitializeGuardedMutex(&process_config.lock);
-}
-
-STATIC
-VOID
-CleanupDriverConfigOnUnload()
-{
-	FreeDriverConfigurationStringBuffers();
-	FreeGlobalReportQueueObjects();
-	IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
-}
-
-STATIC
-VOID
-DriverUnload(
-	_In_ PDRIVER_OBJECT DriverObject
-)
-{
-	InterlockedExchange(&driver_config.unload_in_progress, TRUE);
-
-	DEBUG_LOG("Unloading driver...");
-	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
-	//QueryActiveApcContextsForCompletion();
-
-	/* dont unload while we have active APC operations */
-	while (FreeAllApcContextStructures() == FALSE)
-		YieldProcessor();
-
-	/* This is safe to call even if the callbacks have already been disabled */
-	CleanupDriverCallbacksOnDriverUnload();
-	CleanupThreadListOnDriverUnload();
-
-	CleanupDriverConfigOnUnload();
-	IoDeleteDevice(DriverObject->DeviceObject);
-
-	DEBUG_LOG("Driver unloaded");
-}
-
-VOID
-TerminateProtectedProcessOnViolation()
-{
-	NTSTATUS status;
-	ULONG process_id = 0;
-
-	GetProtectedProcessId(&process_id);
-
-	if (!process_id)
-	{
-		DEBUG_ERROR("Failed to terminate process as process id is null");
-		return;
-	}
-
-	/*
-	* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle.
-	*/
-	status = ZwTerminateProcess(process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
-
-	if (!NT_SUCCESS(status))
-	{
-		/*
-		* We don't want to clear the process config if ZwTerminateProcess fails
-		* so we can try again.
-		*/
-		DEBUG_ERROR("ZwTerminateProcess failed with status %x", status);
-		return;
-	}
-
-	ClearProcessConfigOnProcessTermination();
 }
 
 NTSTATUS
@@ -939,7 +1011,7 @@ DriverEntry(
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
 
-	status = InitialiseDriverConfigOnDriverEntry(RegistryPath);
+	status = DrvLoadInitialiseDriverConfig(RegistryPath);
 
 	if (!NT_SUCCESS(status))
 	{
@@ -947,7 +1019,7 @@ DriverEntry(
 		return status;
 	}
 
-	InitialiseProcessConfigOnDriverEntry();
+	DrvLoadInitialiseProcessConfig();
 
 	status = IoCreateDevice(
 		DriverObject,
@@ -962,7 +1034,7 @@ DriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("IoCreateDevice failed with status %x", status);
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
@@ -974,7 +1046,7 @@ DriverEntry(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("failed to create symbolic link");
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
@@ -984,24 +1056,24 @@ DriverEntry(
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceControl;
 	DriverObject->DriverUnload = DriverUnload;
 
-	InitialiseGlobalReportQueue(&flag);
+	DrvLoadInitialiseReportQueue(&flag);
 
 	if (!flag)
 	{
 		DEBUG_ERROR("failed to init report queue");
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeConfigStrings();
 		IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
-	status = EnableCallbackRoutinesOnDriverEntry();
+	status = DrvLoadEnableNotifyRoutines();
 
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("failed to init callback routines on driver entry");
-		FreeGlobalReportQueueObjects();
-		FreeDriverConfigurationStringBuffers();
+		DrvUnloadFreeGlobalReportQueue();
+		DrvUnloadFreeConfigStrings();
 		IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return STATUS_FAILED_DRIVER_ENTRY;

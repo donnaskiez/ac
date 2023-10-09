@@ -81,20 +81,18 @@ DeviceControl(
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation(Irp);
 	HANDLE handle;
-	PKTHREAD thread;
+	PKTHREAD thread = NULL;
 	BOOLEAN security_flag = FALSE;
 
 	/*
-	* The purpose of this is to prevent programs from opening a handle to our driver
-	* and trying to fuzz the IOCTL access or codes. This definitely isnt a perfect
-	* solution though... xD
+	* LMAO 
 	*/
 	ReadProcessInitialisedConfigFlag(&security_flag);
 
 	if (security_flag == FALSE &&
 		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
 	{
-		status = STATUS_ABANDONED;
+		status = STATUS_ACCESS_DENIED;
 		goto end;
 	}
 
@@ -169,7 +167,7 @@ DeviceControl(
 
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
-		status = InitialiseProcessConfigOnProcessLaunch(Irp);
+		status = ProcLoadInitialiseProcessConfig(Irp);
 
 		if (!NT_SUCCESS(status))
 		{
@@ -177,7 +175,7 @@ DeviceControl(
 			goto end;
 		}
 
-		status = EnableCallbackRoutinesOnProcessRun();
+		status = ProcLoadEnableObCallbacks();
 
 		if (!NT_SUCCESS(status))
 			DEBUG_ERROR("InitiateDriverCallbacks failed with status %x", status);
@@ -274,8 +272,8 @@ DeviceControl(
 
 	case IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION:
 
-		ClearProcessConfigOnProcessTermination();
-		UnregisterCallbacksOnProcessTermination();
+		ProcCloseClearProcessConfiguration();
+		ProcCloseDisableObCallbacks();
 
 		break;
 
@@ -388,8 +386,8 @@ DeviceClose(
 
 	/* we also lose reports here, so sohuld pass em into the irp before freeing */
 	FreeGlobalReportQueueObjects();
-	ClearProcessConfigOnProcessTermination();
-	UnregisterCallbacksOnProcessTermination();
+	ProcCloseClearProcessConfiguration();
+	ProcCloseDisableObCallbacks();
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;
