@@ -112,6 +112,8 @@ CheckIfProcessAllocationIsInProcessList(
 PKDDEBUGGER_DATA64
 GetGlobalDebuggerData()
 {
+	PAGED_CODE();
+
 	CONTEXT context = { 0 };
 	PDUMP_HEADER dump_header = { 0 };
 	UINT64 thread_state;
@@ -157,10 +159,11 @@ GetPsActiveProcessHead(
 	_Out_ PUINT64 Address
 )
 {
+	PAGED_CODE();
+
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
 
 	*Address = *(UINT64*)(debugger_data->PsActiveProcessHead);
-
 	ExFreePoolWithTag(debugger_data, POOL_DEBUGGER_DATA_TAG);
 }
 
@@ -206,6 +209,8 @@ ValidateIfAddressIsProcessStructure(
 	_In_ PPOOL_HEADER PoolHeader
 )
 {
+	PAGED_CODE();
+
 	UINT64 peak_virtual_size = NULL;
 	UINT64 dir_table_base = NULL;
 	UINT64 allocation_size = NULL;
@@ -365,6 +370,8 @@ IsPhysicalAddressInPhysicalMemoryRange(
 	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges
 )
 {
+	PAGED_CODE();
+
 	ULONG page_index = 0;
 	UINT64 start_address = 0;
 	UINT64 end_address = 0;
@@ -392,6 +399,8 @@ EnumerateKernelLargePages(
 	_In_ ULONG ObjectIndex
 )
 {
+	PAGED_CODE();
+
 	/*
 	* Split the large pages up into blocks of 0x1000 and scan each block
 	*/

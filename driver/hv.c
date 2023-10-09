@@ -87,6 +87,8 @@ PerformVirtualizationDetection(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	HYPERVISOR_DETECTION_REPORT report;
 	report.aperf_msr_timing_check = APERFMsrTimingCheck();
 	report.invd_emulation_check = TestINVDEmulation();

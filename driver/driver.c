@@ -60,7 +60,7 @@ DrvLoadInitialiseObCbConfig();
 STATIC
 VOID
 DrvLoadInitialiseReportQueue(
-	_In_ PBOOLEAN Flag
+	_Out_ PBOOLEAN Flag
 );
 
 STATIC
@@ -146,6 +146,8 @@ PROCESS_CONFIG process_config = { 0 };
 VOID
 TerminateProtectedProcessOnViolation()
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 	ULONG process_id = 0;
 
@@ -186,6 +188,8 @@ RegistryPathQueryCallbackRoutine(
 	IN PVOID EntryContext
 )
 {
+	PAGED_CODE();
+
 	UNICODE_STRING value_name;
 	UNICODE_STRING image_path = RTL_CONSTANT_STRING(L"ImagePath");
 	UNICODE_STRING display_name = RTL_CONSTANT_STRING(L"DisplayName");
@@ -483,6 +487,8 @@ GetDriverName(
 	_Out_ LPCSTR* DriverName
 )
 {
+	PAGED_CODE();
+
 	if (DriverName == NULL)
 		return;
 
@@ -497,6 +503,8 @@ GetDriverPath(
 	_Out_ PUNICODE_STRING DriverPath
 )
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&driver_config.lock);
 	RtlZeroMemory(DriverPath, sizeof(UNICODE_STRING));
 	RtlInitUnicodeString(DriverPath, driver_config.driver_path.Buffer);
@@ -508,6 +516,8 @@ GetDriverRegistryPath(
 	_Out_ PUNICODE_STRING RegistryPath
 )
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&driver_config.lock);
 	RtlZeroMemory(RegistryPath, sizeof(UNICODE_STRING));
 	RtlCopyUnicodeString(RegistryPath, &driver_config.registry_path);
@@ -519,6 +529,8 @@ GetDriverDeviceName(
 	_Out_ PUNICODE_STRING DeviceName
 )
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&driver_config.lock);
 	RtlZeroMemory(DeviceName, sizeof(UNICODE_STRING));
 	RtlCopyUnicodeString(DeviceName, &driver_config.device_name);
@@ -530,6 +542,8 @@ GetDriverSymbolicLink(
 	_Out_ PUNICODE_STRING DeviceSymbolicLink
 )
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&driver_config.lock);
 	RtlZeroMemory(DeviceSymbolicLink, sizeof(UNICODE_STRING));
 	RtlCopyUnicodeString(DeviceSymbolicLink, &driver_config.device_symbolic_link);
@@ -541,6 +555,8 @@ GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
 )
 {
+	PAGED_CODE();
+
 	if (SystemInformation == NULL)
 		return;
 
@@ -555,6 +571,8 @@ ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 )
 {
+	PAGED_CODE();
+
 	if (Flag == NULL)
 		return;
 
@@ -568,6 +586,8 @@ GetProtectedProcessEProcess(
 	_Out_ PEPROCESS* Process
 )
 {
+	PAGED_CODE();
+
 	if (Process == NULL)
 		return;
 
@@ -582,6 +602,8 @@ GetProtectedProcessId(
 	_Out_ PLONG ProcessId
 )
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&process_config.lock);
 	RtlZeroMemory(ProcessId, sizeof(LONG));
 	*ProcessId = process_config.km_handle;
@@ -597,6 +619,8 @@ GetProtectedProcessId(
 VOID
 ProcCloseDisableObCallbacks()
 {
+	PAGED_CODE();
+
 	KeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
 
 	if (process_config.ob_cb_config.registration_handle)
@@ -611,6 +635,8 @@ ProcCloseDisableObCallbacks()
 VOID
 ProcCloseClearProcessConfiguration()
 {
+	PAGED_CODE();
+
 	DEBUG_LOG("Process closed, clearing driver process_configuration");
 	KeAcquireGuardedMutex(&process_config.lock);
 	process_config.km_handle = NULL;
@@ -887,7 +913,7 @@ DrvLoadInitialiseObCbConfig()
 STATIC
 VOID
 DrvLoadInitialiseReportQueue(
-	_In_ PBOOLEAN Flag
+	_Out_ PBOOLEAN Flag
 )
 {
 	InitialiseGlobalReportQueue(Flag);

@@ -100,13 +100,29 @@ ThreadCreateNotifyRoutine(
 	_In_ BOOLEAN Create
 );
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 CleanupThreadListOnDriverUnload();
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(&thread_list->lock)
+_Releases_lock_(&thread_list->lock)
+_IRQL_restores_global_(irql, SpinLock)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
 	_Inout_ PTHREAD_LIST_ENTRY* Entry
+);
+
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(&thread_list->lock)
+_Releases_lock_(&thread_list->lock)
+_IRQL_restores_global_(irql, SpinLock)
+VOID
+EnumerateThreadListWithCallbackRoutine(
+	_In_ PVOID CallbackRoutine,
+	_In_opt_ PVOID Context
 );
 
 #endif

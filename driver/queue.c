@@ -57,6 +57,10 @@ InitialiseGlobalReportQueue(
 //	return head;
 //}
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Acquires_lock_(Head->lock)
+_Releases_lock_(Head->lock)
 VOID
 QueuePush(
 	_Inout_ PQUEUE_HEAD Head,
@@ -87,6 +91,10 @@ end:
 	KeReleaseSpinLock(&Head->lock, irql);
 }
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Acquires_lock_(Head->lock)
+_Releases_lock_(Head->lock)
 PVOID
 QueuePop(
 	_Inout_ PQUEUE_HEAD Head
@@ -116,6 +124,10 @@ end:
 	return data;
 }
 
+_IRQL_raises_(APC_LEVEL)
+_Acquires_lock_(&report_queue_config.lock)
+_Releases_lock_(&report_queue_config.lock)
+_IRQL_restores_global_(irql, GuardedMutex)
 VOID
 InsertReportToQueue(
 	_In_ PVOID Report
@@ -156,6 +168,8 @@ HandlePeriodicGlobalReportQueueQuery(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	PVOID report = NULL;
 	INT count = 0;
 	GLOBAL_REPORT_QUEUE_HEADER header;
@@ -293,6 +307,10 @@ ListInit(
 	Head->Next = NULL;
 }
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(Lock)
+_Releases_lock_(Lock)
+_IRQL_restores_global_(SpinLock, irql)
 VOID
 ListInsert(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -311,6 +329,10 @@ ListInsert(
 	KeReleaseSpinLock(Lock, irql);
 }
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(Lock)
+_Releases_lock_(Lock)
+_IRQL_restores_global_(SpinLock, irql)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -333,6 +355,10 @@ ListFreeFirstEntry(
 	return result;
 }
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(Lock)
+_Releases_lock_(Lock)
+_IRQL_restores_global_(SpinLock, irql)
 VOID
 ListRemoveEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,

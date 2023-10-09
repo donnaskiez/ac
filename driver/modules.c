@@ -191,6 +191,7 @@ ApcNormalRoutine(
 	_In_opt_ PVOID SystemArgument1,
 	_In_opt_ PVOID SystemArgument2);
 
+_IRQL_always_function_min_(DISPATCH_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
@@ -229,6 +230,8 @@ FindSystemModuleByName(
 	_In_ PSYSTEM_MODULES SystemModules
 )
 {
+	PAGED_CODE();
+
 	if (!ModuleName || !SystemModules)
 		return STATUS_INVALID_PARAMETER;
 
@@ -251,6 +254,8 @@ PopulateWhitelistedModuleBuffer(
 	_In_ PSYSTEM_MODULES SystemModules
 )
 {
+	PAGED_CODE();
+
 	if (!Buffer || !SystemModules)
 		return STATUS_INVALID_PARAMETER;
 
@@ -287,6 +292,8 @@ ValidateDriverIOCTLDispatchRegion(
 	_Out_ PBOOLEAN Flag
 )
 {
+	PAGED_CODE();
+
 	if (!Modules || !Driver || !Flag || !WhitelistedRegions)
 		return STATUS_INVALID_PARAMETER;
 
@@ -392,6 +399,8 @@ RemoveInvalidDriverFromList(
 	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead
 )
 {
+	PAGED_CODE();
+
 	if (InvalidDriversHead->first_entry)
 	{
 		PINVALID_DRIVER entry = InvalidDriversHead->first_entry;
@@ -406,6 +415,8 @@ EnumerateInvalidDrivers(
 	_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead
 )
 {
+	PAGED_CODE();
+
 	PINVALID_DRIVER entry = InvalidDriversHead->first_entry;
 
 	while (entry != NULL)
@@ -1234,6 +1245,7 @@ FlipKThreadMiscFlagsFlag(
 #define THREAD_STATE_WAIT 5
 #define THREAD_STATE_INIT 0
 
+_IRQL_always_function_min_(DISPATCH_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(

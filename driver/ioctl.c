@@ -47,6 +47,8 @@ DispatchApcOperation(
 	_In_ PAPC_OPERATION_ID Operation
 )
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 
 	switch (Operation->operation_id)
@@ -77,6 +79,7 @@ DeviceControl(
 )
 {
 	UNREFERENCED_PARAMETER(DriverObject);
+	PAGED_CODE();
 
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation(Irp);
@@ -154,9 +157,6 @@ DeviceControl(
 			ZwClose(handle);
 			goto end;
 		}
-
-		/* KeWaitForSingleObject with infinite time must be called from IRQL <= APC_LEVEL */
-		PAGED_CODE();
 
 		KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
 
@@ -248,8 +248,6 @@ DeviceControl(
 			ZwClose(handle);
 			goto end;
 		}
-
-		PAGED_CODE();
 
 		KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);;
 
@@ -399,6 +397,8 @@ DeviceCreate(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	DEBUG_LOG("Handle opened to DonnaAC");
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;

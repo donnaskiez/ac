@@ -21,6 +21,7 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 
 }KPRCB_THREAD_VALIDATION_CTX, * PKPRCB_THREAD_VALIDATION_CTX;
 
+_IRQL_always_function_min_(DISPATCH_LEVEL)
 STATIC
 VOID
 KPRCBThreadValidationProcessCallback(
@@ -74,6 +75,8 @@ ValidateKPCRBThreads(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	UINT64 kpcr;
 	UINT64 kprcb;
 	KAFFINITY old_affinity = { 0 };
@@ -134,6 +137,7 @@ ValidateKPCRBThreads(
 	}
 }
 
+_IRQL_always_function_min_(DISPATCH_LEVEL)
 STATIC
 VOID
 DetectAttachedThreadsProcessCallback(
@@ -186,6 +190,8 @@ DetectAttachedThreadsProcessCallback(
 */
 VOID DetectThreadsAttachedToProtectedProcess()
 {
+	PAGED_CODE();
+
 	EnumerateThreadListWithCallbackRoutine(
 		DetectAttachedThreadsProcessCallback,
 		NULL

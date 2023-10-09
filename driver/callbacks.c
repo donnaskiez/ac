@@ -37,8 +37,11 @@ EnumHandleCallback(
 #pragma alloc_text(PAGE, EnumerateProcessHandles)
 #pragma alloc_text(PAGE, EnumerateProcessListWithCallbackFunction)
 #pragma alloc_text(PAGE, InitialiseThreadList)
+#pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 CleanupThreadListOnDriverUnload()
 {
@@ -59,17 +62,21 @@ CleanupThreadListOnDriverUnload()
 * Important to remember the callback function will run at irql = DISPATCH_LEVEL since
 * we hold the spinlock during enumeration.
 */
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(&thread_list->lock)
+_Releases_lock_(&thread_list->lock)
+_IRQL_restores_global_(irql, SpinLock)
 VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
 	_In_opt_ PVOID Context
 )
 {
-	if (!CallbackRoutine)
-		return;
-
 	KIRQL irql = KeGetCurrentIrql();
 	KeAcquireSpinLock(&thread_list->lock, &irql);
+
+	if (!CallbackRoutine)
+		goto unlock;
 
 	PTHREAD_LIST_ENTRY entry = thread_list->start.Next;
 
@@ -80,24 +87,31 @@ EnumerateThreadListWithCallbackRoutine(
 		entry = entry->list.Next;
 	}
 
+unlock:
 	KeReleaseSpinLock(&thread_list->lock, irql);
 }
 
 NTSTATUS
 InitialiseThreadList()
 {
+	PAGED_CODE();
+
 	thread_list =
 		ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST), POOL_TAG_THREAD_LIST);
 
 	if (!thread_list)
 		return STATUS_MEMORY_NOT_ALLOCATED;
 
-	thread_list->active = TRUE;
+	InterlockedExchange(&thread_list->active, TRUE);
 	ListInit(&thread_list->start, &thread_list->lock);
 
 	return STATUS_SUCCESS;
 }
 
+_IRQL_raises_(DISPATCH_LEVEL)
+_Acquires_lock_(&thread_list->lock)
+_Releases_lock_(&thread_list->lock)
+_IRQL_restores_global_(irql, SpinLock)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
@@ -131,6 +145,8 @@ ThreadCreateNotifyRoutine(
 	_In_ BOOLEAN Create
 )
 {
+	PAGED_CODE();
+
 	PTHREAD_LIST_ENTRY entry = NULL;
 	PKTHREAD thread = NULL;
 	PKPROCESS process = NULL;
@@ -176,7 +192,7 @@ ObPostOpCallbackRoutine(
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
 )
 {
-
+	PAGED_CODE();
 }
 
 OB_PREOP_CALLBACK_STATUS
@@ -185,6 +201,8 @@ ObPreOpCallbackRoutine(
 	_In_ POB_PRE_OPERATION_INFORMATION OperationInformation
 )
 {
+	PAGED_CODE();
+
 	UNREFERENCED_PARAMETER(RegistrationContext);
 
 	/* access mask to completely strip permissions */
@@ -357,6 +375,8 @@ EnumHandleCallback(
 	_In_ PVOID Context
 )
 {
+	PAGED_CODE();
+
 	PVOID object;
 	PVOID object_header;
 	POBJECT_TYPE object_type;

@@ -136,6 +136,8 @@ GetDriverImageSize(
         _Inout_ PIRP Irp
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         SYSTEM_MODULES modules = { 0 };
         PRTL_MODULE_EXTENDED_INFO driver_info;
@@ -169,6 +171,8 @@ GetModuleInformationByName(
         _In_ LPCSTR ModuleName
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status = STATUS_SUCCESS;
         SYSTEM_MODULES modules = { 0 };
         PRTL_MODULE_EXTENDED_INFO driver_info;
@@ -212,6 +216,8 @@ StoreModuleExecutableRegionsInBuffer(
         _Inout_ PSIZE_T BytesWritten
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status = STATUS_SUCCESS;
         PIMAGE_DOS_HEADER dos_header;
         PLOCAL_NT_HEADER nt_header;
@@ -235,7 +241,7 @@ StoreModuleExecutableRegionsInBuffer(
 
         *Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, ModuleSize + sizeof(INTEGRITY_CHECK_HEADER), POOL_TAG_INTEGRITY);
 
-        if (!*Buffer)
+        if (*Buffer == NULL)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
         /*
@@ -337,6 +343,8 @@ MapDiskImageIntoVirtualAddressSpace(
         _Inout_ PSIZE_T Size
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         HANDLE file_handle;
         OBJECT_ATTRIBUTES object_attributes;
@@ -444,6 +452,8 @@ ComputeHashOfBuffer(
         _Inout_ PULONG HashResultSize
 )
 {
+        PAGED_CODE();
+
         /*
         * Since the windows documentation for the BCrypt functions contain the worst variable naming scheme
         * in existence, I will try to explain what they do. (for my sake and any readers who also aren't smart
@@ -680,7 +690,7 @@ VerifyInMemoryImageVsDiskImage(
                 "driver.sys"
         );
 
-        if (!NT_SUCCESS(status))
+        if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
         {
                 DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
                 //TerminateProtectedProcessOnViolation();
@@ -811,7 +821,7 @@ RetrieveInMemoryModuleExecutableSections(
                 "driver.sys"
         );
 
-        if (!NT_SUCCESS(status))
+        if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
         {
                 DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
                 return status;
@@ -863,6 +873,8 @@ GetNextSMBIOSStructureInTable(
         _Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure
 )
 {
+        PAGED_CODE();
+
         PCHAR string_section_start = (PCHAR)((UINT64)*CurrentStructure + (*CurrentStructure)->Length);
         PCHAR current_char_in_strings = string_section_start;
         PCHAR next_char_in_strings = string_section_start + 1;
@@ -899,6 +911,8 @@ GetStringAtIndexFromSMBIOSTable(
         _In_ SIZE_T BufferSize
 )
 {
+        PAGED_CODE();
+
         INT current_string_char_index = 0;
         INT string_count = 0;
         PCHAR current_string_char = (PCHAR)((UINT64)Table + Table->Length);
@@ -1041,6 +1055,8 @@ ValidateProcessLoadedModule(
         _Inout_ PIRP Irp
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         BOOLEAN bstatus;
         PROCESS_MODULE_VALIDATION_RESULT validation_result;
@@ -1191,6 +1207,8 @@ GetHardDiskDriveSerialNumber(
         _In_ SIZE_T ConfigDrive0MaxSize
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         HANDLE handle;
         OBJECT_ATTRIBUTES attributes;
