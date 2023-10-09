@@ -8,9 +8,9 @@
 
 /*
 * Interlocked intrinsics are only atomic with respect to other InterlockedXxx functions,
-* so all reads and writes to the THREAD_LIST->active flag must be with Interlocked instrinsics.
+* so all reads and writes to the THREAD_LIST->active flag must be with Interlocked instrinsics
+* to ensure atomicity.
 */
-
 typedef struct _THREAD_LIST
 {
 	SINGLE_LIST_ENTRY start;
@@ -18,13 +18,6 @@ typedef struct _THREAD_LIST
 	KSPIN_LOCK lock;
 
 }THREAD_LIST, * PTHREAD_LIST;
-
-typedef struct _THREAD_LIST_ENTRY
-{
-	SINGLE_LIST_ENTRY list;
-	PKTHREAD thread;
-
-}THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
 
 /* todo: maybe put this in the global config? hmm.. I kinda like how its encapsulated here tho hm.. */
 PTHREAD_LIST thread_list = NULL;
@@ -63,7 +56,8 @@ CleanupThreadListOnDriverUnload()
 }
 
 /*
-* Safely enumerate the threads list.
+* Important to remember the callback function will run at irql = DISPATCH_LEVEL since
+* we hold the spinlock during enumeration.
 */
 VOID
 EnumerateThreadListWithCallbackRoutine(
@@ -81,8 +75,8 @@ EnumerateThreadListWithCallbackRoutine(
 
 	while (entry)
 	{
-		VOID(*callback_function_ptr)(PKTHREAD, PVOID) = CallbackRoutine;
-		(*callback_function_ptr)(entry->thread, Context);
+		VOID(*callback_function_ptr)(PTHREAD_LIST_ENTRY, PVOID) = CallbackRoutine;
+		(*callback_function_ptr)(entry, Context);
 		entry = entry->list.Next;
 	}
 
@@ -104,7 +98,6 @@ InitialiseThreadList()
 	return STATUS_SUCCESS;
 }
 
-STATIC
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
@@ -140,14 +133,16 @@ ThreadCreateNotifyRoutine(
 {
 	PTHREAD_LIST_ENTRY entry = NULL;
 	PKTHREAD thread = NULL;
+	PKPROCESS process = NULL;
 
 	/* ensure we don't insert new entries if we are unloading */
 	if (InterlockedExchange(&thread_list->active, thread_list->active) == FALSE)
 		return;
 
 	PsLookupThreadByThreadId(ThreadId, &thread);
+	PsLookupProcessByProcessId(ProcessId, &process);
 
-	if (!thread)
+	if (!thread || !process)
 		return;
 
 	if (Create)
@@ -158,8 +153,11 @@ ThreadCreateNotifyRoutine(
 			return;
 
 		entry->thread = thread;
+		entry->owning_process = process;
+		entry->apc = NULL;
+		entry->apc_queued = FALSE;
+
 		ListInsert(&thread_list->start, &entry->list, &thread_list->lock);
-		DEBUG_LOG("Thread inserted: %llx", (UINT64)thread);
 	}
 	else
 	{
@@ -169,7 +167,6 @@ ThreadCreateNotifyRoutine(
 			return;
 
 		ListRemoveEntry(&thread_list->start, entry, &thread_list->lock);
-		DEBUG_LOG("Thread removed: %llx", (UINT64)thread);
 	}
 }
 

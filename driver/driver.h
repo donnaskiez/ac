@@ -63,7 +63,8 @@ VOID GetApcContext(
 	_In_ LONG ContextIdentifier
 );
 
-VOID InsertApcContext(
+NTSTATUS 
+InsertApcContext(
 	_In_ PVOID Context
 );
 

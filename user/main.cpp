@@ -47,39 +47,39 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
                 std::cout << "Seed: " << seed << std::endl;
 
-                switch (seed)
-                {
-                case 0:
-                        kmanager.EnumerateHandleTables();
-                        break;
-                case 1:
-                        kmanager.PerformIntegrityCheck();
-                        break;
-                case 2:
-                        kmanager.ScanPoolsForUnlinkedProcesses();
-                        break;
-                case 3:
-                        kmanager.VerifySystemModules();
-                        break;
-                case 4:
-                        kmanager.ValidateProcessModules();
-                        break;
-                case 5:
-                        kmanager.RunNmiCallbacks();
-                        break;
-                case 6:
-                        kmanager.CheckForAttachedThreads();
-                        break;
-                case 7:
-                        kmanager.InitiateApcStackwalkOperation();
-                        break;
-                case 8:
-                        kmanager.CheckForHiddenThreads();
-                        break;
-                case 9:
-                        kmanager.CheckForEptHooks();
-                        break;
-                }
+                //switch (seed)
+                //{
+                //case 0:
+                //        kmanager.EnumerateHandleTables();
+                //        break;
+                //case 1:
+                //        kmanager.PerformIntegrityCheck();
+                //        break;
+                //case 2:
+                //        kmanager.ScanPoolsForUnlinkedProcesses();
+                //        break;
+                //case 3:
+                //        kmanager.VerifySystemModules();
+                //        break;
+                //case 4:
+                //        kmanager.ValidateProcessModules();
+                //        break;
+                //case 5:
+                //        kmanager.RunNmiCallbacks();
+                //        break;
+                //case 6:
+                //        kmanager.CheckForAttachedThreads();
+                //        break;
+                //case 7:
+                //        kmanager.InitiateApcStackwalkOperation();
+                //        break;
+                //case 8:
+                //        kmanager.CheckForHiddenThreads();
+                //        break;
+                //case 9:
+                //        kmanager.CheckForEptHooks();
+                //        break;
+                //}
 
                 kmanager.InitiateApcStackwalkOperation();
                 kmanager.MonitorCallbackReports();

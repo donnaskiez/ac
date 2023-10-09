@@ -7,6 +7,11 @@
 #include "driver.h"
 #include "queue.h"
 
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, ValidateKPCRBThreads)
+#pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
+#endif
+
 typedef struct _KPRCB_THREAD_VALIDATION_CTX
 {
 	UINT64 current_kpcrb_thread;
@@ -16,63 +21,30 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 
 }KPRCB_THREAD_VALIDATION_CTX, * PKPRCB_THREAD_VALIDATION_CTX;
 
-STATIC 
-VOID 
-KPRCBThreadValidationProcessCallback(
-	_In_ PEPROCESS Process, 
-	_Inout_opt_ PVOID Context);
-
-STATIC 
-VOID 
-DetectAttachedThreadsProcessCallback(
-	_In_ PEPROCESS Process, 
-	_Inout_opt_ PVOID Context);
-
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(PAGE, KPRCBThreadValidationProcessCallback)
-#pragma alloc_text(PAGE, ValidateKPCRBThreads)
-#pragma alloc_text(PAGE, DetectAttachedThreadsProcessCallback)
-#pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
-#endif
-
 STATIC
 VOID
 KPRCBThreadValidationProcessCallback(
-	_In_ PEPROCESS Process,
+	_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 	_Inout_opt_ PVOID Context
 )
 {
-	NTSTATUS status;
-	PLIST_ENTRY thread_list_head;
-	PLIST_ENTRY thread_list_entry;
-	PETHREAD current_thread;
 	UINT32 thread_id;
 	PKPRCB_THREAD_VALIDATION_CTX context = (PKPRCB_THREAD_VALIDATION_CTX)Context;
 
 	if (!Context || context->finished == TRUE)
 		return;
 
-	thread_list_head = (PLIST_ENTRY)((UINT64)Process + KPROCESS_THREADLIST_OFFSET);
-	thread_list_entry = thread_list_head->Flink;
-
-	while (thread_list_entry != thread_list_head)
+	if (ThreadListEntry->thread == context->current_kpcrb_thread)
 	{
-		current_thread = (PETHREAD)((UINT64)thread_list_entry - KTHREAD_THREADLIST_OFFSET);
+		context->thread_found_in_kthreadlist = TRUE;
 
-		if (current_thread == context->current_kpcrb_thread)
+		thread_id = PsGetThreadId(ThreadListEntry->thread);
+
+		if (thread_id != NULL)
 		{
-			context->thread_found_in_kthreadlist = TRUE;
-
-			thread_id = PsGetThreadId(current_thread);
-
-			if (thread_id != NULL)
-			{
-				context->thread_found_in_pspcidtable = TRUE;
-				context->finished = TRUE;
-			}
+			context->thread_found_in_pspcidtable = TRUE;
+			context->finished = TRUE;
 		}
-
-		thread_list_entry = thread_list_entry->Flink;
 	}
 }
 
@@ -97,7 +69,6 @@ KPRCBThreadValidationProcessCallback(
 *    process' thread list , we know it's been removed from the KTHREAD linked list.
 *
 */
-
 VOID
 ValidateKPCRBThreads(
 	_Inout_ PIRP Irp
@@ -130,7 +101,7 @@ ValidateKPCRBThreads(
 		if (!context.current_kpcrb_thread)
 			continue;
 
-		EnumerateProcessListWithCallbackFunction(
+		EnumerateThreadListWithCallbackRoutine(
 			KPRCBThreadValidationProcessCallback,
 			&context
 		);
@@ -167,17 +138,12 @@ ValidateKPCRBThreads(
 STATIC
 VOID
 DetectAttachedThreadsProcessCallback(
-	_In_ PEPROCESS Process,
+	_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 	_Inout_opt_ PVOID Context
 )
 {
 	UNREFERENCED_PARAMETER(Context);
 
-	NTSTATUS status;
-	PLIST_ENTRY thread_list_head;
-	PLIST_ENTRY thread_list_entry;
-	PETHREAD current_thread;
-	UINT32 thread_id;
 	PKAPC_STATE apc_state;
 	PEPROCESS protected_process = NULL;
 
@@ -186,34 +152,23 @@ DetectAttachedThreadsProcessCallback(
 	if (protected_process == NULL)
 		return;
 
-	thread_list_head = (PLIST_ENTRY)((UINT64)Process + KPROCESS_THREADLIST_OFFSET);
-	thread_list_entry = thread_list_head->Flink;
+	apc_state = (PKAPC_STATE)((UINT64)ThreadListEntry->thread + KTHREAD_APC_STATE_OFFSET);
 
-	while (thread_list_entry != thread_list_head)
+	if (apc_state->Process == protected_process)
 	{
-		current_thread = (PETHREAD)((UINT64)thread_list_entry - KTHREAD_THREADLIST_OFFSET);
+		DEBUG_LOG("Program attached to notepad: %llx", (UINT64)ThreadListEntry->thread);
 
-		apc_state = (PKAPC_STATE)((UINT64)current_thread + KTHREAD_APC_STATE_OFFSET);
+		PATTACH_PROCESS_REPORT report =
+			ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);
 
-		if (apc_state->Process == protected_process)
-		{
-			DEBUG_LOG("Program attached to notepad: %llx", (UINT64)current_thread);
+		if (!report)
+			return;
 
-			PATTACH_PROCESS_REPORT report = 
-				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);
+		report->report_code = REPORT_ILLEGAL_ATTACH_PROCESS;
+		report->thread_id = PsGetThreadId(ThreadListEntry->thread);
+		report->thread_address = ThreadListEntry->thread;
 
-			if (!report)
-				goto increment;
-
-			report->report_code = REPORT_ILLEGAL_ATTACH_PROCESS;
-			report->thread_id = PsGetThreadId(current_thread);
-			report->thread_address = current_thread;
-
-			InsertReportToQueue(report);
-		}
-
-	increment:
-		thread_list_entry = thread_list_entry->Flink;
+		InsertReportToQueue(report);
 	}
 }
 
@@ -232,7 +187,7 @@ DetectAttachedThreadsProcessCallback(
 */
 VOID DetectThreadsAttachedToProtectedProcess()
 {
-	EnumerateProcessListWithCallbackFunction(
+	EnumerateThreadListWithCallbackRoutine(
 		DetectAttachedThreadsProcessCallback,
 		NULL
 	);

@@ -191,10 +191,10 @@ ApcNormalRoutine(
 	_In_opt_ PVOID SystemArgument1,
 	_In_opt_ PVOID SystemArgument2);
 
-STATIC 
-VOID 
+STATIC
+VOID
 ValidateThreadViaKernelApcCallback(
-	_In_ PEPROCESS Process, 
+	_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 	_Inout_opt_ PVOID Context);
 
 #ifdef ALLOC_PRAGMA
@@ -217,9 +217,7 @@ ValidateThreadViaKernelApcCallback(
 #pragma alloc_text(PAGE, ApcKernelRoutine)
 #pragma alloc_text(PAGE, ApcNormalRoutine)
 #pragma alloc_text(PAGE, FlipKThreadMiscFlagsFlag)
-#pragma alloc_text(PAGE, ValidateThreadViaKernelApcCallback)
 #pragma alloc_text(PAGE, ValidateThreadsViaKernelApc)
-#pragma alloc_text(PAGE, FreeApcStackwalkApcContextInformation)
 #endif
 
 /*
@@ -1125,8 +1123,14 @@ ApcKernelRoutine(
 	NTSTATUS status;
 	BOOLEAN flag = FALSE;
 	PAPC_STACKWALK_CONTEXT context;
+	PTHREAD_LIST_ENTRY thread_list_entry = NULL;
 
 	context = (PAPC_STACKWALK_CONTEXT)Apc->NormalContext;
+
+	FindThreadListEntryByThreadAddress(KeGetCurrentThread(), &thread_list_entry);
+
+	if (!thread_list_entry)
+		return;
 
 	buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, STACK_FRAME_POOL_SIZE, POOL_TAG_APC);
 
@@ -1191,6 +1195,9 @@ free:
 		ExFreePoolWithTag(buffer, POOL_TAG_APC);
 
 	FreeApcAndDecrementApcCount(Apc, APC_CONTEXT_ID_STACKWALK);
+
+	thread_list_entry->apc = NULL;
+	thread_list_entry->apc_queued = FALSE;
 }
 
 /*
@@ -1230,25 +1237,21 @@ FlipKThreadMiscFlagsFlag(
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
-	_In_ PEPROCESS Process,
+	_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 	_Inout_opt_ PVOID Context
 )
 {
-	NTSTATUS status;
-	PLIST_ENTRY thread_list_head;
-	PLIST_ENTRY thread_list_entry;
-	PETHREAD current_thread;
 	PKAPC apc = NULL;
-	BOOLEAN apc_status;
+	BOOLEAN apc_status = FALSE;
 	PLONG misc_flags = NULL;
 	PCHAR previous_mode = NULL;
 	PUCHAR state = NULL;
 	BOOLEAN apc_queueable = FALSE;
 	PAPC_STACKWALK_CONTEXT context = (PAPC_STACKWALK_CONTEXT)Context;
-	LPCSTR process_name = PsGetProcessImageFileName(Process);
+	LPCSTR process_name = PsGetProcessImageFileName(ThreadListEntry->owning_process);
 
 	/* we dont want to schedule an apc to threads owned by the kernel */
-	if (Process == PsInitialSystemProcess || !Context)
+	if (ThreadListEntry->owning_process == PsInitialSystemProcess || !Context)
 		return;
 
 	/* We are not interested in these processess.. for now lol */
@@ -1264,106 +1267,89 @@ ValidateThreadViaKernelApcCallback(
 
 	DEBUG_LOG("Process: %s", process_name);
 
-	thread_list_head = (PLIST_ENTRY)((UINT64)Process + KPROCESS_THREADLIST_OFFSET);
-	thread_list_entry = thread_list_head->Flink;
+	if (ThreadListEntry->thread == KeGetCurrentThread() || !ThreadListEntry->thread)
+		return;
+	/*
+	* Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
+	* queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
+	* lets make sure we flip this before before queueing ours. Since we filter out any system
+	* threads this should be fine... c:
+	*/
+	misc_flags = (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
+	previous_mode = (PCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_PREVIOUS_MODE_OFFSET);
+	state = (PUCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_STATE_OFFSET);
 
-	context->header.allocation_in_progress = TRUE;
+	/* we dont care about user mode threads */
+	//if (*previous_mode == UserMode)
+	//	return;
 
-	while (thread_list_entry != thread_list_head)
+	/* todo: We should also flag all threads that have the flag set to false */
+	if (*misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE)
+		FlipKThreadMiscFlagsFlag(ThreadListEntry->thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
+
+	/* force thread into an alertable state */
+	if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
+		FlipKThreadMiscFlagsFlag(ThreadListEntry->thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
+
+	apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
+
+	if (!apc)
+		return;
+
+	/*
+	* KTHREAD->State values:
+	*
+	*  0 is INITIALIZED;
+	*  1 is READY;
+	*  2 is RUNNING;
+	*  3 is STANDBY;
+	*  4 is TERMINATED;
+	*  5 is WAIT;
+	*  6 is TRANSITION.
+	*
+	* Since we are unsafely enumerating the threads linked list, it's best just
+	* to make sure we don't queue an APC to a terminated thread. We also check after
+	* we've allocated memory for the apc to ensure the window between queuing our APC
+	* and checking the thread state is as small as possible.
+	*/
+
+	//if (*state == THREAD_STATE_TERMINATED || THREAD_STATE_INIT)
+	//{
+	//	ExFreePoolWithTag(apc, POOL_TAG_APC);
+	//	return;
+	//}
+
+	DEBUG_LOG("Apc: %llx", (UINT64)apc);
+
+	KeInitializeApc(
+		apc,
+		ThreadListEntry->thread,
+		OriginalApcEnvironment,
+		ApcKernelRoutine,
+		ApcRundownRoutine,
+		ApcNormalRoutine,
+		KernelMode,
+		Context
+	);
+
+	apc_status = KeInsertQueueApc(
+		apc,
+		NULL,
+		NULL,
+		IO_NO_INCREMENT
+	);
+
+	if (!apc_status)
 	{
-		current_thread = (PETHREAD)((UINT64)thread_list_entry - KTHREAD_THREADLIST_OFFSET);
-
-		if (current_thread == KeGetCurrentThread() || !current_thread)
-			goto increment;
-		/*
-		* Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
-		* queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
-		* lets make sure we flip this before before queueing ours. Since we filter out any system
-		* threads this should be fine... c:
-		*/
-		misc_flags = (PLONG)((UINT64)current_thread + KTHREAD_MISC_FLAGS_OFFSET);
-		previous_mode = (PCHAR)((UINT64)current_thread + KTHREAD_PREVIOUS_MODE_OFFSET);
-		state = (PUCHAR)((UINT64)current_thread + KTHREAD_STATE_OFFSET);
-
-		if (!MmIsAddressValid(current_thread))
-			goto increment;
-
-		/* we dont care about user mode threads */
-		//if (*previous_mode == UserMode)
-		//	goto increment;
-
-		/* todo: We should also flag all threads that have the flag set to false */
-		if (*misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE)
-			FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
-
-		/* force thread into an alertable state */
-		if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
-			FlipKThreadMiscFlagsFlag(current_thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
-		
-		apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
-
-		if (!apc)
-			goto increment;
-
-		/*
-		* KTHREAD->State values:
-		* 
-		*  0 is INITIALIZED;
-		*  1 is READY;
-		*  2 is RUNNING;
-		*  3 is STANDBY;
-		*  4 is TERMINATED;
-		*  5 is WAIT;
-		*  6 is TRANSITION.
-		* 
-		* Since we are unsafely enumerating the threads linked list, it's best just
-		* to make sure we don't queue an APC to a terminated thread. We also check after
-		* we've allocated memory for the apc to ensure the window between queuing our APC
-		* and checking the thread state is as small as possible.
-		*/
-
-		if (*state == THREAD_STATE_TERMINATED || THREAD_STATE_INIT)
-		{
-			ExFreePoolWithTag(apc, POOL_TAG_APC);
-			apc = NULL;
-			goto increment;
-		}
-
-		DEBUG_LOG("Apc: %llx", (UINT64)apc);
-
-		KeInitializeApc(
-			apc,
-			current_thread,
-			OriginalApcEnvironment,
-			ApcKernelRoutine,
-			ApcRundownRoutine,
-			ApcNormalRoutine,
-			KernelMode,
-			Context
-		);
-
-		apc_status = KeInsertQueueApc(
-			apc,
-			NULL,
-			NULL,
-			IO_NO_INCREMENT
-		);
-
-		if (!apc_status)
-		{
-			DEBUG_ERROR("KeInsertQueueApc failed");
-			ExFreePoolWithTag(apc, POOL_TAG_APC);
-			apc = NULL;
-			goto increment;
-		}
-
-		IncrementApcCount(APC_CONTEXT_ID_STACKWALK);
-
-	increment:
-		thread_list_entry = thread_list_entry->Flink;
+		DEBUG_ERROR("KeInsertQueueApc failed");
+		ExFreePoolWithTag(apc, POOL_TAG_APC);
+		return;
 	}
 
-	context->header.allocation_in_progress = FALSE;
+	ThreadListEntry->apc = apc;
+	ThreadListEntry->apc_queued = TRUE;
+
+	IncrementApcCount(APC_CONTEXT_ID_STACKWALK);
 }
 
 /*
@@ -1410,12 +1396,25 @@ ValidateThreadsViaKernelApc()
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
 
-	InsertApcContext(context);
+	status = InsertApcContext(context);
 
-	EnumerateProcessListWithCallbackFunction(
+	if (!NT_SUCCESS(status))
+	{
+		ExFreePoolWithTag(context->modules, POOL_TAG_APC);
+		ExFreePoolWithTag(context, POOL_TAG_APC);
+		return status;
+	}
+
+	context->header.allocation_in_progress = TRUE;
+
+	EnumerateThreadListWithCallbackRoutine(
 		ValidateThreadViaKernelApcCallback,
 		context
 	);
+
+	context->header.allocation_in_progress = FALSE;
+
+	return status;
 }
 
 VOID

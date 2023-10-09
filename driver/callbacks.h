@@ -44,6 +44,16 @@ static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET = 0x448;
 static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING(L"Process");
 static UNICODE_STRING OBJECT_TYPE_THREAD = RTL_CONSTANT_STRING(L"Thread");
 
+typedef struct _THREAD_LIST_ENTRY
+{
+	SINGLE_LIST_ENTRY list;
+	PKTHREAD thread;
+	PKPROCESS owning_process;
+	BOOLEAN apc_queued;
+	PKAPC apc;
+
+}THREAD_LIST_ENTRY, * PTHREAD_LIST_ENTRY;
+
 VOID
 NTAPI
 ExUnlockHandleTableEntry(
@@ -92,5 +102,11 @@ ThreadCreateNotifyRoutine(
 
 VOID
 CleanupThreadListOnDriverUnload();
+
+VOID
+FindThreadListEntryByThreadAddress(
+	_In_ PKTHREAD Thread,
+	_Inout_ PTHREAD_LIST_ENTRY* Entry
+);
 
 #endif

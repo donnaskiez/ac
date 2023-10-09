@@ -65,9 +65,6 @@ NTSTATUS RegistryPathQueryCallbackRoutine(
 #pragma alloc_text(PAGE, UnregisterCallbacksOnProcessTermination)
 #pragma alloc_text(PAGE, CleanupDriverCallbacksOnDriverUnload)
 #pragma alloc_text(PAGE, GetCallbackConfigStructure)
-#pragma alloc_text(PAGE, InsertApcContext)
-#pragma alloc_text(PAGE, GetApcContext)
-#pragma alloc_text(PAGE, GetApcContextByIndex)
 #pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
 #pragma alloc_text(PAGE, GetProtectedProcessEProcess)
 #pragma alloc_text(PAGE, GetProtectedProcessId)
@@ -101,7 +98,9 @@ typedef struct _DRIVER_CONFIG
 	SYSTEM_INFORMATION system_information;
 	PVOID apc_contexts[MAXIMUM_APC_CONTEXTS];
 	CALLBACK_CONFIGURATION callback_config;
+	volatile BOOLEAN unload_in_progress;
 	KGUARDED_MUTEX lock;
+	KSPIN_LOCK spin_lock;
 
 }DRIVER_CONFIG, * PDRIVER_CONFIG;
 
@@ -288,8 +287,9 @@ BOOLEAN
 FreeAllApcContextStructures()
 {
 	BOOLEAN flag = TRUE;
+	KIRQL irql = KeGetCurrentIrql();
 
-	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -310,7 +310,7 @@ FreeAllApcContextStructures()
 	}
 
 unlock:
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 	return flag;
 }
 
@@ -356,14 +356,15 @@ IncrementApcCount(
 )
 {
 	PAPC_CONTEXT_HEADER header = NULL;
+	KIRQL irql = KeGetCurrentIrql();
 	GetApcContext(&header, ContextId);
 
 	if (!header)
 		return;
 
-	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 	header->count += 1;
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
 VOID
@@ -373,16 +374,18 @@ FreeApcAndDecrementApcCount(
 )
 {
 	PAPC_CONTEXT_HEADER context = NULL;
+	KIRQL irql = KeGetCurrentIrql();
+
 	ExFreePoolWithTag(Apc, POOL_TAG_APC);
 	GetApcContext(&context, ContextId);
 
 	if (!context)
 		goto end;
 
-	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 	context->count -= 1;
 end:
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
 /*
@@ -411,17 +414,18 @@ end:
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
+	KIRQL irql = KeGetCurrentIrql();
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
 		PAPC_CONTEXT_HEADER entry = NULL;
 		GetApcContextByIndex(&entry, index);
 
 		/* acquire mutex after we get the context to prevent thread deadlock */
-		KeAcquireGuardedMutex(&driver_config.lock);
+		KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 
 		if (entry == NULL)
 		{
-			KeReleaseGuardedMutex(&driver_config.lock);
+			KeReleaseSpinLock(&driver_config.spin_lock, irql);
 			continue;
 		}
 
@@ -430,7 +434,7 @@ QueryActiveApcContextsForCompletion()
 
 		if (entry->count > 0 || entry->allocation_in_progress == TRUE)
 		{
-			KeReleaseGuardedMutex(&driver_config.lock);
+			KeReleaseSpinLock(&driver_config.spin_lock, irql);
 			continue;
 		}
 
@@ -442,20 +446,32 @@ QueryActiveApcContextsForCompletion()
 			break;
 		}
 
-		KeReleaseGuardedMutex(&driver_config.lock);
+		KeReleaseSpinLock(&driver_config.spin_lock, irql);
 
 	}
 	return STATUS_SUCCESS;
 }
 
-VOID
+NTSTATUS
 InsertApcContext(
 	_In_ PVOID Context
 )
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
+	NTSTATUS status = STATUS_SUCCESS;
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 
 	PAPC_CONTEXT_HEADER header = Context;
+
+	/* 
+	* prevents the race condition where the driver is unloaded whilst a new apc operation
+	* is attempted to start, ensuring that even if it holds
+	*/
+	if (InterlockedExchange(&driver_config.unload_in_progress, driver_config.unload_in_progress))
+	{
+		status = STATUS_ABANDONED;
+		goto end;
+	}
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -468,7 +484,8 @@ InsertApcContext(
 		}
 	}
 end:
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	return status;
 }
 
 VOID
@@ -477,7 +494,8 @@ GetApcContext(
 	_In_ LONG ContextIdentifier
 )
 {
-	KeAcquireGuardedMutex(&driver_config.lock);
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -494,7 +512,7 @@ GetApcContext(
 	}
 
 unlock:
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
 VOID
@@ -503,13 +521,15 @@ GetApcContextByIndex(
 	_In_ INT Index
 )
 {
+	KIRQL irql = KeGetCurrentIrql();
+
 	if (!Context)
 		return;
 
 	*Context = NULL;
-	KeAcquireGuardedMutex(&driver_config.lock);
+	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
 	*Context = driver_config.apc_contexts[Index];
-	KeReleaseGuardedMutex(&driver_config.lock);
+	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
 VOID
@@ -718,6 +738,8 @@ InitialiseDriverConfigOnDriverEntry(
 	RTL_QUERY_REGISTRY_TABLE query_table[3] = { 0 };
 
 	KeInitializeGuardedMutex(&driver_config.lock);
+	KeInitializeSpinLock(&driver_config.spin_lock);
+	driver_config.unload_in_progress = FALSE;
 
 	RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
 	RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
@@ -856,6 +878,8 @@ DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
 {
+	InterlockedExchange(&driver_config.unload_in_progress, TRUE);
+
 	DEBUG_LOG("Unloading driver...");
 	//PsSetCreateProcessNotifyRoutine( ProcessCreateNotifyRoutine, TRUE );
 	//QueryActiveApcContextsForCompletion();
@@ -878,7 +902,7 @@ VOID
 TerminateProtectedProcessOnViolation()
 {
 	NTSTATUS status;
-	ULONG process_id;
+	ULONG process_id = 0;
 
 	GetProtectedProcessId(&process_id);
 
