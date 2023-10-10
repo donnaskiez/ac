@@ -56,26 +56,26 @@ GetModuleInformationByName(
 STATIC 
 NTSTATUS 
 StoreModuleExecutableRegionsInBuffer(
-        _Inout_ PVOID* Buffer, 
+        _Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
         _In_ PVOID ModuleBase,
         _In_ SIZE_T ModuleSize, 
-        _Inout_ PSIZE_T BytesWritten);
+        _Out_ _Deref_out_range_(>,0) PSIZE_T BytesWritten);
 
 STATIC 
 NTSTATUS 
 MapDiskImageIntoVirtualAddressSpace(
         _Inout_ PHANDLE SectionHandle,
-        _Inout_ PVOID* Section,
+        _Outptr_result_bytebuffer_(*Size) PVOID* Section,
         _In_ PUNICODE_STRING Path, 
-        _Inout_ PSIZE_T Size);
+        _Out_ _Deref_out_range_(>,0) PSIZE_T Size);
 
 STATIC 
 NTSTATUS 
 ComputeHashOfBuffer(
         _In_ PVOID Buffer, 
         _In_ ULONG BufferSize, 
-        _Inout_ PVOID* HashResult,
-        _Inout_ PULONG HashResultSize);
+        _Outptr_result_bytebuffer_(*HashResultSize) PVOID* HashResult,
+        _Out_ _Deref_out_range_(>,0)PULONG HashResultSize);
 
 STATIC 
 VOID 
@@ -94,7 +94,7 @@ STATIC
 NTSTATUS 
 GetAverageReadTimeAtRoutine(
         _In_ PVOID RoutineAddress, 
-        _Inout_ PUINT64 AverageTime);
+        _Out_ PUINT64 AverageTime);
 
 STATIC 
 NTSTATUS 
@@ -120,7 +120,6 @@ RegistryPathQueryTestSigningCallback(
 #pragma alloc_text(PAGE, ValidateProcessLoadedModule)
 #pragma alloc_text(PAGE, GetHardDiskDriveSerialNumber)
 #pragma alloc_text(PAGE, ScanForSignature)
-#pragma alloc_text(PAGE, GetAverageReadTimeAtRoutine)
 #pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
 #pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
 #pragma alloc_text(PAGE, RegistryPathQueryTestSigningCallback)
@@ -210,10 +209,10 @@ GetModuleInformationByName(
 STATIC
 NTSTATUS
 StoreModuleExecutableRegionsInBuffer(
-        _Inout_ PVOID* Buffer,
+        _Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
         _In_ PVOID ModuleBase,
         _In_ SIZE_T ModuleSize,
-        _Inout_ PSIZE_T BytesWritten
+        _Out_ _Deref_out_range_(>,0) PSIZE_T BytesWritten
 )
 {
         PAGED_CODE();
@@ -227,7 +226,8 @@ StoreModuleExecutableRegionsInBuffer(
         ULONG num_executable_sections = 0;
         UINT64 buffer_base;
         ULONG bytes_returned;
-        MM_COPY_ADDRESS address;
+        MM_COPY_ADDRESS address = { 0 };
+        ULONG buffer_size;
 
         if (!ModuleBase || !ModuleSize)
                 return STATUS_INVALID_PARAMETER;
@@ -239,7 +239,10 @@ StoreModuleExecutableRegionsInBuffer(
         * enumerate and count all executable sections for the file.
         */
 
-        *Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, ModuleSize + sizeof(INTEGRITY_CHECK_HEADER), POOL_TAG_INTEGRITY);
+        buffer_size = ModuleSize + sizeof(INTEGRITY_CHECK_HEADER);
+
+        *BytesWritten = 0;
+        *Buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_INTEGRITY);
 
         if (*Buffer == NULL)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -338,9 +341,9 @@ STATIC
 NTSTATUS
 MapDiskImageIntoVirtualAddressSpace(
         _Inout_ PHANDLE SectionHandle,
-        _Inout_ PVOID* Section,
+        _Outptr_result_bytebuffer_(*Size) PVOID* Section,
         _In_ PUNICODE_STRING Path,
-        _Inout_ PSIZE_T Size
+        _Out_ _Deref_out_range_(>,0) PSIZE_T Size
 )
 {
         PAGED_CODE();
@@ -350,6 +353,9 @@ MapDiskImageIntoVirtualAddressSpace(
         OBJECT_ATTRIBUTES object_attributes;
         PIO_STATUS_BLOCK pio_block;
         UNICODE_STRING path;
+
+        *Section = NULL;
+        *Size = 0;
 
         RtlInitUnicodeString(&path, Path->Buffer);
 
@@ -373,7 +379,6 @@ MapDiskImageIntoVirtualAddressSpace(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ZwOpenFile failed with statsu %x", status);
-                //TerminateProtectedProcessOnViolation();
                 return status;
         }
 
@@ -398,7 +403,6 @@ MapDiskImageIntoVirtualAddressSpace(
                 DEBUG_ERROR("ZwCreateSection failed with status %x", status);
                 ZwClose(file_handle);
                 *SectionHandle = NULL;
-                //TerminateProtectedProcessOnViolation();
                 return status;
         }
 
@@ -432,10 +436,12 @@ MapDiskImageIntoVirtualAddressSpace(
                 * and will cause a double free.
                 */
                 DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
+
                 ZwClose(file_handle);
                 ZwClose(*SectionHandle);
+
                 *SectionHandle = NULL;
-                //TerminateProtectedProcessOnViolation();
+
                 return status;
         }
 
@@ -448,8 +454,8 @@ NTSTATUS
 ComputeHashOfBuffer(
         _In_ PVOID Buffer,
         _In_ ULONG BufferSize,
-        _Inout_ PVOID* HashResult,
-        _Inout_ PULONG HashResultSize
+        _Outptr_result_bytebuffer_(*HashResultSize) PVOID* HashResult,
+        _Out_ _Deref_out_range_(>,0) PULONG HashResultSize
 )
 {
         PAGED_CODE();
@@ -476,6 +482,9 @@ ComputeHashOfBuffer(
         ULONG hash_object_size = 0;
         PCHAR hash_object = NULL;
         PCHAR resulting_hash = NULL;
+
+        *HashResult = NULL;
+        *HashResultSize = 0;
 
         status = BCryptOpenAlgorithmProvider(
                 &algo_handle,
@@ -633,6 +642,8 @@ VerifyInMemoryImageVsDiskImage(
         //_In_ PIRP Irp
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         UNICODE_STRING path = { 0 };
         HANDLE section_handle = NULL;
@@ -811,6 +822,8 @@ RetrieveInMemoryModuleExecutableSections(
         _Inout_ PIRP Irp
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         SIZE_T bytes_written = NULL;
         PVOID buffer = NULL;
@@ -957,6 +970,8 @@ ParseSMBIOSTable(
         _In_ SIZE_T ConfigMotherboardSerialNumberMaxSize
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         PVOID firmware_table_buffer;
         ULONG firmware_table_buffer_size = NULL;
@@ -1378,6 +1393,8 @@ ScanForSignature(
         _In_ SIZE_T SignatureLength
 )
 {
+        PAGED_CODE();
+
         CHAR current_char = 0;
         CHAR current_sig_char = 0;
 
@@ -1467,7 +1484,7 @@ STATIC
 NTSTATUS
 GetAverageReadTimeAtRoutine(
         _In_ PVOID RoutineAddress,
-        _Inout_ PUINT64 AverageTime
+        _Out_ PUINT64 AverageTime
 )
 {
         if (!RoutineAddress || !AverageTime)
@@ -1526,6 +1543,8 @@ STATIC
 NTSTATUS
 InitiateEptFunctionAddressArrays()
 {
+        PAGED_CODE();
+
         UNICODE_STRING current_function;
 
         for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++)
@@ -1552,6 +1571,8 @@ InitiateEptFunctionAddressArrays()
 NTSTATUS
 DetectEptHooksInKeyFunctions()
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         UINT32 control_fails = 0;
         UINT64 instruction_time = 0;
@@ -1640,6 +1661,8 @@ RegistryPathQueryTestSigningCallback(
         IN PVOID EntryContext
 )
 {
+        PAGED_CODE();
+
         PSYSTEM_START_OPTIONS context = (PSYSTEM_START_OPTIONS)Context;
         UNICODE_STRING flag = RTL_CONSTANT_STRING(L"TESTSIGNING");
         UNICODE_STRING key = RTL_CONSTANT_STRING(L"SystemStartOptions");
@@ -1668,6 +1691,8 @@ DetermineIfTestSigningIsEnabled(
         _Inout_ PBOOLEAN Result
 )
 {
+        PAGED_CODE();
+
         NTSTATUS status;
         SYSTEM_START_OPTIONS start_options = { 0 };
         RTL_QUERY_REGISTRY_TABLE query_table[2] = { 0 };

@@ -33,96 +33,151 @@ typedef struct _OB_CALLBACKS_CONFIG
 
 }OB_CALLBACKS_CONFIG, * POB_CALLBACKS_CONFIG;
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 ProcLoadInitialiseProcessConfig(
 	_In_ PIRP Irp
 );
 
-VOID GetProtectedProcessEProcess(
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID 
+GetProtectedProcessEProcess(
 	_Out_ PEPROCESS* Process
 );
 
-
-VOID GetProtectedProcessId(
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID 
+GetProtectedProcessId(
 	_Out_ PLONG ProcessId
 );
 
-VOID ReadProcessInitialisedConfigFlag(
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID 
+ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID GetDriverPath(
 	_Out_ PUNICODE_STRING DriverPath
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
 );
 
-VOID GetApcContext(
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
+VOID 
+GetApcContext(
 	_Inout_ PVOID* Context,
 	_In_ LONG ContextIdentifier
 );
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 NTSTATUS 
 InsertApcContext(
 	_In_ PVOID Context
 );
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 GetApcContextByIndex(
 	_Inout_ PVOID* Context,
 	_In_ INT Index
 );
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 IncrementApcCount(
 	_In_ LONG ContextId
 );
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 FreeApcAndDecrementApcCount(
 	_Inout_ PRKAPC Apc,
 	_In_ LONG ContextId
 );
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 NTSTATUS
-QueryActiveApcContextsForCompletion(
-
-);
+QueryActiveApcContextsForCompletion();
 
 VOID
 TerminateProtectedProcessOnViolation();
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 ProcLoadEnableObCallbacks();
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ProcCloseDisableObCallbacks();
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ProcCloseClearProcessConfiguration();
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetCallbackConfigStructure(
 	_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverDeviceName(
 	_Out_ PUNICODE_STRING DeviceName
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverRegistryPath(
 	_Out_ PUNICODE_STRING RegistryPath
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID 
 GetDriverName(
 	_Out_ LPCSTR* DriverName
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverSymbolicLink(
 	_Out_ PUNICODE_STRING DeviceSymbolicLink

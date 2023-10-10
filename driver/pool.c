@@ -99,11 +99,6 @@ CheckIfProcessAllocationIsInProcessList(
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, GetGlobalDebuggerData)
 #pragma alloc_text(PAGE, GetPsActiveProcessHead)
-#pragma alloc_text(PAGE, ValidateIfAddressIsProcessStructure)
-#pragma alloc_text(PAGE, ScanPageForKernelObjectAllocation)
-#pragma alloc_text(PAGE, IsPhysicalAddressInPhysicalMemoryRange)
-#pragma alloc_text(PAGE, EnumerateKernelLargePages)
-#pragma alloc_text(PAGE, WalkKernelPageTables)
 #pragma alloc_text(PAGE, IncrementProcessCounter)
 #pragma alloc_text(PAGE, CheckIfProcessAllocationIsInProcessList)
 #pragma alloc_text(PAGE, FindUnlinkedProcesses)
@@ -161,7 +156,12 @@ GetPsActiveProcessHead(
 {
 	PAGED_CODE();
 
+	*Address = NULL;
+
 	PKDDEBUGGER_DATA64 debugger_data = GetGlobalDebuggerData();
+
+	if (!debugger_data)
+		return;
 
 	*Address = *(UINT64*)(debugger_data->PsActiveProcessHead);
 	ExFreePoolWithTag(debugger_data, POOL_DEBUGGER_DATA_TAG);
@@ -209,8 +209,6 @@ ValidateIfAddressIsProcessStructure(
 	_In_ PPOOL_HEADER PoolHeader
 )
 {
-	PAGED_CODE();
-
 	UINT64 peak_virtual_size = NULL;
 	UINT64 dir_table_base = NULL;
 	UINT64 allocation_size = NULL;
@@ -370,8 +368,6 @@ IsPhysicalAddressInPhysicalMemoryRange(
 	_In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges
 )
 {
-	PAGED_CODE();
-
 	ULONG page_index = 0;
 	UINT64 start_address = 0;
 	UINT64 end_address = 0;
@@ -399,8 +395,6 @@ EnumerateKernelLargePages(
 	_In_ ULONG ObjectIndex
 )
 {
-	PAGED_CODE();
-
 	/*
 	* Split the large pages up into blocks of 0x1000 and scan each block
 	*/
@@ -627,6 +621,8 @@ IncrementProcessCounter(
 	_Inout_opt_ PVOID Context
 )
 {
+	PAGED_CODE();
+
 	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
 	if (!context)
@@ -642,6 +638,8 @@ CheckIfProcessAllocationIsInProcessList(
 	_Inout_opt_ PVOID Context
 )
 {
+	PAGED_CODE();
+
 	PUINT64 allocation_address;
 	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
@@ -665,6 +663,8 @@ FindUnlinkedProcesses(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	PUINT64 allocation_address;
 	PROCESS_SCAN_CONTEXT context = { 0 };
 	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;

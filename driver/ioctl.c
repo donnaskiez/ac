@@ -72,6 +72,7 @@ DispatchApcOperation(
 	return status;
 }
 
+_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
 DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
@@ -367,12 +368,15 @@ end:
 	return status;
 }
 
+_Dispatch_type_(IRP_MJ_CLOSE)
 NTSTATUS
 DeviceClose(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	UNREFERENCED_PARAMETER(DeviceObject);
 
 	DEBUG_LOG("Handle closed to DonnaAC");
@@ -391,6 +395,7 @@ DeviceClose(
 	return Irp->IoStatus.Status;
 }
 
+_Dispatch_type_(IRP_MJ_CREATE)
 NTSTATUS
 DeviceCreate(
 	_In_ PDEVICE_OBJECT DeviceObject,

@@ -40,8 +40,6 @@ EnumHandleCallback(
 #pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 CleanupThreadListOnDriverUnload()
 {
@@ -62,10 +60,8 @@ CleanupThreadListOnDriverUnload()
 * Important to remember the callback function will run at irql = DISPATCH_LEVEL since
 * we hold the spinlock during enumeration.
 */
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(&thread_list->lock)
-_Releases_lock_(&thread_list->lock)
-_IRQL_restores_global_(irql, SpinLock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
@@ -108,10 +104,8 @@ InitialiseThreadList()
 	return STATUS_SUCCESS;
 }
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(&thread_list->lock)
-_Releases_lock_(&thread_list->lock)
-_IRQL_restores_global_(irql, SpinLock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
@@ -145,8 +139,6 @@ ThreadCreateNotifyRoutine(
 	_In_ BOOLEAN Create
 )
 {
-	PAGED_CODE();
-
 	PTHREAD_LIST_ENTRY entry = NULL;
 	PKTHREAD thread = NULL;
 	PKPROCESS process = NULL;
@@ -195,6 +187,9 @@ ObPostOpCallbackRoutine(
 	PAGED_CODE();
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
@@ -570,6 +565,8 @@ EnumerateProcessListWithCallbackFunction(
 	_In_opt_ PVOID Context
 )
 {
+	PAGED_CODE();
+
 	UINT64 current_process;
 	PLIST_ENTRY process_list_head = NULL;
 	PLIST_ENTRY process_list_entry = NULL;

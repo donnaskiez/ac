@@ -152,6 +152,9 @@ ValidateDriverObjectHasBackingModule(
 	_In_ PDRIVER_OBJECT DriverObject, 
 	_Out_ PBOOLEAN Result);
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_critical_section_)
+_Releases_lock_(_Lock_kind_critical_section_)
 STATIC 
 NTSTATUS 
 ValidateDriverObjects(
@@ -170,11 +173,13 @@ NTSTATUS
 LaunchNonMaskableInterrupt(
 	_Inout_ PNMI_CONTEXT NmiContext);
 
+_IRQL_requires_max_(APC_LEVEL)
 STATIC 
 VOID 
 ApcRundownRoutine(
 	_In_ PRKAPC Apc);
 
+_IRQL_requires_max_(APC_LEVEL)
 STATIC 
 VOID 
 ApcKernelRoutine(
@@ -184,6 +189,7 @@ ApcKernelRoutine(
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2);
 
+_IRQL_requires_max_(APC_LEVEL)
 STATIC 
 VOID 
 ApcNormalRoutine(
@@ -191,7 +197,7 @@ ApcNormalRoutine(
 	_In_opt_ PVOID SystemArgument1,
 	_In_opt_ PVOID SystemArgument2);
 
-_IRQL_always_function_min_(DISPATCH_LEVEL)
+_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
@@ -219,6 +225,7 @@ ValidateThreadViaKernelApcCallback(
 #pragma alloc_text(PAGE, ApcNormalRoutine)
 #pragma alloc_text(PAGE, FlipKThreadMiscFlagsFlag)
 #pragma alloc_text(PAGE, ValidateThreadsViaKernelApc)
+#pragma alloc_text(PAGE, ValidateThreadViaKernelApcCallback)
 #endif
 
 /*
@@ -366,6 +373,8 @@ InitDriverList(
 	_Inout_ PINVALID_DRIVERS_HEAD ListHead
 )
 {
+	PAGED_CODE();
+
 	ListHead->count = 0;
 	ListHead->first_entry = NULL;
 }
@@ -378,6 +387,8 @@ AddDriverToList(
 	_In_ INT Reason
 )
 {
+	PAGED_CODE();
+
 	PINVALID_DRIVER new_entry = ExAllocatePool2(
 		POOL_FLAG_NON_PAGED,
 		sizeof(INVALID_DRIVER),
@@ -434,6 +445,8 @@ ValidateDriverObjectHasBackingModule(
 	_Out_ PBOOLEAN Result
 )
 {
+	PAGED_CODE();
+
 	if (!ModuleInformation || !DriverObject || !Result)
 		return STATUS_INVALID_PARAMETER;
 
@@ -461,6 +474,8 @@ GetSystemModuleInformation(
 	_Inout_ PSYSTEM_MODULES ModuleInformation
 )
 {
+	PAGED_CODE();
+
 	if (!ModuleInformation)
 		return STATUS_INVALID_PARAMETER;
 
@@ -511,6 +526,9 @@ GetSystemModuleInformation(
 	return STATUS_SUCCESS;
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_critical_section_)
+_Releases_lock_(_Lock_kind_critical_section_)
 STATIC
 NTSTATUS
 ValidateDriverObjects(
@@ -518,6 +536,8 @@ ValidateDriverObjects(
 	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead
 )
 {
+	PAGED_CODE();
+
 	if (!SystemModules || !InvalidDriverListHead)
 		return STATUS_INVALID_PARAMETER;
 
@@ -675,6 +695,8 @@ HandleValidateDriversIOCTL(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 	SYSTEM_MODULES system_modules = { 0 };
 
@@ -806,6 +828,8 @@ IsInstructionPointerInInvalidRegion(
 	_Out_ PBOOLEAN Result
 )
 {
+	PAGED_CODE();
+
 	if (!RIP || !SystemModules || !Result)
 		return STATUS_INVALID_PARAMETER;
 
@@ -837,6 +861,8 @@ AnalyseNmiData(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	if (!NmiContext || !SystemModules)
 		return STATUS_INVALID_PARAMETER;
 
@@ -916,6 +942,7 @@ AnalyseNmiData(
 	return STATUS_SUCCESS;
 }
 
+_IRQL_requires_max_(HIGH_LEVEL)
 STATIC
 BOOLEAN
 NmiCallback(
@@ -977,6 +1004,8 @@ LaunchNonMaskableInterrupt(
 	_Inout_ PNMI_CONTEXT NmiContext
 )
 {
+	PAGED_CODE();
+
 	if (!NmiContext)
 		return STATUS_INVALID_PARAMETER;
 
@@ -1032,6 +1061,8 @@ HandleNmiIOCTL(
 	_Inout_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 	SYSTEM_MODULES system_modules = { 0 };
 	NMI_CONTEXT nmi_context = { 0 };
@@ -1105,12 +1136,15 @@ HandleNmiIOCTL(
 * The RundownRoutine is executed if the thread terminates before the APC was delivered to
 * user mode.
 */
+_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcRundownRoutine(
 	_In_ PRKAPC Apc
 )
 {
+	PAGED_CODE();
+
 	FreeApcAndDecrementApcCount(Apc, APC_CONTEXT_ID_STACKWALK);
 }
 
@@ -1118,6 +1152,7 @@ ApcRundownRoutine(
 * The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered. This
 * is also where we want to free our APC object.
 */
+_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcKernelRoutine(
@@ -1128,6 +1163,8 @@ ApcKernelRoutine(
 	_Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2
 )
 {
+	PAGED_CODE();
+
 	PVOID buffer = NULL;
 	INT frames_captured = 0;
 	UINT64 stack_frame = 0;
@@ -1214,6 +1251,7 @@ free:
 /*
 * The NormalRoutine is executed in user mode when the APC is delivered.
 */
+_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcNormalRoutine(
@@ -1222,7 +1260,7 @@ ApcNormalRoutine(
 	_In_opt_ PVOID SystemArgument2
 )
 {
-
+	PAGED_CODE();
 }
 
 VOID
@@ -1232,6 +1270,8 @@ FlipKThreadMiscFlagsFlag(
 	_In_ BOOLEAN NewValue
 )
 {
+	PAGED_CODE();
+
 	PLONG misc_flags = (PLONG)((UINT64)Thread + KTHREAD_MISC_FLAGS_OFFSET);
 	LONG mask = 1U << FlagIndex;
 
@@ -1245,7 +1285,7 @@ FlipKThreadMiscFlagsFlag(
 #define THREAD_STATE_WAIT 5
 #define THREAD_STATE_INIT 0
 
-_IRQL_always_function_min_(DISPATCH_LEVEL)
+_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(
@@ -1253,6 +1293,8 @@ ValidateThreadViaKernelApcCallback(
 	_Inout_opt_ PVOID Context
 )
 {
+	PAGED_CODE();
+
 	PKAPC apc = NULL;
 	BOOLEAN apc_status = FALSE;
 	PLONG misc_flags = NULL;
@@ -1376,6 +1418,8 @@ ValidateThreadViaKernelApcCallback(
 NTSTATUS
 ValidateThreadsViaKernelApc()
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 	PAPC_STACKWALK_CONTEXT context = NULL;
 

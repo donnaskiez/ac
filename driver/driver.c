@@ -15,6 +15,8 @@ VOID
 DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject);
 
+_Function_class_(DRIVER_INITIALIZE)
+_IRQL_requires_same_
 NTSTATUS 
 DriverEntry(
 	_In_ PDRIVER_OBJECT DriverObject, 
@@ -99,6 +101,7 @@ DrvLoadInitialiseDriverConfig(
 #pragma alloc_text(PAGE, DrvLoadInitialiseReportQueue)
 #pragma alloc_text(PAGE, DrvLoadInitialiseProcessConfig)
 #pragma alloc_text(PAGE, DrvLoadInitialiseDriverConfig)
+#pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
 #endif
 
 #define MAXIMUM_APC_CONTEXTS 10
@@ -280,6 +283,8 @@ unlock:
 	return result;
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 IncrementApcCount(
 	_In_ LONG ContextId
@@ -297,6 +302,8 @@ IncrementApcCount(
 	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 FreeApcAndDecrementApcCount(
 	_Inout_ PRKAPC Apc,
@@ -341,6 +348,8 @@ end:
 * the count is 0 and allocation_in_progress is 0. We can then call this function alongside
 * other query callbacks via IOCTL to constantly monitor the status of open APC contexts.
 */
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
@@ -382,6 +391,8 @@ QueryActiveApcContextsForCompletion()
 	return STATUS_SUCCESS;
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 NTSTATUS
 InsertApcContext(
 	_In_ PVOID Context
@@ -418,6 +429,8 @@ end:
 	return status;
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 GetApcContext(
 	_Inout_ PVOID* Context,
@@ -445,6 +458,8 @@ unlock:
 	KeReleaseSpinLock(&driver_config.spin_lock, irql);
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 GetApcContextByIndex(
 	_Inout_ PVOID* Context,
@@ -467,7 +482,9 @@ GetApcContextByIndex(
 * Config getters
 * 
 */
-
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetCallbackConfigStructure(
 	_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration
@@ -482,6 +499,9 @@ GetCallbackConfigStructure(
 	KeReleaseGuardedMutex(&process_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverName(
 	_Out_ LPCSTR* DriverName
@@ -498,6 +518,9 @@ GetDriverName(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverPath(
 	_Out_ PUNICODE_STRING DriverPath
@@ -511,6 +534,9 @@ GetDriverPath(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverRegistryPath(
 	_Out_ PUNICODE_STRING RegistryPath
@@ -524,6 +550,9 @@ GetDriverRegistryPath(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverDeviceName(
 	_Out_ PUNICODE_STRING DeviceName
@@ -537,6 +566,9 @@ GetDriverDeviceName(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverSymbolicLink(
 	_Out_ PUNICODE_STRING DeviceSymbolicLink
@@ -550,6 +582,9 @@ GetDriverSymbolicLink(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
@@ -566,6 +601,9 @@ GetDriverConfigSystemInformation(
 	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ReadProcessInitialisedConfigFlag(
 	_Out_ PBOOLEAN Flag
@@ -581,6 +619,9 @@ ReadProcessInitialisedConfigFlag(
 	KeReleaseGuardedMutex(&process_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetProtectedProcessEProcess(
 	_Out_ PEPROCESS* Process
@@ -597,6 +638,9 @@ GetProtectedProcessEProcess(
 	KeReleaseGuardedMutex(&process_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetProtectedProcessId(
 	_Out_ PLONG ProcessId
@@ -616,6 +660,9 @@ GetProtectedProcessId(
 * 
 */
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ProcCloseDisableObCallbacks()
 {
@@ -632,6 +679,9 @@ ProcCloseDisableObCallbacks()
 	KeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ProcCloseClearProcessConfiguration()
 {
@@ -660,9 +710,14 @@ ProcCloseClearProcessConfiguration()
 * aswell as the sturcture being paged out as we allocate in a non-paged pool meaning theres no
 * chance our mutex will cause an IRQL bug check due to being paged out during acquisition.
 */
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 ProcLoadEnableObCallbacks()
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 
 	KeAcquireGuardedMutex(&process_config.lock);
@@ -705,11 +760,16 @@ end:
 	return status;
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 ProcLoadInitialiseProcessConfig(
 	_In_ PIRP Irp
 )
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 	PEPROCESS eprocess;
 	PDRIVER_INITIATION_INFORMATION information;
@@ -752,6 +812,8 @@ STATIC
 VOID
 DrvUnloadUnregisterObCallbacks()
 {
+	PAGED_CODE();
+
 	ProcCloseDisableObCallbacks();
 }
 
@@ -778,6 +840,8 @@ DrvUnloadUnregisterObCallbacks()
 * It's important to remember that the driver can unload when pending APC's have not been freed due to the
 * limitations windows places on APCs, however I am in the process of finding a solution for this.
 */
+_Acquires_lock_(driver_config.spin_lock)
+_Releases_lock_(driver_config.spin_lock)
 STATIC
 BOOLEAN
 DrvUnloadFreeAllApcContextStructures()
@@ -814,6 +878,8 @@ STATIC
 VOID
 DrvUnloadFreeConfigStrings()
 {
+	PAGED_CODE();
+
 	if (driver_config.unicode_driver_name.Buffer)
 		ExFreePoolWithTag(driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS);
 
@@ -828,6 +894,8 @@ STATIC
 VOID
 DrvUnloadFreeSymbolicLink()
 {
+	PAGED_CODE();
+
 	IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 }
 
@@ -835,6 +903,8 @@ STATIC
 VOID
 DrvUnloadFreeGlobalReportQueue()
 {
+	PAGED_CODE();
+
 	FreeGlobalReportQueueObjects();
 }
 
@@ -842,6 +912,8 @@ STATIC
 VOID
 DrvUnloadFreeThreadList()
 {
+	PAGED_CODE();
+
 	CleanupThreadListOnDriverUnload();
 }
 
@@ -880,6 +952,8 @@ STATIC
 NTSTATUS
 DrvLoadEnableNotifyRoutines()
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 
 	status = InitialiseThreadList();
@@ -902,6 +976,7 @@ STATIC
 NTSTATUS
 DrvLoadInitialiseObCbConfig()
 {
+	PAGED_CODE();
 	/*
 	* This mutex ensures we don't unregister our ObRegisterCallbacks while
 	* the callback function is running since this might cause some funny stuff
@@ -916,6 +991,8 @@ DrvLoadInitialiseReportQueue(
 	_Out_ PBOOLEAN Flag
 )
 {
+	PAGED_CODE();
+
 	InitialiseGlobalReportQueue(Flag);
 }
 
@@ -923,6 +1000,8 @@ STATIC
 VOID
 DrvLoadInitialiseProcessConfig()
 {
+	PAGED_CODE();
+
 	KeInitializeGuardedMutex(&process_config.lock);
 }
 
@@ -932,6 +1011,8 @@ DrvLoadInitialiseDriverConfig(
 	_In_ PUNICODE_STRING RegistryPath
 )
 {
+	PAGED_CODE();
+
 	NTSTATUS status;
 
 	/* 3rd page acts as a null terminator for the callback routine */
@@ -1028,6 +1109,8 @@ DrvLoadInitialiseDriverConfig(
 	return status;
 }
 
+_Function_class_(DRIVER_INITIALIZE)
+_IRQL_requires_same_
 NTSTATUS
 DriverEntry(
 	_In_ PDRIVER_OBJECT DriverObject,

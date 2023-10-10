@@ -67,6 +67,9 @@ ObPostOpCallbackRoutine(
 	_In_ POB_POST_OPERATION_INFORMATION OperationInformation
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(
 	_In_ PVOID RegistrationContext,
@@ -100,25 +103,19 @@ ThreadCreateNotifyRoutine(
 	_In_ BOOLEAN Create
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID
 CleanupThreadListOnDriverUnload();
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(&thread_list->lock)
-_Releases_lock_(&thread_list->lock)
-_IRQL_restores_global_(irql, SpinLock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
 	_Inout_ PTHREAD_LIST_ENTRY* Entry
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(&thread_list->lock)
-_Releases_lock_(&thread_list->lock)
-_IRQL_restores_global_(irql, SpinLock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,

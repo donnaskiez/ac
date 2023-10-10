@@ -57,10 +57,8 @@ InitialiseGlobalReportQueue(
 //	return head;
 //}
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_Acquires_lock_(Head->lock)
-_Releases_lock_(Head->lock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 QueuePush(
 	_Inout_ PQUEUE_HEAD Head,
@@ -91,10 +89,8 @@ end:
 	KeReleaseSpinLock(&Head->lock, irql);
 }
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_Acquires_lock_(Head->lock)
-_Releases_lock_(Head->lock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 PVOID
 QueuePop(
 	_Inout_ PQUEUE_HEAD Head
@@ -124,10 +120,9 @@ end:
 	return data;
 }
 
-_IRQL_raises_(APC_LEVEL)
-_Acquires_lock_(&report_queue_config.lock)
-_Releases_lock_(&report_queue_config.lock)
-_IRQL_restores_global_(irql, GuardedMutex)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 InsertReportToQueue(
 	_In_ PVOID Report
@@ -138,6 +133,9 @@ InsertReportToQueue(
 	KeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeGlobalReportQueueObjects()
 {
@@ -163,13 +161,14 @@ end:
 * reports as a result of a single usermode request and hence it makes dealing with
 * reports generated from ObRegisterCallbacks for example much easier.
 */
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
 	_Inout_ PIRP Irp
 )
 {
-	PAGED_CODE();
-
 	PVOID report = NULL;
 	INT count = 0;
 	GLOBAL_REPORT_QUEUE_HEADER header;
@@ -307,10 +306,8 @@ ListInit(
 	Head->Next = NULL;
 }
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 ListInsert(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -329,10 +326,8 @@ ListInsert(
 	KeReleaseSpinLock(Lock, irql);
 }
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -355,10 +350,8 @@ ListFreeFirstEntry(
 	return result;
 }
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 ListRemoveEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,

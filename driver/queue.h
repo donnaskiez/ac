@@ -36,20 +36,16 @@ typedef struct _REPORT_HEADER
 
 #define LIST_POOL_TAG 'list'
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_Acquires_lock_(Head->lock)
-_Releases_lock_(Head->lock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 QueuePush(
 	_Inout_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_Acquires_lock_(Head->lock)
-_Releases_lock_(Head->lock)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 PVOID
 QueuePop(
 	_Inout_ PQUEUE_HEAD Head
@@ -60,20 +56,25 @@ InitialiseGlobalReportQueue(
 	_Out_ PBOOLEAN Status
 );
 
-_IRQL_raises_(APC_LEVEL)
-_Acquires_lock_(&report_queue_config.lock)
-_Releases_lock_(&report_queue_config.lock)
-_IRQL_restores_global_(irql, GuardedMutex)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 InsertReportToQueue(
 	_In_ PVOID Report
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(
 	_Inout_ PIRP Irp
 );
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeGlobalReportQueueObjects();
 
@@ -83,10 +84,8 @@ ListInit(
 	_Inout_ PKSPIN_LOCK Lock
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 ListInsert(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -94,20 +93,16 @@ ListInsert(
 	_In_ PKSPIN_LOCK Lock
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
 	_In_ PKSPIN_LOCK Lock
 );
 
-_IRQL_raises_(DISPATCH_LEVEL)
-_Acquires_lock_(Lock)
-_Releases_lock_(Lock)
-_IRQL_restores_global_(SpinLock, irql)
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
 VOID
 ListRemoveEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
