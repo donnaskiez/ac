@@ -72,7 +72,7 @@ DispatchApcOperation(
 	return status;
 }
 
-_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
+//_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
 DeviceControl(
 	_In_ PDRIVER_OBJECT DriverObject,
@@ -91,14 +91,14 @@ DeviceControl(
 	/*
 	* LMAO 
 	*/
-	ReadProcessInitialisedConfigFlag(&security_flag);
+	//ReadProcessInitialisedConfigFlag(&security_flag);
 
-	if (security_flag == FALSE &&
-		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
-	{
-		status = STATUS_ACCESS_DENIED;
-		goto end;
-	}
+	//if (security_flag == FALSE &&
+	//	stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
+	//{
+	//	status = STATUS_ACCESS_DENIED;
+	//	goto end;
+	//}
 
 	switch (stack_location->Parameters.DeviceIoControl.IoControlCode)
 	{
@@ -209,7 +209,7 @@ DeviceControl(
 	case IOCTL_ENUMERATE_HANDLE_TABLES:
 
 		/* can maybe implement this better so we can extract a status value */
-		EnumerateProcessListWithCallbackFunction(
+		EnumerateProcessListWithCallbackRoutine(
 			EnumerateProcessHandles,
 			NULL
 		);

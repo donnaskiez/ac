@@ -21,6 +21,7 @@
 * reference: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
 */
 
+_IRQL_always_function_max_(HIGH_LEVEL)
 STATIC
 INT
 APERFMsrTimingCheck()
@@ -34,7 +35,7 @@ APERFMsrTimingCheck()
 	* First thing we do is we lock the current thread to the logical processor
 	* its executing on.
 	*/
-	new_affinity = (KAFFINITY)(1ul << KeGetCurrentProcessorNumber());
+	new_affinity = (KAFFINITY)(1ull << KeGetCurrentProcessorNumber());
 	old_affinity = KeSetSystemAffinityThreadEx(new_affinity);
 
 	/*

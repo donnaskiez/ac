@@ -22,6 +22,16 @@ typedef struct _THREAD_LIST
 /* todo: maybe put this in the global config? hmm.. I kinda like how its encapsulated here tho hm.. */
 PTHREAD_LIST thread_list = NULL;
 
+typedef struct _PROCESS_LIST
+{
+	SINGLE_LIST_ENTRY start;
+	volatile BOOLEAN active;
+	KSPIN_LOCK lock;
+
+}PROCESS_LIST, *PPROCESS_LIST;
+
+PPROCESS_LIST process_list = NULL;
+
 STATIC 
 BOOLEAN 
 EnumHandleCallback(
@@ -35,10 +45,25 @@ EnumHandleCallback(
 #pragma alloc_text(PAGE, ObPreOpCallbackRoutine)
 #pragma alloc_text(PAGE, EnumHandleCallback)
 #pragma alloc_text(PAGE, EnumerateProcessHandles)
-#pragma alloc_text(PAGE, EnumerateProcessListWithCallbackFunction)
 #pragma alloc_text(PAGE, InitialiseThreadList)
 #pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
+
+VOID 
+CleanupProcessListOnDriverUnload()
+{
+	InterlockedExchange(&process_list->active, FALSE);
+	PsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
+
+	for (;;)
+	{
+		if (!ListFreeFirstEntry(&process_list->start, &process_list->lock))
+		{
+			ExFreePoolWithTag(process_list, POOL_TAG_THREAD_LIST);
+			return;
+		}
+	}
+}
 
 VOID
 CleanupThreadListOnDriverUnload()
@@ -87,6 +112,50 @@ unlock:
 	KeReleaseSpinLock(&thread_list->lock, irql);
 }
 
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
+VOID
+EnumerateProcessListWithCallbackRoutine(
+	_In_ PVOID CallbackRoutine,
+	_In_opt_ PVOID Context
+)
+{
+	KIRQL irql = KeGetCurrentIrql();
+	KeAcquireSpinLock(&process_list->lock, &irql);
+
+	if (!CallbackRoutine)
+		goto unlock;
+
+	PPROCESS_LIST_ENTRY entry = process_list->start.Next;
+
+	while (entry)
+	{
+		VOID(*callback_function_ptr)(PPROCESS_LIST_ENTRY, PVOID) = CallbackRoutine;
+		(*callback_function_ptr)(entry, Context);
+		entry = entry->list.Next;
+	}
+
+unlock:
+	KeReleaseSpinLock(&process_list->lock, irql);
+}
+
+NTSTATUS
+InitialiseProcessList()
+{
+	PAGED_CODE();
+
+	process_list =
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST), POOL_TAG_THREAD_LIST);
+
+	if (!process_list)
+		return STATUS_MEMORY_NOT_ALLOCATED;
+
+	InterlockedExchange(&process_list->active, TRUE);
+	ListInit(&process_list->start, &process_list->lock);
+
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS
 InitialiseThreadList()
 {
@@ -102,6 +171,34 @@ InitialiseThreadList()
 	ListInit(&thread_list->start, &thread_list->lock);
 
 	return STATUS_SUCCESS;
+}
+
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
+VOID
+FindProcessListEntryByProcess(
+	_In_ PKPROCESS Process,
+	_Inout_ PPROCESS_LIST_ENTRY* Entry
+)
+{
+	KIRQL irql = KeGetCurrentIrql();
+	*Entry = NULL;
+	KeAcquireSpinLock(&process_list->lock, &irql);
+
+	PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)process_list->start.Next;
+
+	while (entry)
+	{
+		if (entry->process == Process)
+		{
+			*Entry = entry;
+			goto unlock;
+		}
+
+		entry = entry->list.Next;
+	}
+unlock:
+	KeReleaseSpinLock(&process_list->lock, irql);
 }
 
 _Acquires_lock_(_Lock_kind_spin_lock_)
@@ -130,6 +227,49 @@ FindThreadListEntryByThreadAddress(
 	}
 unlock:
 	KeReleaseSpinLock(&thread_list->lock, irql);
+}
+
+VOID
+ProcessCreateNotifyRoutine(
+	_In_ HANDLE ParentId,
+	_In_ HANDLE ProcessID,
+	_In_ BOOLEAN Create
+)
+{
+	PPROCESS_LIST_ENTRY entry = NULL;
+	PKPROCESS parent = NULL;
+	PKPROCESS process = NULL;
+
+	if (InterlockedExchange(&process_list->active, process_list->active) == FALSE)
+		return;
+
+	PsLookupProcessByProcessId(ParentId, &parent);
+	PsLookupProcessByProcessId(ProcessID, &process);
+
+	if (!parent || !process)
+		return;
+
+	if (Create)
+	{
+		entry = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+
+		if (!entry)
+			return;
+
+		entry->parent = parent;
+		entry->process = process;
+
+		ListInit(&process_list->start, &process_list->lock);
+	}
+	else
+	{
+		FindProcessListEntryByProcess(process, &entry);
+
+		if (!entry)
+			return;
+
+		ListRemoveEntry(&process_list->start, entry, &process_list->lock);
+	}
 }
 
 VOID
@@ -185,6 +325,9 @@ ObPostOpCallbackRoutine(
 )
 {
 	PAGED_CODE();
+
+	UNREFERENCED_PARAMETER(RegistrationContext);
+	UNREFERENCED_PARAMETER(OperationInformation);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -203,9 +346,6 @@ ObPreOpCallbackRoutine(
 	/* access mask to completely strip permissions */
 	ACCESS_MASK deny_access = SYNCHRONIZE | PROCESS_TERMINATE;
 
-	/* Access mask to be used for crss / lsass */
-	ACCESS_MASK downgrade_access = 0;
-
 	/*
 	* This callback routine is executed in the context of the thread that
 	* is requesting to open said handle
@@ -213,9 +353,8 @@ ObPreOpCallbackRoutine(
 	PEPROCESS process_creator = PsGetCurrentProcess();
 	PEPROCESS protected_process;
 	PEPROCESS target_process = (PEPROCESS)OperationInformation->Object;
-	LONG target_process_id = PsGetProcessId(target_process);
-	LONG process_creator_id = PsGetProcessId(process_creator);
-	LONG protected_process_id = NULL;
+	HANDLE process_creator_id = PsGetProcessId(process_creator);
+	LONG protected_process_id = 0;
 	LPCSTR process_creator_name;
 	LPCSTR target_process_name;
 	LPCSTR protected_process_name;
@@ -499,9 +638,9 @@ EnumHandleCallback(
 		* rare.
 		*/
 		report->report_code = REPORT_ILLEGAL_HANDLE_OPERATION;
-		report->is_kernel_handle = NULL;
+		report->is_kernel_handle = 0;
 		report->process_id = PsGetProcessId(process);
-		report->thread_id = NULL;
+		report->thread_id = 0;
 		report->access = handle_access_mask;
 		RtlCopyMemory(&report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
@@ -515,19 +654,23 @@ end:
 
 NTSTATUS
 EnumerateProcessHandles(
-	_In_ PEPROCESS Process
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
+	_In_opt_ PVOID Context
 )
 {
 	/* Handles are paged out so we need to be at an IRQL that allows paging */
 	PAGED_CODE();
 
-	if (!Process)
+	UNREFERENCED_PARAMETER(Context);
+
+	if (!ProcessListEntry)
 		return STATUS_INVALID_PARAMETER;
 
-	if (Process == PsInitialSystemProcess)
+	if (ProcessListEntry->process == PsInitialSystemProcess)
 		return STATUS_SUCCESS;
 
-	PHANDLE_TABLE handle_table = *(PHANDLE_TABLE*)((uintptr_t)Process + EPROCESS_HANDLE_TABLE_OFFSET);
+	PHANDLE_TABLE handle_table = 
+		*(PHANDLE_TABLE*)((uintptr_t)ProcessListEntry->process + EPROCESS_HANDLE_TABLE_OFFSET);
 
 	if (!handle_table)
 		return STATUS_INVALID_ADDRESS;
@@ -559,36 +702,36 @@ EnumerateProcessHandles(
 * The Context argument is simply a pointer to a user designed context structure
 * which is passed to the callback function.
 */
-VOID
-EnumerateProcessListWithCallbackFunction(
-	_In_ PVOID Function,
-	_In_opt_ PVOID Context
-)
-{
-	PAGED_CODE();
-
-	UINT64 current_process;
-	PLIST_ENTRY process_list_head = NULL;
-	PLIST_ENTRY process_list_entry = NULL;
-	PEPROCESS base_process = PsInitialSystemProcess;
-
-	if (!base_process)
-		return;
-
-	process_list_head = (UINT64)((UINT64)base_process + EPROCESS_PLIST_ENTRY_OFFSET);
-	process_list_entry = process_list_head;
-
-	do
-	{
-		current_process = (PEPROCESS)((UINT64)process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET);
-
-		if (!current_process)
-			return;
-
-		VOID(*callback_function_ptr)(PEPROCESS, PVOID) = Function;
-		(*callback_function_ptr)(current_process, Context);
-
-		process_list_entry = process_list_entry->Flink;
-
-	} while (process_list_entry != process_list_head->Blink);
-}
+//VOID
+//EnumerateProcessListWithCallbackFunction(
+//	_In_ PVOID Function,
+//	_In_opt_ PVOID Context
+//)
+//{
+//	PAGED_CODE();
+//
+//	UINT64 current_process = 0;
+//	PLIST_ENTRY process_list_head = NULL;
+//	PLIST_ENTRY process_list_entry = NULL;
+//	PEPROCESS base_process = PsInitialSystemProcess;
+//
+//	if (!base_process)
+//		return;
+//
+//	process_list_head = (UINT64)((UINT64)base_process + EPROCESS_PLIST_ENTRY_OFFSET);
+//	process_list_entry = process_list_head;
+//
+//	do
+//	{
+//		current_process = (PEPROCESS)((UINT64)process_list_entry - EPROCESS_PLIST_ENTRY_OFFSET);
+//
+//		if (!current_process)
+//			return;
+//
+//		VOID(*callback_function_ptr)(PEPROCESS, PVOID) = Function;
+//		(*callback_function_ptr)(current_process, Context);
+//
+//		process_list_entry = process_list_entry->Flink;
+//
+//	} while (process_list_entry != process_list_head->Blink);
+//}

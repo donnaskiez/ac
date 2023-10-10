@@ -87,13 +87,13 @@ WalkKernelPageTables(
 STATIC 
 VOID 
 IncrementProcessCounter(
-	_In_ PEPROCESS Process, 
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 	_Inout_opt_ PVOID Context);
 
 STATIC 
 VOID 
 CheckIfProcessAllocationIsInProcessList(
-	_In_ PEPROCESS Process, 
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 	_Inout_opt_ PVOID Context);
 
 #ifdef ALLOC_PRAGMA
@@ -617,11 +617,13 @@ WalkKernelPageTables(
 STATIC
 VOID
 IncrementProcessCounter(
-	_In_ PEPROCESS Process,
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 	_Inout_opt_ PVOID Context
 )
 {
 	PAGED_CODE();
+
+	UNREFERENCED_PARAMETER(ProcessListEntry);
 
 	PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
@@ -634,7 +636,7 @@ IncrementProcessCounter(
 STATIC
 VOID
 CheckIfProcessAllocationIsInProcessList(
-	_In_ PEPROCESS Process,
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 	_Inout_opt_ PVOID Context
 )
 {
@@ -650,8 +652,8 @@ CheckIfProcessAllocationIsInProcessList(
 	{
 		allocation_address = (PUINT64)context->process_buffer;
 
-		if ((UINT64)Process >= allocation_address[i] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
-			(UINT64)Process <= allocation_address[i] + PROCESS_OBJECT_ALLOCATION_MARGIN)
+		if ((UINT64)ProcessListEntry->process >= allocation_address[i] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
+			(UINT64)ProcessListEntry->process <= allocation_address[i] + PROCESS_OBJECT_ALLOCATION_MARGIN)
 		{
 			RtlZeroMemory((UINT64)context->process_buffer + i * sizeof(UINT64), sizeof(UINT64));
 		}
@@ -669,7 +671,7 @@ FindUnlinkedProcesses(
 	PROCESS_SCAN_CONTEXT context = { 0 };
 	PINVALID_PROCESS_ALLOCATION_REPORT report_buffer = NULL;
 
-	EnumerateProcessListWithCallbackFunction(
+	EnumerateProcessListWithCallbackRoutine(
 		IncrementProcessCounter,
 		&context
 	);
@@ -688,16 +690,16 @@ FindUnlinkedProcesses(
 
 	WalkKernelPageTables(&context);
 
-	EnumerateProcessListWithCallbackFunction(
+	EnumerateProcessListWithCallbackRoutine(
 		CheckIfProcessAllocationIsInProcessList,
 		&context
 	);
 
 	allocation_address = (PUINT64)context.process_buffer;
 
-	for (INT i = 0; i < context.process_count; i++)
+	for (INT index = 0; index < context.process_count; index++)
 	{
-		if (allocation_address[i] == NULL)
+		if (allocation_address[index] == NULL)
 			continue;
 
 		/*
@@ -717,7 +719,7 @@ FindUnlinkedProcesses(
 
 		RtlCopyMemory(
 			report_buffer->process,
-			(UINT64)allocation_address[i] - OBJECT_HEADER_SIZE,
+			(UINT64)allocation_address[index] - OBJECT_HEADER_SIZE,
 			REPORT_INVALID_PROCESS_BUFFER_SIZE
 		);
 

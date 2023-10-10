@@ -54,6 +54,14 @@ typedef struct _THREAD_LIST_ENTRY
 
 }THREAD_LIST_ENTRY, * PTHREAD_LIST_ENTRY;
 
+typedef struct _PROCESS_LIST_ENTRY
+{
+	SINGLE_LIST_ENTRY list;
+	PKPROCESS process;
+	PKPROCESS parent;
+
+}PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
+
 VOID
 NTAPI
 ExUnlockHandleTableEntry(
@@ -82,24 +90,35 @@ ObPreOpCallbackRoutine(
 //	_In_ BOOLEAN Create
 //);
 
-VOID
-EnumerateProcessListWithCallbackFunction(
-	_In_ PVOID Function,
-	_In_opt_ PVOID Context
-);
+//VOID
+//EnumerateProcessListWithCallbackFunction(
+//	_In_ PVOID Function,
+//	_In_opt_ PVOID Context
+//);
 
 NTSTATUS
 EnumerateProcessHandles(
-	_In_ PEPROCESS Process
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
+	_In_opt_ PVOID Context
 );
 
 NTSTATUS
 InitialiseThreadList();
 
+NTSTATUS
+InitialiseProcessList();
+
 VOID
 ThreadCreateNotifyRoutine(
 	_In_ HANDLE ProcessId,
 	_In_ HANDLE ThreadId,
+	_In_ BOOLEAN Create
+);
+
+VOID
+ProcessCreateNotifyRoutine(
+	_In_ HANDLE ParentId,
+	_In_ HANDLE ProcessID,
 	_In_ BOOLEAN Create
 );
 
@@ -117,9 +136,28 @@ FindThreadListEntryByThreadAddress(
 _Acquires_lock_(_Lock_kind_spin_lock_)
 _Releases_lock_(_Lock_kind_spin_lock_)
 VOID
+FindProcessListEntryByProcess(
+	_In_ PKPROCESS Process,
+	_Inout_ PPROCESS_LIST_ENTRY* Entry
+);
+
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
+VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
 	_In_opt_ PVOID Context
 );
+
+_Acquires_lock_(_Lock_kind_spin_lock_)
+_Releases_lock_(_Lock_kind_spin_lock_)
+VOID
+EnumerateProcessListWithCallbackRoutine(
+	_In_ PVOID CallbackRoutine,
+	_In_opt_ PVOID Context
+);
+
+VOID
+CleanupProcessListOnDriverUnload();
 
 #endif

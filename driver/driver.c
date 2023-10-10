@@ -52,6 +52,10 @@ VOID
 DrvUnloadFreeThreadList();
 
 STATIC
+VOID
+DrvUnloadFreeProcessList();
+
+STATIC
 NTSTATUS
 DrvLoadEnableNotifyRoutines();
 
@@ -96,6 +100,7 @@ DrvLoadInitialiseDriverConfig(
 #pragma alloc_text(PAGE, DrvUnloadFreeSymbolicLink)
 #pragma alloc_text(PAGE, DrvUnloadFreeGlobalReportQueue)
 #pragma alloc_text(PAGE, DrvUnloadFreeThreadList)
+#pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #pragma alloc_text(PAGE, DrvLoadInitialiseObCbConfig)
 #pragma alloc_text(PAGE, DrvLoadInitialiseReportQueue)
@@ -919,6 +924,15 @@ DrvUnloadFreeThreadList()
 
 STATIC
 VOID
+DrvUnloadFreeProcessList()
+{
+	PAGED_CODE();
+
+	CleanupProcessListOnDriverUnload();
+}
+
+STATIC
+VOID
 DriverUnload(
 	_In_ PDRIVER_OBJECT DriverObject
 )
@@ -933,6 +947,7 @@ DriverUnload(
 
 	DrvUnloadUnregisterObCallbacks();
 	DrvUnloadFreeThreadList();
+	DrvUnloadFreeProcessList();
 	DrvUnloadFreeConfigStrings();
 	DrvUnloadFreeGlobalReportQueue();
 	DrvUnloadFreeSymbolicLink();
@@ -964,10 +979,24 @@ DrvLoadEnableNotifyRoutines()
 		return status;
 	}
 
+	status = InitialiseProcessList();
+
+	if (!NT_SUCCESS(status))
+	{
+		DrvUnloadFreeThreadList();
+		DEBUG_ERROR("InitialiseProcessList failed with status %x", status);
+		return status;
+	}
+
 	status = PsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 
 	if (!NT_SUCCESS(status))
+	{
 		DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
+		DrvUnloadFreeThreadList();
+		DrvUnloadFreeProcessList();
+		return status;
+	}
 
 	return status;
 }
