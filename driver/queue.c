@@ -35,7 +35,7 @@ InitialiseGlobalReportQueue(
 	report_queue_config.head.end = NULL;
 	report_queue_config.head.entries = 0;
 
-	KeInitializeSpinLock(&report_queue_config.head.lock);
+	KeInitializeGuardedMutex(&report_queue_config.head.lock);
 	KeInitializeGuardedMutex(&report_queue_config.lock);
 
 	*Status = TRUE;
@@ -57,16 +57,15 @@ InitialiseGlobalReportQueue(
 //	return head;
 //}
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 QueuePush(
 	_Inout_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&Head->lock, &irql);
+	KeAcquireGuardedMutex(&Head->lock);
 
 	PQUEUE_NODE temp = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
 
@@ -86,18 +85,17 @@ QueuePush(
 		Head->start = temp;
 
 end:
-	KeReleaseSpinLock(&Head->lock, irql);
+	KeReleaseGuardedMutex(&Head->lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 PVOID
 QueuePop(
 	_Inout_ PQUEUE_HEAD Head
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&Head->lock, &irql);
+	KeAcquireGuardedMutex(&Head->lock);
 
 	PVOID data = NULL;
 	PQUEUE_NODE temp = Head->start;
@@ -116,7 +114,7 @@ QueuePop(
 	ExFreePoolWithTag(temp, QUEUE_POOL_TAG);
 
 end:
-	KeReleaseSpinLock(&Head->lock, irql);
+	KeReleaseGuardedMutex(&Head->lock);
 	return data;
 }
 
@@ -299,44 +297,42 @@ end:
 VOID
 ListInit(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_Inout_ PKSPIN_LOCK Lock
+	_Inout_ PKGUARDED_MUTEX Lock
 )
 {
-	KeInitializeSpinLock(Lock);
+	KeInitializeGuardedMutex(Lock);
 	Head->Next = NULL;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListInsert(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
 	_Inout_ PSINGLE_LIST_ENTRY NewEntry,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(Lock, &irql);
+	KeAcquireGuardedMutex(Lock);
 
 	PSINGLE_LIST_ENTRY old_entry = Head->Next;
 
 	Head->Next = NewEntry;
 	NewEntry->Next = old_entry;
 
-	KeReleaseSpinLock(Lock, irql);
+	KeReleaseGuardedMutex(Lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 )
 {
 	BOOLEAN result = FALSE;
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(Lock, &irql);
+	KeAcquireGuardedMutex(Lock);
 
 	if (Head->Next)
 	{
@@ -346,21 +342,20 @@ ListFreeFirstEntry(
 		result = TRUE;
 	}
 
-	KeReleaseSpinLock(Lock, irql);
+	KeReleaseGuardedMutex(Lock);
 	return result;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListRemoveEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
 	_Inout_ PSINGLE_LIST_ENTRY Entry,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(Lock, &irql);
+	KeAcquireGuardedMutex(Lock);
 
 	PSINGLE_LIST_ENTRY entry = Head->Next;
 
@@ -387,5 +382,5 @@ ListRemoveEntry(
 	}
 
 unlock:
-	KeReleaseSpinLock(Lock, irql);
+	KeReleaseGuardedMutex(Lock);
 }

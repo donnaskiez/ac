@@ -118,39 +118,43 @@ ThreadCreateNotifyRoutine(
 VOID
 ProcessCreateNotifyRoutine(
 	_In_ HANDLE ParentId,
-	_In_ HANDLE ProcessID,
+	_In_ HANDLE ProcessId,
 	_In_ BOOLEAN Create
 );
 
 VOID
 CleanupThreadListOnDriverUnload();
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
 	_Inout_ PTHREAD_LIST_ENTRY* Entry
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindProcessListEntryByProcess(
 	_In_ PKPROCESS Process,
 	_Inout_ PPROCESS_LIST_ENTRY* Entry
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
 	_In_opt_ PVOID Context
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,

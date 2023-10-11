@@ -123,7 +123,6 @@ typedef struct _DRIVER_CONFIG
 	PVOID apc_contexts[MAXIMUM_APC_CONTEXTS];
 	volatile BOOLEAN unload_in_progress;
 	KGUARDED_MUTEX lock;
-	KSPIN_LOCK spin_lock;
 
 }DRIVER_CONFIG, * PDRIVER_CONFIG;
 
@@ -288,8 +287,9 @@ unlock:
 	return result;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 IncrementApcCount(
 	_In_ LONG ContextId
@@ -302,13 +302,14 @@ IncrementApcCount(
 	if (!header)
 		return;
 
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 	header->count += 1;
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeApcAndDecrementApcCount(
 	_Inout_ PRKAPC Apc,
@@ -316,7 +317,6 @@ FreeApcAndDecrementApcCount(
 )
 {
 	PAPC_CONTEXT_HEADER context = NULL;
-	KIRQL irql = KeGetCurrentIrql();
 
 	ExFreePoolWithTag(Apc, POOL_TAG_APC);
 	GetApcContext(&context, ContextId);
@@ -324,10 +324,10 @@ FreeApcAndDecrementApcCount(
 	if (!context)
 		goto end;
 
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 	context->count -= 1;
 end:
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -353,8 +353,9 @@ end:
 * the count is 0 and allocation_in_progress is 0. We can then call this function alongside
 * other query callbacks via IOCTL to constantly monitor the status of open APC contexts.
 */
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
@@ -365,11 +366,11 @@ QueryActiveApcContextsForCompletion()
 		GetApcContextByIndex(&entry, index);
 
 		/* acquire mutex after we get the context to prevent thread deadlock */
-		KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+		KeAcquireGuardedMutex(&driver_config.lock);
 
 		if (entry == NULL)
 		{
-			KeReleaseSpinLock(&driver_config.spin_lock, irql);
+			KeReleaseGuardedMutex(&driver_config.lock);
 			continue;
 		}
 
@@ -378,7 +379,7 @@ QueryActiveApcContextsForCompletion()
 
 		if (entry->count > 0 || entry->allocation_in_progress == TRUE)
 		{
-			KeReleaseSpinLock(&driver_config.spin_lock, irql);
+			KeReleaseGuardedMutex(&driver_config.lock);
 			continue;
 		}
 
@@ -390,22 +391,22 @@ QueryActiveApcContextsForCompletion()
 			break;
 		}
 
-		KeReleaseSpinLock(&driver_config.spin_lock, irql);
+		KeReleaseGuardedMutex(&driver_config.lock);
 
 	}
 	return STATUS_SUCCESS;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 InsertApcContext(
 	_In_ PVOID Context
 )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 
 	PAPC_CONTEXT_HEADER header = Context;
 
@@ -430,20 +431,20 @@ InsertApcContext(
 		}
 	}
 end:
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 	return status;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetApcContext(
 	_Inout_ PVOID* Context,
 	_In_ LONG ContextIdentifier
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -460,11 +461,12 @@ GetApcContext(
 	}
 
 unlock:
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetApcContextByIndex(
 	_Inout_ PVOID* Context,
@@ -477,9 +479,9 @@ GetApcContextByIndex(
 		return;
 
 	*Context = NULL;
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 	*Context = driver_config.apc_contexts[Index];
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -845,16 +847,16 @@ DrvUnloadUnregisterObCallbacks()
 * It's important to remember that the driver can unload when pending APC's have not been freed due to the
 * limitations windows places on APCs, however I am in the process of finding a solution for this.
 */
-_Acquires_lock_(driver_config.spin_lock)
-_Releases_lock_(driver_config.spin_lock)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 STATIC
 BOOLEAN
 DrvUnloadFreeAllApcContextStructures()
 {
 	BOOLEAN flag = TRUE;
-	KIRQL irql = KeGetCurrentIrql();
 
-	KeAcquireSpinLock(&driver_config.spin_lock, &irql);
+	KeAcquireGuardedMutex(&driver_config.lock);
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -875,7 +877,7 @@ DrvUnloadFreeAllApcContextStructures()
 	}
 
 unlock:
-	KeReleaseSpinLock(&driver_config.spin_lock, irql);
+	KeReleaseGuardedMutex(&driver_config.lock);
 	return flag;
 }
 
@@ -992,7 +994,18 @@ DrvLoadEnableNotifyRoutines()
 
 	if (!NT_SUCCESS(status))
 	{
+		DEBUG_ERROR("PsSetCreateThreadNotifyRoutine failed with status %x", status);
+		DrvUnloadFreeThreadList();
+		DrvUnloadFreeProcessList();
+		return status;
+	}
+
+	status = PsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, FALSE);
+
+	if (!NT_SUCCESS(status))
+	{
 		DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
+		PsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 		DrvUnloadFreeThreadList();
 		DrvUnloadFreeProcessList();
 		return status;
@@ -1048,7 +1061,6 @@ DrvLoadInitialiseDriverConfig(
 	RTL_QUERY_REGISTRY_TABLE query_table[3] = { 0 };
 
 	KeInitializeGuardedMutex(&driver_config.lock);
-	KeInitializeSpinLock(&driver_config.spin_lock);
 	driver_config.unload_in_progress = FALSE;
 
 	RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");

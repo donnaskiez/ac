@@ -17,7 +17,7 @@ typedef struct QUEUE_HEAD
 {
 	struct _QUEUE_NODE* start;
 	struct _QUEUE_NODE* end;
-	KSPIN_LOCK lock;
+	KGUARDED_MUTEX lock;
 	INT entries;
 
 }QUEUE_HEAD, * PQUEUE_HEAD;
@@ -36,16 +36,16 @@ typedef struct _REPORT_HEADER
 
 #define LIST_POOL_TAG 'list'
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 QueuePush(
 	_Inout_ PQUEUE_HEAD Head,
 	_In_ PVOID Data
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 PVOID
 QueuePop(
 	_Inout_ PQUEUE_HEAD Head
@@ -81,33 +81,33 @@ FreeGlobalReportQueueObjects();
 VOID
 ListInit(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_Inout_ PKSPIN_LOCK Lock
+	_Inout_ PKGUARDED_MUTEX Lock
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListInsert(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
 	_Inout_ PSINGLE_LIST_ENTRY NewEntry,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListRemoveEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
 	_Inout_ PSINGLE_LIST_ENTRY Entry,
-	_In_ PKSPIN_LOCK Lock
+	_In_ PKGUARDED_MUTEX Lock
 );
 
 #endif

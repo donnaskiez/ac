@@ -79,46 +79,52 @@ VOID GetDriverConfigSystemInformation(
 	_Out_ PSYSTEM_INFORMATION* SystemInformation
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID 
 GetApcContext(
 	_Inout_ PVOID* Context,
 	_In_ LONG ContextIdentifier
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS 
 InsertApcContext(
 	_In_ PVOID Context
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetApcContextByIndex(
 	_Inout_ PVOID* Context,
 	_In_ INT Index
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 IncrementApcCount(
 	_In_ LONG ContextId
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeApcAndDecrementApcCount(
 	_Inout_ PRKAPC Apc,
 	_In_ LONG ContextId
 );
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 QueryActiveApcContextsForCompletion();
 

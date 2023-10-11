@@ -15,7 +15,7 @@ typedef struct _THREAD_LIST
 {
 	SINGLE_LIST_ENTRY start;
 	volatile BOOLEAN active;
-	KSPIN_LOCK lock;
+	KGUARDED_MUTEX lock;
 
 }THREAD_LIST, * PTHREAD_LIST;
 
@@ -26,7 +26,7 @@ typedef struct _PROCESS_LIST
 {
 	SINGLE_LIST_ENTRY start;
 	volatile BOOLEAN active;
-	KSPIN_LOCK lock;
+	KGUARDED_MUTEX lock;
 
 }PROCESS_LIST, *PPROCESS_LIST;
 
@@ -85,16 +85,16 @@ CleanupThreadListOnDriverUnload()
 * Important to remember the callback function will run at irql = DISPATCH_LEVEL since
 * we hold the spinlock during enumeration.
 */
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateThreadListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
 	_In_opt_ PVOID Context
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&thread_list->lock, &irql);
+	KeAcquireGuardedMutex(&thread_list->lock);
 
 	if (!CallbackRoutine)
 		goto unlock;
@@ -109,19 +109,19 @@ EnumerateThreadListWithCallbackRoutine(
 	}
 
 unlock:
-	KeReleaseSpinLock(&thread_list->lock, irql);
+	KeReleaseGuardedMutex(&thread_list->lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(
 	_In_ PVOID CallbackRoutine,
 	_In_opt_ PVOID Context
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-	KeAcquireSpinLock(&process_list->lock, &irql);
+	KeAcquireGuardedMutex(&process_list->lock);
 
 	if (!CallbackRoutine)
 		goto unlock;
@@ -136,7 +136,7 @@ EnumerateProcessListWithCallbackRoutine(
 	}
 
 unlock:
-	KeReleaseSpinLock(&process_list->lock, irql);
+	KeReleaseGuardedMutex(&process_list->lock);
 }
 
 NTSTATUS
@@ -173,17 +173,17 @@ InitialiseThreadList()
 	return STATUS_SUCCESS;
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindProcessListEntryByProcess(
 	_In_ PKPROCESS Process,
 	_Inout_ PPROCESS_LIST_ENTRY* Entry
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
 	*Entry = NULL;
-	KeAcquireSpinLock(&process_list->lock, &irql);
+	KeAcquireGuardedMutex(&process_list->lock);
 
 	PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)process_list->start.Next;
 
@@ -198,20 +198,20 @@ FindProcessListEntryByProcess(
 		entry = entry->list.Next;
 	}
 unlock:
-	KeReleaseSpinLock(&process_list->lock, irql);
+	KeReleaseGuardedMutex(&process_list->lock);
 }
 
-_Acquires_lock_(_Lock_kind_spin_lock_)
-_Releases_lock_(_Lock_kind_spin_lock_)
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindThreadListEntryByThreadAddress(
 	_In_ PKTHREAD Thread,
 	_Inout_ PTHREAD_LIST_ENTRY* Entry
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
 	*Entry = NULL;
-	KeAcquireSpinLock(&thread_list->lock, &irql);
+	KeAcquireGuardedMutex(&thread_list->lock);
 
 	PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)thread_list->start.Next;
 
@@ -226,13 +226,13 @@ FindThreadListEntryByThreadAddress(
 		entry = entry->list.Next;
 	}
 unlock:
-	KeReleaseSpinLock(&thread_list->lock, irql);
+	KeReleaseGuardedMutex(&thread_list->lock);
 }
 
 VOID
 ProcessCreateNotifyRoutine(
 	_In_ HANDLE ParentId,
-	_In_ HANDLE ProcessID,
+	_In_ HANDLE ProcessId,
 	_In_ BOOLEAN Create
 )
 {
@@ -244,7 +244,7 @@ ProcessCreateNotifyRoutine(
 		return;
 
 	PsLookupProcessByProcessId(ParentId, &parent);
-	PsLookupProcessByProcessId(ProcessID, &process);
+	PsLookupProcessByProcessId(ProcessId, &process);
 
 	if (!parent || !process)
 		return;
@@ -259,7 +259,7 @@ ProcessCreateNotifyRoutine(
 		entry->parent = parent;
 		entry->process = process;
 
-		ListInit(&process_list->start, &process_list->lock);
+		ListInsert(&process_list->start, entry, &process_list->lock);
 	}
 	else
 	{
