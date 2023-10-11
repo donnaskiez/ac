@@ -20,6 +20,7 @@
 typedef struct _REPORT_QUEUE_CONFIGURATION
 {
 	QUEUE_HEAD head;
+	volatile BOOLEAN is_driver_unloading;
 	KGUARDED_MUTEX lock;
 
 }REPORT_QUEUE_CONFIGURATION, * PREPORT_QUEUE_CONFIGURATION;
@@ -34,6 +35,7 @@ InitialiseGlobalReportQueue(
 	report_queue_config.head.start = NULL;
 	report_queue_config.head.end = NULL;
 	report_queue_config.head.entries = 0;
+	report_queue_config.is_driver_unloading = FALSE;
 
 	KeInitializeGuardedMutex(&report_queue_config.head.lock);
 	KeInitializeGuardedMutex(&report_queue_config.lock);
@@ -57,6 +59,7 @@ InitialiseGlobalReportQueue(
 //	return head;
 //}
 
+_IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 VOID
@@ -88,6 +91,7 @@ end:
 	KeReleaseGuardedMutex(&Head->lock);
 }
 
+_IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 PVOID
@@ -126,6 +130,9 @@ InsertReportToQueue(
 	_In_ PVOID Report
 )
 {
+	if (InterlockedExchange(&report_queue_config.is_driver_unloading, report_queue_config.is_driver_unloading))
+		return;
+
 	KeAcquireGuardedMutex(&report_queue_config.lock);
 	QueuePush(&report_queue_config.head, Report);
 	KeReleaseGuardedMutex(&report_queue_config.lock);
@@ -137,6 +144,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeGlobalReportQueueObjects()
 {
+	InterlockedExchange(&report_queue_config.is_driver_unloading, TRUE);
 	KeAcquireGuardedMutex(&report_queue_config.lock);
 
 	PVOID report = QueuePop(&report_queue_config.head);
@@ -145,6 +153,7 @@ FreeGlobalReportQueueObjects()
 	{
 		ExFreePoolWithTag(report, REPORT_POOL_TAG);
 		report = QueuePop(&report_queue_config.head);
+		DEBUG_LOG("Queu Unload Remaining Entries: %i", report_queue_config.head.entries);
 	}
 
 end:
@@ -175,6 +184,7 @@ HandlePeriodicGlobalReportQueueQuery(
 	SIZE_T total_size = NULL;
 
 	KeAcquireGuardedMutex(&report_queue_config.lock);
+
 	report = QueuePop(&report_queue_config.head);
 
 	report_buffer = ExAllocatePool2(

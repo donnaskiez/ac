@@ -710,7 +710,7 @@ FindUnlinkedProcesses(
 		DEBUG_ERROR("INVALID POOL proc OMGGG");
 
 		report_buffer = 
-			ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
+			ExAllocatePool2(POOL_FLAG_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
 
 		if (!report_buffer)
 			goto end;

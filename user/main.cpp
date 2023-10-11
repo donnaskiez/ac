@@ -50,6 +50,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
                 switch (seed)
                 {
                 case 0:
+                        // safe
                         kmanager.EnumerateHandleTables();
                         break;
                 case 1:
@@ -59,6 +60,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
                         kmanager.ScanPoolsForUnlinkedProcesses();
                         break;
                 case 3:
+                        //safe
                         kmanager.VerifySystemModules();
                         break;
                 case 4:
@@ -71,9 +73,11 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
                         kmanager.CheckForAttachedThreads();
                         break;
                 case 7:
+                        //safe
                         kmanager.InitiateApcStackwalkOperation();
                         break;
                 case 8:
+                        //safe
                         kmanager.CheckForHiddenThreads();
                         break;
                 case 9:

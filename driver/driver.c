@@ -296,7 +296,6 @@ IncrementApcCount(
 )
 {
 	PAPC_CONTEXT_HEADER header = NULL;
-	KIRQL irql = KeGetCurrentIrql();
 	GetApcContext(&header, ContextId);
 
 	if (!header)
@@ -359,7 +358,6 @@ _Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
-	KIRQL irql = KeGetCurrentIrql();
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
 		PAPC_CONTEXT_HEADER entry = NULL;
@@ -406,9 +404,6 @@ InsertApcContext(
 )
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	KeAcquireGuardedMutex(&driver_config.lock);
-
-	PAPC_CONTEXT_HEADER header = Context;
 
 	/*
 	* prevents the race condition where the driver is unloaded whilst a new apc operation
@@ -419,6 +414,10 @@ InsertApcContext(
 		status = STATUS_ABANDONED;
 		goto end;
 	}
+
+	KeAcquireGuardedMutex(&driver_config.lock);
+
+	PAPC_CONTEXT_HEADER header = Context;
 
 	for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
 	{
@@ -473,8 +472,6 @@ GetApcContextByIndex(
 	_In_ INT Index
 )
 {
-	KIRQL irql = KeGetCurrentIrql();
-
 	if (!Context)
 		return;
 
@@ -943,7 +940,10 @@ DriverUnload(
 
 	DEBUG_LOG("Unloading driver...");
 
-	/* dont unload while we have active APC operations */
+	/* 
+	* This blocks the thread dispatching the unload action, which I don't think is ideal.
+	* This is the issue with using 
+	*/
 	while (DrvUnloadFreeAllApcContextStructures() == FALSE)
 		YieldProcessor();
 
@@ -1160,6 +1160,8 @@ DriverEntry(
 {
 	BOOLEAN flag = FALSE;
 	NTSTATUS status;
+
+	DEBUG_LOG("Beginning driver entry lolz");
 
 	status = DrvLoadInitialiseDriverConfig(RegistryPath);
 

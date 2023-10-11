@@ -36,6 +36,7 @@ typedef struct _REPORT_HEADER
 
 #define LIST_POOL_TAG 'list'
 
+_IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 VOID
@@ -44,6 +45,7 @@ QueuePush(
 	_In_ PVOID Data
 );
 
+_IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 PVOID
