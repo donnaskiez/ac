@@ -100,7 +100,8 @@ _Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_In_ PKGUARDED_MUTEX Lock
+	_In_ PKGUARDED_MUTEX Lock,
+	_In_opt_ PVOID CallbackRoutine
 );
 
 _Acquires_lock_(_Lock_kind_mutex_)

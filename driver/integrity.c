@@ -350,8 +350,8 @@ MapDiskImageIntoVirtualAddressSpace(
 
         NTSTATUS status;
         HANDLE file_handle;
-        OBJECT_ATTRIBUTES object_attributes;
-        PIO_STATUS_BLOCK pio_block;
+        OBJECT_ATTRIBUTES object_attributes = { 0 };
+        PIO_STATUS_BLOCK pio_block = NULL;
         UNICODE_STRING path;
 
         *Section = NULL;
@@ -977,8 +977,8 @@ ParseSMBIOSTable(
         ULONG firmware_table_buffer_size = NULL;
         ULONG bytes_returned;
         PRAW_SMBIOS_DATA smbios_data;
-        PSMBIOS_TABLE_HEADER smbios_table_header;
-        PRAW_SMBIOS_TABLE_01 smbios_baseboard_information;
+        PSMBIOS_TABLE_HEADER smbios_table_header = NULL;
+        PRAW_SMBIOS_TABLE_01 smbios_baseboard_information = NULL;
 
         status = ExGetSystemFirmwareTable(
                 SMBIOS_TABLE,

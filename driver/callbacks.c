@@ -49,6 +49,28 @@ EnumHandleCallback(
 #pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
 
+/*
+* Its important on unload we dereference any objects to ensure the kernels reference
+* count remains correct.
+*/
+VOID
+CleanupProcessListFreeCallback(
+	_In_ PPROCESS_LIST_ENTRY ProcessListEntry
+)
+{
+	ObDereferenceObject(ProcessListEntry->parent);
+	ObDereferenceObject(ProcessListEntry->process);
+}
+
+VOID
+CleanupThreadListFreeCallback(
+	_In_ PTHREAD_LIST_ENTRY ThreadListEntry
+)
+{
+	ObDereferenceObject(ThreadListEntry->thread);
+	ObDereferenceObject(ThreadListEntry->owning_process);
+}
+
 VOID 
 CleanupProcessListOnDriverUnload()
 {
@@ -57,7 +79,7 @@ CleanupProcessListOnDriverUnload()
 
 	for (;;)
 	{
-		if (!ListFreeFirstEntry(&process_list->start, &process_list->lock))
+		if (!ListFreeFirstEntry(&process_list->start, &process_list->lock, CleanupProcessListFreeCallback))
 		{
 			ExFreePoolWithTag(process_list, POOL_TAG_THREAD_LIST);
 			return;
@@ -73,7 +95,7 @@ CleanupThreadListOnDriverUnload()
 
 	for (;;)
 	{
-		if (!ListFreeFirstEntry(&thread_list->start, &thread_list->lock))
+		if (!ListFreeFirstEntry(&thread_list->start, &thread_list->lock, CleanupThreadListFreeCallback))
 		{
 			ExFreePoolWithTag(thread_list, POOL_TAG_THREAD_LIST);
 			return;
@@ -81,10 +103,6 @@ CleanupThreadListOnDriverUnload()
 	}
 }
 
-/*
-* Important to remember the callback function will run at irql = DISPATCH_LEVEL since
-* we hold the spinlock during enumeration.
-*/
 _IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
@@ -256,6 +274,9 @@ ProcessCreateNotifyRoutine(
 		if (!entry)
 			return;
 
+		ObReferenceObject(parent);
+		ObReferenceObject(process);
+
 		entry->parent = parent;
 		entry->process = process;
 
@@ -267,6 +288,9 @@ ProcessCreateNotifyRoutine(
 
 		if (!entry)
 			return;
+
+		ObDereferenceObject(entry->parent);
+		ObDereferenceObject(entry->process);
 
 		ListRemoveEntry(&process_list->start, entry, &process_list->lock);
 	}
@@ -300,6 +324,9 @@ ThreadCreateNotifyRoutine(
 		if (!entry)
 			return;
 
+		ObReferenceObject(thread);
+		ObReferenceObject(process);
+
 		entry->thread = thread;
 		entry->owning_process = process;
 		entry->apc = NULL;
@@ -313,6 +340,9 @@ ThreadCreateNotifyRoutine(
 
 		if (!entry)
 			return;
+
+		ObDereferenceObject(entry->thread);
+		ObDereferenceObject(entry->owning_process);
 
 		ListRemoveEntry(&thread_list->start, entry, &thread_list->lock);
 	}
@@ -658,7 +688,7 @@ EnumerateProcessHandles(
 	_In_opt_ PVOID Context
 )
 {
-	/* Handles are paged out so we need to be at an IRQL that allows paging */
+	/* Handles are stored in paged memory */
 	PAGED_CODE();
 
 	UNREFERENCED_PARAMETER(Context);

@@ -304,6 +304,26 @@ end:
 	return STATUS_SUCCESS;
 }
 
+/*
+* Simple thread safe linked list implementation. All structures should begin
+* with a SINGLE_LIST_ENTRY structure provided by the windows API. for example:
+* 
+*	typedef struct _LIST_ENTRY_STRUCTURE
+*	{
+*		SINGLE_LIST_ENTRY list;
+*		PVOID address;
+*		UINT32 data;
+*		...
+*	};
+* 
+* This common structure layout allows us to pass in a callback routine when freeing
+* allowing immense flexibility to ensure we can free and/or deference any objects
+* that are referenced in said object.
+* 
+* I've opted to use a mutex rather then a spinlock since there are many times we 
+* enumerate the list for extended periods aswell as queue up many insertions at
+* once. 
+*/
 VOID
 ListInit(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -333,12 +353,19 @@ ListInsert(
 	KeReleaseGuardedMutex(Lock);
 }
 
+/*
+* Assuming the SINGLE_LIST_ENTRY is the first item in the structure, we
+* can pass a callback routine to be called before the free occurs. This
+* allows us to dereference/free structure specific items whilst still allowing
+* the list to remain flexible.
+*/
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(
 	_Inout_ PSINGLE_LIST_ENTRY Head,
-	_In_ PKGUARDED_MUTEX Lock
+	_In_ PKGUARDED_MUTEX Lock,
+	_In_opt_ PVOID CallbackRoutine
 )
 {
 	BOOLEAN result = FALSE;
@@ -347,6 +374,10 @@ ListFreeFirstEntry(
 	if (Head->Next)
 	{
 		PSINGLE_LIST_ENTRY entry = Head->Next;
+
+		VOID(*callback_function_ptr)(PVOID) = CallbackRoutine;
+		(*callback_function_ptr)(entry);
+
 		Head->Next = Head->Next->Next;
 		ExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
 		result = TRUE;
@@ -356,6 +387,10 @@ ListFreeFirstEntry(
 	return result;
 }
 
+/*
+* If we are removing a specific entry, its assumed we have freed and/or dereferenced
+* any fields in the structure.
+*/
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 VOID
