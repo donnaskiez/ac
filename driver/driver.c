@@ -410,10 +410,7 @@ InsertApcContext(
 	* is attempted to start, ensuring that even if it holds
 	*/
 	if (InterlockedExchange(&driver_config.unload_in_progress, driver_config.unload_in_progress))
-	{
-		status = STATUS_ABANDONED;
-		goto end;
-	}
+		return STATUS_ABANDONED;
 
 	KeAcquireGuardedMutex(&driver_config.lock);
 
