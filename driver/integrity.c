@@ -123,7 +123,7 @@ RegistryPathQueryTestSigningCallback(
 #pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
 #pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
 #pragma alloc_text(PAGE, RegistryPathQueryTestSigningCallback)
-#pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
+//#pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
 #endif
 
 /*
@@ -181,7 +181,6 @@ GetModuleInformationByName(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 return status;
         }
 
@@ -205,6 +204,8 @@ GetModuleInformationByName(
 
         return status;
 }
+
+#define PE_TYPE_32_BIT 0x10b
 
 STATIC
 NTSTATUS
@@ -260,6 +261,16 @@ StoreModuleExecutableRegionsInBuffer(
         */
         nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase + dos_header->e_lfanew);
 
+        /*
+        * For now, lets disregard 32 bit images... this will obviously need to be updated to parse both
+        * 64 bit and 32 bit binaries in the future. todo!
+        */
+
+        DEBUG_LOG("optional magic: lx", nt_header->OptionalHeader.Magic);
+
+        if (nt_header->OptionalHeader.Magic == PE_TYPE_32_BIT)
+                return STATUS_INVALID_IMAGE_WIN_32;
+
         num_sections = nt_header->FileHeader.NumberOfSections;
 
         /*
@@ -292,7 +303,6 @@ StoreModuleExecutableRegionsInBuffer(
                                 DEBUG_ERROR("MmCopyMemory failed with status %x", status);
                                 ExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
                                 *Buffer = NULL;
-                                //TerminateProtectedProcessOnViolation();
                                 return status;
                         }
 
@@ -311,7 +321,6 @@ StoreModuleExecutableRegionsInBuffer(
                                 DEBUG_ERROR("MmCopyMemory failed with status %x", status);
                                 ExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
                                 *Buffer = NULL;
-                                //TerminateProtectedProcessOnViolation();
                                 return status;
                         }
 
@@ -496,7 +505,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptOpenAlogrithmProvider failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -517,7 +525,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -545,7 +552,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -573,7 +579,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptCreateHash failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -591,7 +596,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptHashData failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -609,7 +613,6 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptFinishHash failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 return status;
         }
 
@@ -675,7 +678,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 return status;
         }
 
@@ -689,7 +691,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -704,7 +705,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
         {
                 DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -718,7 +718,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("StoreModuleExecutableRegionsInBuffe failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -731,7 +730,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!disk_base || !memory_base || !disk_buffer || !in_memory_buffer)
         {
                 DEBUG_ERROR("buffers are null lmao");
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -739,7 +737,6 @@ VerifyInMemoryImageVsDiskImage(
         {
                 /* report or bug check etc. */
                 DEBUG_LOG("Executable section size differs, LOL");
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -753,7 +750,6 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -767,14 +763,12 @@ VerifyInMemoryImageVsDiskImage(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
         if (memory_text_hash_size != disk_text_hash_size)
         {
                 DEBUG_ERROR("Error with the hash algorithm, hash sizes are different.");
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -788,7 +782,6 @@ VerifyInMemoryImageVsDiskImage(
         {
                 /* report etc. bug check etc. */
                 DEBUG_ERROR("Text sections are different from each other!!");
-                //TerminateProtectedProcessOnViolation();
                 goto end;
         }
 
@@ -796,7 +789,7 @@ VerifyInMemoryImageVsDiskImage(
 
 end:
 
-        if (section_handle != NULL)
+        if (section_handle)
                 ZwClose(section_handle);
 
         if (section)
@@ -1649,78 +1642,296 @@ typedef struct _SYSTEM_START_OPTIONS
 
 }SYSTEM_START_OPTIONS, *PSYSTEM_START_OPTIONS;
 
+/*
+* todo: This can be done using NtQuerySystemInformation
+*/
 
-STATIC
+//STATIC
+//NTSTATUS
+//RegistryPathQueryTestSigningCallback(
+//        IN PWSTR ValueName,
+//        IN ULONG ValueType,
+//        IN PVOID ValueData,
+//        IN ULONG ValueLength,
+//        IN PVOID Context,
+//        IN PVOID EntryContext
+//)
+//{
+//        PAGED_CODE();
+//
+//        PSYSTEM_START_OPTIONS context = (PSYSTEM_START_OPTIONS)Context;
+//        UNICODE_STRING flag = RTL_CONSTANT_STRING(L"TESTSIGNING");
+//        UNICODE_STRING key = RTL_CONSTANT_STRING(L"SystemStartOptions");
+//        UNICODE_STRING data;
+//        UNICODE_STRING value;
+//
+//        RtlInitUnicodeString(&value, ValueName);
+//
+//        if (RtlCompareUnicodeString(&value, &key, FALSE) == FALSE)
+//        {
+//                RtlInitUnicodeString(&data, ValueData);
+//                DEBUG_LOG("SystemStartOptions: %wZ", data);
+//                if (wcsstr(ValueData, flag.Buffer))
+//                {
+//                        context->test_signing = TRUE;
+//                        return STATUS_SUCCESS;
+//                }
+//        }
+//
+//        return STATUS_SUCCESS;
+//}
+//
+//
+//NTSTATUS
+//DetermineIfTestSigningIsEnabled(
+//        _Inout_ PBOOLEAN Result
+//)
+//{
+//        PAGED_CODE();
+//
+//        NTSTATUS status;
+//        SYSTEM_START_OPTIONS start_options = { 0 };
+//        RTL_QUERY_REGISTRY_TABLE query_table[2] = { 0 };
+//        UNICODE_STRING path = RTL_CONSTANT_STRING(L"Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control");
+//
+//        query_table[0].Flags = RTL_QUERY_REGISTRY_NOEXPAND;
+//        query_table[0].Name = L"SystemStartOptions";
+//        query_table[0].DefaultType = REG_SZ;
+//        query_table[0].DefaultLength = 0;
+//        query_table[0].DefaultData = NULL;
+//        query_table[0].EntryContext = NULL;
+//        query_table[0].QueryRoutine = RegistryPathQueryTestSigningCallback;
+//
+//        status = RtlxQueryRegistryValues(
+//                RTL_REGISTRY_ABSOLUTE,
+//                path.Buffer,
+//                &query_table,
+//                &start_options,
+//                NULL
+//        );
+//
+//        if (!NT_SUCCESS(status))
+//        {
+//                DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
+//                return status;
+//        }
+//
+//        *Result = start_options.test_signing;
+//
+//        return STATUS_SUCCESS;
+//}
+
 NTSTATUS
-RegistryPathQueryTestSigningCallback(
-        IN PWSTR ValueName,
-        IN ULONG ValueType,
-        IN PVOID ValueData,
-        IN ULONG ValueLength,
-        IN PVOID Context,
-        IN PVOID EntryContext
-)
+ValidateSystemModules()
 {
-        PAGED_CODE();
+        NTSTATUS status = STATUS_SUCCESS;
+        BOOLEAN bstatus = FALSE;
+        ANSI_STRING ansi_string = { 0 };
+        UNICODE_STRING path = { 0 };
+        ULONG section_size = 0;
+        HANDLE section_handle = NULL;
+        PVOID section = NULL;
+        PVOID disk_buffer = NULL;
+        ULONG disk_buffer_size = 0;
+        PVOID disk_hash = NULL;
+        ULONG disk_hash_size = 0;
+        UINT64 disk_text_base = 0;
+        UINT64 memory_text_base = 0;
+        ULONG memory_text_size = 0;
+        PVOID memory_hash = NULL;
+        ULONG memory_hash_size = 0;
+        PVOID memory_buffer = NULL;
+        ULONG memory_buffer_size = 0;
+        SYSTEM_MODULES modules = { 0 };
+        PRTL_MODULE_EXTENDED_INFO module_info = NULL;
+        PIMAGE_SECTION_HEADER disk_text_header = NULL;
+        PIMAGE_SECTION_HEADER memory_text_header = NULL;
 
-        PSYSTEM_START_OPTIONS context = (PSYSTEM_START_OPTIONS)Context;
-        UNICODE_STRING flag = RTL_CONSTANT_STRING(L"TESTSIGNING");
-        UNICODE_STRING key = RTL_CONSTANT_STRING(L"SystemStartOptions");
-        UNICODE_STRING data;
-        UNICODE_STRING value;
+        DEBUG_LOG("Validating system modules");
 
-        RtlInitUnicodeString(&value, ValueName);
-
-        if (RtlCompareUnicodeString(&value, &key, FALSE) == FALSE)
-        {
-                RtlInitUnicodeString(&data, ValueData);
-                DEBUG_LOG("SystemStartOptions: %wZ", data);
-                if (wcsstr(ValueData, flag.Buffer))
-                {
-                        context->test_signing = TRUE;
-                        return STATUS_SUCCESS;
-                }
-        }
-
-        return STATUS_SUCCESS;
-}
-
-
-NTSTATUS
-DetermineIfTestSigningIsEnabled(
-        _Inout_ PBOOLEAN Result
-)
-{
-        PAGED_CODE();
-
-        NTSTATUS status;
-        SYSTEM_START_OPTIONS start_options = { 0 };
-        RTL_QUERY_REGISTRY_TABLE query_table[2] = { 0 };
-        UNICODE_STRING path = RTL_CONSTANT_STRING(L"Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control");
-
-        query_table[0].Flags = RTL_QUERY_REGISTRY_NOEXPAND;
-        query_table[0].Name = L"SystemStartOptions";
-        query_table[0].DefaultType = REG_SZ;
-        query_table[0].DefaultLength = 0;
-        query_table[0].DefaultData = NULL;
-        query_table[0].EntryContext = NULL;
-        query_table[0].QueryRoutine = RegistryPathQueryTestSigningCallback;
-
-        status = RtlxQueryRegistryValues(
-                RTL_REGISTRY_ABSOLUTE,
-                path.Buffer,
-                &query_table,
-                &start_options,
-                NULL
-        );
+        status = GetSystemModuleInformation(&modules);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %s", status);
                 return status;
         }
 
-        *Result = start_options.test_signing;
+        /*
+        * Since ntoskrnl itself is a process, we skip it here - we will validate it elsewhere.
+        */
+        for (INT index = 1; index < modules.module_count; index++)
+        {
+                module_info = (PRTL_MODULE_EXTENDED_INFO)(
+                        (UINT64)modules.address + index * sizeof(RTL_MODULE_EXTENDED_INFO));
 
-        return STATUS_SUCCESS;
+                RtlInitAnsiString(&ansi_string, module_info->FullPathName);
+
+                if (!ansi_string.Buffer)
+                {
+                        DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
+
+                        ansi_string.Buffer = NULL;
+                        ansi_string.Length = 0;
+                        ansi_string.MaximumLength = 0;
+
+                        continue;
+                }
+
+                status = RtlAnsiStringToUnicodeString(
+                        &path,
+                        &ansi_string,
+                        TRUE
+                );
+                
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x", status);
+
+                        path.Buffer = NULL;
+
+                        goto free_iteration;
+                }
+
+                DEBUG_LOG("Unicode path: %wZ", path);
+
+                status = MapDiskImageIntoVirtualAddressSpace(
+                        &section_handle,
+                        &section,
+                        &path,
+                        &section_size
+                );
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x", status);
+                        goto free_iteration;
+                }
+
+                status = StoreModuleExecutableRegionsInBuffer(
+                        &disk_buffer,
+                        section,
+                        section_size,
+                        &disk_buffer_size
+                );
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
+                        goto free_iteration;
+                }
+
+                status = StoreModuleExecutableRegionsInBuffer(
+                        &memory_buffer,
+                        module_info->ImageBase,
+                        module_info->ImageSize,
+                        &memory_buffer_size
+                );
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+                        goto free_iteration;
+                }
+
+                disk_text_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
+                memory_text_base = (UINT64)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
+
+                disk_text_header = (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+                memory_text_header = (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+
+                if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer)
+                {
+                        DEBUG_ERROR("buffers are null lmao");
+                        goto free_iteration;
+                }
+
+                if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
+                {
+                        DEBUG_LOG("Executable section size differs, LOL");
+                        goto free_iteration;
+                }
+
+                status = ComputeHashOfBuffer(
+                        disk_text_base,
+                        disk_text_header->SizeOfRawData,
+                        &disk_hash,
+                        &disk_hash_size
+                );
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("ComputeHashOfBuffer failed with status %s", status);
+                        goto free_iteration;
+                }
+
+                status = ComputeHashOfBuffer(
+                        memory_text_base,
+                        memory_text_header->SizeOfRawData,
+                        &memory_hash,
+                        &memory_hash_size
+                );
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+                        goto free_iteration;
+                }
+
+                bstatus = RtlEqualMemory(memory_hash, disk_hash, memory_hash_size);
+
+                if (bstatus)
+                {
+                        DEBUG_LOG("Modules regions are valid!");
+                }
+                else
+                {
+                        DEBUG_ERROR("Module regions are NOT valid LOL!");
+                }
+
+        free_iteration:
+
+                /*
+                * Its times like this where you see why allocating all local variables at the beginning of the
+                * function may not be so ideal...
+                */
+                if (path.Buffer)
+                {
+                        RtlFreeUnicodeString(&path);
+                        path.Buffer = NULL;
+                        path.Length = 0;
+                        path.MaximumLength = 0;
+                }
+
+                ansi_string.Buffer = NULL;
+                ansi_string.Length = 0;
+                ansi_string.MaximumLength = 0;
+
+                if (section_handle)
+                        ZwClose(section_handle);
+
+                if (section)
+                        ZwUnmapViewOfSection(ZwCurrentProcess(), section);
+
+                if (memory_buffer)
+                        ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
+
+                if (memory_hash)
+                        ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
+
+                if (disk_buffer)
+                        ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
+
+                if (disk_hash)
+                        ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
+
+                section_handle = NULL;
+                section = NULL;
+                memory_buffer = NULL;
+                memory_hash = NULL;
+                disk_buffer = NULL;
+                disk_hash = NULL;
+        }
+
+        return status;
 }

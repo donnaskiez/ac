@@ -47,9 +47,12 @@ ScanForSignature(
 	_In_ SIZE_T SignatureLength
 );
 
+//NTSTATUS
+//DetermineIfTestSigningIsEnabled(
+//	_Inout_ PBOOLEAN Result
+//);
+
 NTSTATUS
-DetermineIfTestSigningIsEnabled(
-	_Inout_ PBOOLEAN Result
-);
+ValidateSystemModules();
 
 #endif
