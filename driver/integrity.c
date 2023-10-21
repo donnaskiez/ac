@@ -1719,8 +1719,6 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                DEBUG_LOG("Unicode path: %wZ", path);
-
                 status = MapDiskImageIntoVirtualAddressSpace(
                         &section_handle,
                         &section,
@@ -1894,6 +1892,9 @@ ValidateSystemModules()
                 disk_hash = NULL;
         }
 
+        if (modules.address)
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
         return status;
 }
 
@@ -1901,8 +1902,12 @@ NTSTATUS
 ValidateNtoskrnl()
 {
         NTSTATUS status = STATUS_SUCCESS;
+        SYSTEM_MODULES modules = { 0 };
 
+        status = GetSystemModuleInformation(&modules);
 
+        if (modules.address)
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 
         return status;
 }
