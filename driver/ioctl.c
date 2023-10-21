@@ -89,7 +89,7 @@ DeviceControl(
 	BOOLEAN security_flag = FALSE;
 
 	DEBUG_LOG("IOCTL Code: %lx", stack_location->Parameters.DeviceIoControl.IoControlCode);
-
+	goto end;
 	/*
 	* LMAO 
 	*/

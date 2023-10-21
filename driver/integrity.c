@@ -259,16 +259,6 @@ StoreModuleExecutableRegionsInBuffer(
         * of the image.
         */
         nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase + dos_header->e_lfanew);
-        /*
-        * For now, lets disregard 32 bit images... this will obviously need to be updated to parse both
-        * 64 bit and 32 bit binaries in the future. todo!
-        */
-        DEBUG_LOG("magic address: %llx", (UINT64)&nt_header->OptionalHeader.Magic);
-
-        if (nt_header->OptionalHeader.Magic == PE_TYPE_32_BIT)
-                return STATUS_INVALID_IMAGE_WIN_32;
-
-        DEBUG_LOG("after");
 
         num_sections = nt_header->FileHeader.NumberOfSections;
 
@@ -1634,91 +1624,6 @@ DetectEptHooksInKeyFunctions()
         return status;
 }
 
-typedef struct _SYSTEM_START_OPTIONS
-{
-        BOOLEAN test_signing;
-
-}SYSTEM_START_OPTIONS, *PSYSTEM_START_OPTIONS;
-
-/*
-* todo: This can be done using NtQuerySystemInformation
-*/
-
-//STATIC
-//NTSTATUS
-//RegistryPathQueryTestSigningCallback(
-//        IN PWSTR ValueName,
-//        IN ULONG ValueType,
-//        IN PVOID ValueData,
-//        IN ULONG ValueLength,
-//        IN PVOID Context,
-//        IN PVOID EntryContext
-//)
-//{
-//        PAGED_CODE();
-//
-//        PSYSTEM_START_OPTIONS context = (PSYSTEM_START_OPTIONS)Context;
-//        UNICODE_STRING flag = RTL_CONSTANT_STRING(L"TESTSIGNING");
-//        UNICODE_STRING key = RTL_CONSTANT_STRING(L"SystemStartOptions");
-//        UNICODE_STRING data;
-//        UNICODE_STRING value;
-//
-//        RtlInitUnicodeString(&value, ValueName);
-//
-//        if (RtlCompareUnicodeString(&value, &key, FALSE) == FALSE)
-//        {
-//                RtlInitUnicodeString(&data, ValueData);
-//                DEBUG_LOG("SystemStartOptions: %wZ", data);
-//                if (wcsstr(ValueData, flag.Buffer))
-//                {
-//                        context->test_signing = TRUE;
-//                        return STATUS_SUCCESS;
-//                }
-//        }
-//
-//        return STATUS_SUCCESS;
-//}
-//
-//
-//NTSTATUS
-//DetermineIfTestSigningIsEnabled(
-//        _Inout_ PBOOLEAN Result
-//)
-//{
-//        PAGED_CODE();
-//
-//        NTSTATUS status;
-//        SYSTEM_START_OPTIONS start_options = { 0 };
-//        RTL_QUERY_REGISTRY_TABLE query_table[2] = { 0 };
-//        UNICODE_STRING path = RTL_CONSTANT_STRING(L"Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control");
-//
-//        query_table[0].Flags = RTL_QUERY_REGISTRY_NOEXPAND;
-//        query_table[0].Name = L"SystemStartOptions";
-//        query_table[0].DefaultType = REG_SZ;
-//        query_table[0].DefaultLength = 0;
-//        query_table[0].DefaultData = NULL;
-//        query_table[0].EntryContext = NULL;
-//        query_table[0].QueryRoutine = RegistryPathQueryTestSigningCallback;
-//
-//        status = RtlxQueryRegistryValues(
-//                RTL_REGISTRY_ABSOLUTE,
-//                path.Buffer,
-//                &query_table,
-//                &start_options,
-//                NULL
-//        );
-//
-//        if (!NT_SUCCESS(status))
-//        {
-//                DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
-//                return status;
-//        }
-//
-//        *Result = start_options.test_signing;
-//
-//        return STATUS_SUCCESS;
-//}
-
 STATIC
 VOID
 FindWinLogonProcess(
@@ -1741,6 +1646,9 @@ FindWinLogonProcess(
         }
 }
 
+/*
+* todo: for some reason this works flawlessy on my vm, but fails on my real pc...
+*/
 NTSTATUS
 ValidateSystemModules()
 {
@@ -1787,19 +1695,14 @@ ValidateSystemModules()
                 module_info = (PRTL_MODULE_EXTENDED_INFO)(
                         (UINT64)modules.address + index * sizeof(RTL_MODULE_EXTENDED_INFO));
 
-                if (strstr(module_info->FullPathName, "win32k.sys") == NULL)
-                        continue;
-
                 RtlInitAnsiString(&ansi_string, module_info->FullPathName);
 
                 if (!ansi_string.Buffer)
                 {
                         DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
-
                         ansi_string.Buffer = NULL;
                         ansi_string.Length = 0;
                         ansi_string.MaximumLength = 0;
-
                         continue;
                 }
 
@@ -1812,9 +1715,7 @@ ValidateSystemModules()
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x", status);
-
                         path.Buffer = NULL;
-
                         goto free_iteration;
                 }
 
@@ -1848,7 +1749,9 @@ ValidateSystemModules()
 
                 /*
                 * For win32k and related modules, because they are 32bit for us to read the memory we need
-                * to attach to a 32 bit process.
+                * to attach to a 32 bit process. A simple check is that the 32 bit image base wont be a valid
+                * address, while this is hacky it works. Then we simply attach to a 32 bit address space, in
+                * our case winlogon, which will allow us to perform the copy.
                 */
                 if (!MmIsAddressValid(module_info->ImageBase))
                 {
@@ -1873,13 +1776,6 @@ ValidateSystemModules()
                                 &memory_buffer_size
                         );
 
-                        if (!NT_SUCCESS(status))
-                        {
-                                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
-                                KeUnstackDetachProcess(&apc_state);
-                                goto free_iteration;
-                        }
-
                         KeUnstackDetachProcess(&apc_state);
                 }
                 else
@@ -1890,12 +1786,12 @@ ValidateSystemModules()
                                 module_info->ImageSize,
                                 &memory_buffer_size
                         );
+                }
 
-                        if (!NT_SUCCESS(status))
-                        {
-                                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
-                                goto free_iteration;
-                        }
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+                        goto free_iteration;
                 }
 
                 disk_text_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
@@ -1915,6 +1811,8 @@ ValidateSystemModules()
                         DEBUG_LOG("Executable section size differs, LOL");
                         goto free_iteration;
                 }
+
+                DEBUG_LOG("Disk text size: %lx, memory text size: %lx", disk_text_header->SizeOfRawData, memory_text_header->SizeOfRawData);
 
                 status = ComputeHashOfBuffer(
                         disk_text_base,
@@ -1942,16 +1840,15 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                bstatus = RtlEqualMemory(memory_hash, disk_hash, memory_hash_size);
+                SIZE_T test = RtlCompareMemory(memory_text_base, disk_text_base, memory_text_header->SizeOfRawData);
+                //SIZE_T test2 = RtlCompareMemory(disk_hash, memory_hash, memory_hash_size);
 
-                if (bstatus)
-                {
+                DEBUG_LOG("num bytes before difference: %llx", test);
+
+                if (test = memory_text_header->SizeOfRawData)
                         DEBUG_LOG("Modules regions are valid!");
-                }
                 else
-                {
                         DEBUG_ERROR("Module regions are NOT valid LOL!");
-                }
 
         free_iteration:
 
@@ -1996,6 +1893,16 @@ ValidateSystemModules()
                 disk_buffer = NULL;
                 disk_hash = NULL;
         }
+
+        return status;
+}
+
+NTSTATUS
+ValidateNtoskrnl()
+{
+        NTSTATUS status = STATUS_SUCCESS;
+
+
 
         return status;
 }
