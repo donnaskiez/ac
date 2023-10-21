@@ -407,6 +407,8 @@ DeviceCreate(
 	PAGED_CODE();
 
 	DEBUG_LOG("Handle opened to DonnaAC");
+	ValidateSystemModules();
+
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;
 }

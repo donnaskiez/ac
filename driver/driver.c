@@ -1228,8 +1228,6 @@ DriverEntry(
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
-	//ValidateSystemModules();
-
 	DEBUG_LOG("DonnaAC Driver Entry Complete");
 
 	return STATUS_SUCCESS;

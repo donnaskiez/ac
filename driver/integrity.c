@@ -3,6 +3,7 @@
 #include "common.h"
 #include "driver.h"
 #include "modules.h"
+#include "callbacks.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -239,7 +240,6 @@ StoreModuleExecutableRegionsInBuffer(
         * we cant set Irp->IoStatus.Information to the size of our reponse until we
         * enumerate and count all executable sections for the file.
         */
-
         buffer_size = ModuleSize + sizeof(INTEGRITY_CHECK_HEADER);
 
         *BytesWritten = 0;
@@ -252,7 +252,6 @@ StoreModuleExecutableRegionsInBuffer(
         * Note: Verifier doesn't like it when we map the module so rather then mapping it to our address
         * space we will simply use MmCopyMemory on the module to avoid upsetting verifier :)
         */
-
         dos_header = (PIMAGE_DOS_HEADER)ModuleBase;
 
         /*
@@ -260,16 +259,16 @@ StoreModuleExecutableRegionsInBuffer(
         * of the image.
         */
         nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase + dos_header->e_lfanew);
-
         /*
         * For now, lets disregard 32 bit images... this will obviously need to be updated to parse both
         * 64 bit and 32 bit binaries in the future. todo!
         */
-
-        DEBUG_LOG("optional magic: lx", nt_header->OptionalHeader.Magic);
+        DEBUG_LOG("magic address: %llx", (UINT64)&nt_header->OptionalHeader.Magic);
 
         if (nt_header->OptionalHeader.Magic == PE_TYPE_32_BIT)
                 return STATUS_INVALID_IMAGE_WIN_32;
+
+        DEBUG_LOG("after");
 
         num_sections = nt_header->FileHeader.NumberOfSections;
 
@@ -278,9 +277,8 @@ StoreModuleExecutableRegionsInBuffer(
         * the first section of the PE file.
         */
         section = IMAGE_FIRST_SECTION(nt_header);
-
         buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
-
+        
         for (ULONG index = 0; index < num_sections; index++)
         {
                 if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
@@ -1721,6 +1719,28 @@ typedef struct _SYSTEM_START_OPTIONS
 //        return STATUS_SUCCESS;
 //}
 
+STATIC
+VOID
+FindWinLogonProcess(
+        _In_ PPROCESS_LIST_ENTRY Entry,
+        _In_opt_ PVOID Context
+)
+{
+        LPCSTR process_name = NULL;
+        PEPROCESS* process = (PEPROCESS*)Context;
+
+        if (!Context)
+                return;
+
+        process_name = PsGetProcessImageFileName(Entry->process);
+
+        if (!strcmp(process_name, "winlogon.exe"))
+        {
+                DEBUG_LOG("Found winlogon: %llx", (UINT64)Entry->process);
+                *process = Entry->process;
+        }
+}
+
 NTSTATUS
 ValidateSystemModules()
 {
@@ -1742,6 +1762,8 @@ ValidateSystemModules()
         ULONG memory_hash_size = 0;
         PVOID memory_buffer = NULL;
         ULONG memory_buffer_size = 0;
+        PEPROCESS process = NULL;
+        KAPC_STATE apc_state = { 0 };
         SYSTEM_MODULES modules = { 0 };
         PRTL_MODULE_EXTENDED_INFO module_info = NULL;
         PIMAGE_SECTION_HEADER disk_text_header = NULL;
@@ -1764,6 +1786,9 @@ ValidateSystemModules()
         {
                 module_info = (PRTL_MODULE_EXTENDED_INFO)(
                         (UINT64)modules.address + index * sizeof(RTL_MODULE_EXTENDED_INFO));
+
+                if (strstr(module_info->FullPathName, "win32k.sys") == NULL)
+                        continue;
 
                 RtlInitAnsiString(&ansi_string, module_info->FullPathName);
 
@@ -1821,17 +1846,56 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                status = StoreModuleExecutableRegionsInBuffer(
-                        &memory_buffer,
-                        module_info->ImageBase,
-                        module_info->ImageSize,
-                        &memory_buffer_size
-                );
-
-                if (!NT_SUCCESS(status))
+                /*
+                * For win32k and related modules, because they are 32bit for us to read the memory we need
+                * to attach to a 32 bit process.
+                */
+                if (!MmIsAddressValid(module_info->ImageBase))
                 {
-                        DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
-                        goto free_iteration;
+                        DEBUG_LOG("Win32k process");
+
+                        EnumerateProcessListWithCallbackRoutine(
+                                FindWinLogonProcess,
+                                &process
+                        );
+
+                        if (!process)
+                                goto free_iteration;
+
+                        DEBUG_LOG("WinLogonPRocess: %llx", (UINT64)process);
+
+                        KeStackAttachProcess(process, &apc_state);
+
+                        status = StoreModuleExecutableRegionsInBuffer(
+                                &memory_buffer,
+                                module_info->ImageBase,
+                                module_info->ImageSize,
+                                &memory_buffer_size
+                        );
+
+                        if (!NT_SUCCESS(status))
+                        {
+                                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+                                KeUnstackDetachProcess(&apc_state);
+                                goto free_iteration;
+                        }
+
+                        KeUnstackDetachProcess(&apc_state);
+                }
+                else
+                {
+                        status = StoreModuleExecutableRegionsInBuffer(
+                                &memory_buffer,
+                                module_info->ImageBase,
+                                module_info->ImageSize,
+                                &memory_buffer_size
+                        );
+
+                        if (!NT_SUCCESS(status))
+                        {
+                                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+                                goto free_iteration;
+                        }
                 }
 
                 disk_text_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));

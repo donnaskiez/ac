@@ -555,6 +555,43 @@ typedef struct _IMAGE_OPTIONAL_HEADER64 {
     IMAGE_DATA_DIRECTORY DataDirectory[ IMAGE_NUMBEROF_DIRECTORY_ENTRIES ];
 } IMAGE_OPTIONAL_HEADER64, * PIMAGE_OPTIONAL_HEADER64;
 
+typedef unsigned long DWORD;
+typedef unsigned short WORD;
+
+typedef struct _IMAGE_OPTIONAL_HEADER32 {
+        WORD Magic;
+        BYTE MajorLinkerVersion;
+        BYTE MinorLinkerVersion;
+        DWORD SizeOfCode;
+        DWORD SizeOfInitializedData;
+        DWORD SizeOfUninitializedData;
+        DWORD AddressOfEntryPoint;
+        DWORD BaseOfCode;
+        DWORD BaseOfData;
+        DWORD ImageBase;
+        DWORD SectionAlignment;
+        DWORD FileAlignment;
+        WORD MajorOperatingSystemVersion;
+        WORD MinorOperatingSystemVersion;
+        WORD MajorImageVersion;
+        WORD MinorImageVersion;
+        WORD MajorSubsystemVersion;
+        WORD MinorSubsystemVersion;
+        DWORD Win32VersionValue;
+        DWORD SizeOfImage;
+        DWORD SizeOfHeaders;
+        DWORD CheckSum;
+        WORD Subsystem;
+        WORD DllCharacteristics;
+        DWORD SizeOfStackReserve;
+        DWORD SizeOfStackCommit;
+        DWORD SizeOfHeapReserve;
+        DWORD SizeOfHeapCommit;
+        DWORD LoaderFlags;
+        DWORD NumberOfRvaAndSizes;
+        IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+}IMAGE_OPTIONAL_HEADER32, *PIMAGE_OPTIONAL_HEADER32;
+
 typedef struct _IMAGE_DOS_HEADER {      // DOS .EXE header
     unsigned short   e_magic;                     // Magic number
     unsigned short   e_cblp;                      // Bytes on last page of file
@@ -580,7 +617,7 @@ typedef struct _IMAGE_DOS_HEADER {      // DOS .EXE header
 typedef struct _LOCAL_NT_HEADER {
     unsigned long Signature;
     IMAGE_FILE_HEADER FileHeader;
-    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+    IMAGE_OPTIONAL_HEADER32 OptionalHeader;
 } LOCAL_NT_HEADER, * PLOCAL_NT_HEADER;
 
 #define IMAGE_FIRST_SECTION( ntheader ) ((PIMAGE_SECTION_HEADER)        \
