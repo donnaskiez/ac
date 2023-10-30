@@ -11,9 +11,9 @@ void kernelmode::KManager::RunNmiCallbacks()
 	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RunNmiCallbacks(); } );
 }
 
-void kernelmode::KManager::VerifySystemModules()
+void kernelmode::KManager::VerifySystemModuleDriverObjects()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifySystemModules(); } );
+	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifySystemModuleDriverObjects(); } );
 }
 
 void kernelmode::KManager::MonitorCallbackReports()
@@ -74,4 +74,14 @@ VOID kernelmode::KManager::CheckForHiddenThreads()
 VOID kernelmode::KManager::CheckForEptHooks()
 {
 	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForEptHooks(); });
+}
+
+VOID kernelmode::KManager::LaunchIpiInterrupt()
+{
+	this->thread_pool->QueueJob([this]() { this->driver_interface->LaunchIpiInterrupt(); });
+}
+
+VOID kernelmode::KManager::ValidateSystemModules()
+{
+	this->thread_pool->QueueJob([this]() { this->driver_interface->ValidateSystemModules(); });
 }

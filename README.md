@@ -4,18 +4,37 @@
 
 - Attached thread detection
 - Process module .text section integrity checks
-- NMI and APC stackwalks (to allow excellent system coverage)
+- NMI and APC stackwalking
+- IPI stackwalking which is a relatively unknown method compared to NMIs and APCs
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module verification
-- Unlinked process detection via PTE walking and checking against a robust process structure signature
+- System module .text integrity checks (see known issues)
+- Unlinked process detection
 - Hidden thread detection via KPRCB
+- Hidden thread detection via PspCid table
 - Dispatch routine validation
-- Extraction of hardware identifiers via SMBIOS parsing and PhysicalDriveN querying
+- Extraction of hardware identifiers
 - EPT hook detection (currently detects hyperdbg and DdiMon)
 - Driver integrity checks both locally and over server
 - Test signing detection
-- Hypervisor detection via instruction emulation testing and timing checks
+- Hypervisor detection
+
+# planned features
+
+- Heartbeat between components
+- ntoskrnl integrity checks (currently in progress)
+- some way of identifying spoofed stacks
+- some way of dynamically resolving offsets. Will probably use a pdb parser but i am working on a debuglib atm using the windows debug api. We will see.
+- some form of cr3 protection
+- some more detection methods other then stackwalking xD
+- various forms of encryption and other things 
+
+# known issues
+
+- the system module validation works on my vm but not on my main pc, not sure if others will experience the same issues. am however working on a fix
+
+feel free to open any issues if you find more.
 
 # some things to note:
 
@@ -28,6 +47,7 @@
 # how 2 use
 
 1. use the osr loader to load the driver at "system" load.
+	- NOTE: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
 2. inject dll into program you want to protect, i used notepad for testing
 3. logs will be printed to dbgview and the usermode dll via stdout
 

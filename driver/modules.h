@@ -117,4 +117,9 @@ FlipKThreadMiscFlagsFlag(
 	_In_ BOOLEAN NewValue
 );
 
+NTSTATUS
+LaunchInterProcessInterrupt(
+	_In_ PIRP Irp
+);
+
 #endif

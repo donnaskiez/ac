@@ -1311,6 +1311,19 @@ KeInitializeApc(
     _In_opt_ PVOID NormalContext
 );
 
+NTSTATUS 
+NTAPI 
+MmCopyVirtualMemory
+(
+        PEPROCESS SourceProcess,
+        PVOID SourceAddress,
+        PEPROCESS TargetProcess,
+        PVOID TargetAddress,
+        SIZE_T BufferSize,
+        KPROCESSOR_MODE PreviousMode,
+        PSIZE_T ReturnSize
+);
+
 NTKERNELAPI
 BOOLEAN
 NTAPI

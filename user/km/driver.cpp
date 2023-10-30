@@ -74,7 +74,7 @@ VOID kernelmode::Driver::RunNmiCallbacks()
 * 2. Checks the IOCTL dispatch routines to ensure they lie within the module
 */
 
-VOID kernelmode::Driver::VerifySystemModules()
+VOID kernelmode::Driver::VerifySystemModuleDriverObjects()
 {
 	BOOLEAN status;
 	DWORD bytes_returned;
@@ -544,6 +544,44 @@ VOID kernelmode::Driver::CheckForEptHooks()
 
 	if (status == NULL)
 		LOG_ERROR("failed to check for ept hooks %x", GetLastError());
+}
+
+VOID kernelmode::Driver::LaunchIpiInterrupt()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_LAUNCH_IPI_INTERRUPT,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if (status == NULL)
+		LOG_ERROR("failed to launch ipi interrupt %x", GetLastError());
+}
+
+VOID kernelmode::Driver::ValidateSystemModules()
+{
+	BOOLEAN status;
+
+	status = DeviceIoControl(
+		this->driver_handle,
+		IOCTL_VALIDATE_SYSTEM_MODULES,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	if (status == NULL)
+		LOG_ERROR("failed to validate system modules %x", GetLastError());
 }
 
 VOID kernelmode::Driver::CheckDriverHeartbeat()

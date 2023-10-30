@@ -55,4 +55,7 @@ ScanForSignature(
 NTSTATUS
 ValidateSystemModules();
 
+NTSTATUS
+ValidateNtoskrnl();
+
 #endif

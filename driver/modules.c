@@ -951,7 +951,7 @@ NmiCallback(
 )
 {
 	UNREFERENCED_PARAMETER(Handled);
-
+	__debugbreak();
 	PVOID current_thread = KeGetCurrentThread();
 	NMI_CALLBACK_DATA thread_data = { 0 };
 	PNMI_CONTEXT nmi_context = (PNMI_CONTEXT)Context;
@@ -1488,3 +1488,79 @@ FreeApcStackwalkApcContextInformation(
 		ExFreePoolWithTag(Context->modules, POOL_TAG_APC);
 }
 
+/*
+* Since NMI evasion methods are becoming commonplace, we can use interprocess
+* interrupts. For now i am just using the same nmi methods. To accomplish this
+* we can use KeIpiGenericCall, which runs a specified routine on all processors 
+* simultaneously. The callback routine runs at IRQL IPI_LEVEL which is > DIRQL.
+*/
+NTSTATUS
+LaunchInterProcessInterrupt(
+	_In_ PIRP Irp
+)
+{
+	PAGED_CODE();
+
+	NTSTATUS status;
+	SYSTEM_MODULES system_modules = { 0 };
+	NMI_CONTEXT ipi_context = { 0 };
+	PVOID callback_handle;
+
+	ipi_context.core_count = KeQueryActiveProcessorCountEx(0);
+	ipi_context.nmi_core_context =
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * sizeof(NMI_CORE_CONTEXT), NMI_CONTEXT_POOL);
+
+	if (!ipi_context.nmi_core_context)
+		return STATUS_MEMORY_NOT_ALLOCATED;
+
+	ipi_context.stack_frames =
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * STACK_FRAME_POOL_SIZE, STACK_FRAMES_POOL);
+
+	if (!ipi_context.stack_frames)
+		goto end;
+
+	ipi_context.thread_data_pool =
+		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * sizeof(NMI_CALLBACK_DATA), THREAD_DATA_POOL);
+
+	if (!ipi_context.thread_data_pool)
+		goto end;
+
+	/*
+	* We query the system modules each time since they can potentially
+	* change at any time
+	*/
+	status = GetSystemModuleInformation(&system_modules);
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("Error retriving system module information");
+		return status;
+	}
+
+	KeIpiGenericCall(NmiCallback, &ipi_context);
+
+	/* 
+	* since the routines are run simultaneously, once we've reached here we can be sure
+	* all routines have run.
+	*/
+	status = AnalyseNmiData(&ipi_context, &system_modules, Irp);
+
+end:
+
+	if (!NT_SUCCESS(status))
+		DEBUG_ERROR("Error analysing ipi interrupt data");
+
+	if (system_modules.address)
+		ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+
+	if (ipi_context.nmi_core_context)
+		ExFreePoolWithTag(ipi_context.nmi_core_context, NMI_CONTEXT_POOL);
+
+	if (ipi_context.stack_frames)
+		ExFreePoolWithTag(ipi_context.stack_frames, STACK_FRAMES_POOL);
+
+	if (ipi_context.thread_data_pool)
+		ExFreePoolWithTag(ipi_context.thread_data_pool, THREAD_DATA_POOL);
+
+	return status;
+}

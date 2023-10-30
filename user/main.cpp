@@ -39,50 +39,35 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
         //std::cout << "RequestID: " << response.RequestId << " CanUserProceed: " << 
         //    response.CanUserProceed << " Reason: " << response.reason << std::endl;
 
+        /*
+        * Note that this is really just for testing the methods for extended periods of time. 
+        * The "real business logic" would execute the methods with varying degrees of uncertaintity 
+        * but still allow for bias, i.e we don't want NMI callbacks to be running every 10 seconds
+        * since they are "dangerous" for the CPU given the IRQL they run at.
+        */
+
         srand(time(NULL));
 
         while (!GetAsyncKeyState(VK_DELETE))
         {
-                int seed = (rand() % 10);
+                int seed = (rand() % 11);
 
                 std::cout << "Seed: " << seed << std::endl;
 
                 switch (seed)
                 {
-                case 0:
-                        // safe
-                        kmanager.EnumerateHandleTables();
-                        break;
-                case 1:
-                        kmanager.PerformIntegrityCheck();
-                        break;
-                case 2:
-                        kmanager.ScanPoolsForUnlinkedProcesses();
-                        break;
-                case 3:
-                        //safe
-                        kmanager.VerifySystemModules();
-                        break;
-                case 4:
-                        kmanager.ValidateProcessModules();
-                        break;
-                case 5:
-                        kmanager.RunNmiCallbacks();
-                        break;
-                case 6:
-                        kmanager.CheckForAttachedThreads();
-                        break;
-                case 7:
-                        //safe
-                        kmanager.InitiateApcStackwalkOperation();
-                        break;
-                case 8:
-                        //safe
-                        kmanager.CheckForHiddenThreads();
-                        break;
-                case 9:
-                        kmanager.CheckForEptHooks();
-                        break;
+                case 0: { kmanager.EnumerateHandleTables(); break; }
+                case 1: { kmanager.PerformIntegrityCheck(); break; }
+                case 2: { kmanager.ScanPoolsForUnlinkedProcesses(); break; }
+                case 3: { kmanager.VerifySystemModuleDriverObjects(); break; }
+                case 4: { kmanager.ValidateProcessModules(); break; }
+                case 5: { kmanager.RunNmiCallbacks(); break; }
+                case 6: { kmanager.CheckForAttachedThreads(); break; }
+                case 7: { kmanager.InitiateApcStackwalkOperation(); break; }
+                case 8: { kmanager.CheckForHiddenThreads(); break; }
+                case 9: { kmanager.CheckForEptHooks(); break; }
+                case 10: { kmanager.LaunchIpiInterrupt(); break; }
+                case 11: { kmanager.ValidateSystemModules(); break; }
                 }
 
                 kmanager.MonitorCallbackReports();

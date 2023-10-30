@@ -23,6 +23,8 @@
 #define IOCTL_REQUEST_HARDWARE_INFORMATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20016, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INITIATE_APC_OPERATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20017, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_CHECK_FOR_EPT_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20018, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_LAUNCH_IPI_INTERRUPT CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_SYSTEM_MODULES CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define MAX_REPORTS_PER_IRP 20
 
@@ -64,7 +66,7 @@ namespace kernelmode
 		~Driver();
 
 		VOID RunNmiCallbacks();
-		VOID VerifySystemModules();
+		VOID VerifySystemModuleDriverObjects();
 		VOID RunCallbackReportQueue();
 		VOID DetectSystemVirtualization();
 		VOID QueryReportQueue();
@@ -78,6 +80,8 @@ namespace kernelmode
 		VOID SendClientHardwareInformation();
 		VOID CheckForHiddenThreads();
 		VOID CheckForEptHooks();
+		VOID LaunchIpiInterrupt();
+		VOID ValidateSystemModules();
 		BOOLEAN InitiateApcOperation( INT OperationId );
 	};
 

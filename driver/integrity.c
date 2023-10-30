@@ -601,7 +601,7 @@ ComputeHashOfBuffer(
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("BCryptFinishHash failed with status %x", status);
-                return status;
+                goto end;
         }
 
         *HashResult = resulting_hash;
@@ -1902,9 +1902,65 @@ NTSTATUS
 ValidateNtoskrnl()
 {
         NTSTATUS status = STATUS_SUCCESS;
+        SIZE_T bytes_written = 0;
+        KAPC_STATE apc_state = { 0 };
+        PVOID memory_buffer = NULL;
+        ULONG memory_buffer_size = 0;
+        PRTL_MODULE_EXTENDED_INFO module_info = NULL;
         SYSTEM_MODULES modules = { 0 };
 
         status = GetSystemModuleInformation(&modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+                return status;
+        }
+
+        module_info = (PRTL_MODULE_EXTENDED_INFO)modules.address;
+
+        DEBUG_LOG("Module base: %llx", module_info->ImageBase);
+
+        PVOID buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, module_info->ImageSize, POOL_TAG_INTEGRITY);
+
+        if (!buffer)
+                goto end;
+
+        status = MmCopyVirtualMemory(
+                PsInitialSystemProcess,
+                module_info->ImageBase,
+                PsGetCurrentProcess(),
+                buffer,
+                module_info->ImageSize,
+                KernelMode,
+                &bytes_written
+        );
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("MmCopyVirtualMemory failed with status %x", status);
+                goto end;
+        }
+
+        status = StoreModuleExecutableRegionsInBuffer(
+                &memory_buffer,
+                buffer,
+                module_info->ImageSize,
+                &memory_buffer_size
+        );
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
+                goto end;
+        }
+
+        DEBUG_LOG("buf size: %lx", memory_buffer_size);
+
+end:
+
+        if (buffer)
+                ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
 
         if (modules.address)
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);

@@ -18,7 +18,7 @@ namespace kernelmode
 		KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Client> ReportInterface);
 
 		VOID RunNmiCallbacks();
-		VOID VerifySystemModules();
+		VOID VerifySystemModuleDriverObjects();
 		VOID MonitorCallbackReports();
 		VOID DetectSystemVirtualization();
 		VOID EnumerateHandleTables();
@@ -31,6 +31,8 @@ namespace kernelmode
 		VOID InitiateApcStackwalkOperation();
 		VOID CheckForHiddenThreads();
 		VOID CheckForEptHooks();
+		VOID LaunchIpiInterrupt();
+		VOID ValidateSystemModules();
 	};
 }
 

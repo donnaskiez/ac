@@ -38,6 +38,8 @@ DispatchApcOperation(
 #define IOCTL_REQUEST_HARDWARE_INFORMATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20016, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INITIATE_APC_OPERATION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20017, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_CHECK_FOR_EPT_HOOK CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20018, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_LAUNCH_IPI_INTERRUPT CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_SYSTEM_MODULES CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -355,6 +357,28 @@ DeviceControl(
 
 		if (!NT_SUCCESS(status))
 			DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x", status);
+
+		break;
+
+	case IOCTL_LAUNCH_IPI_INTERRUPT:
+
+		status = LaunchInterProcessInterrupt(Irp);
+
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("LaunchInterProcessInterrupt failed with status %x", status);
+
+		break;
+
+	case IOCTL_VALIDATE_SYSTEM_MODULES:
+
+		/*
+		* Currently the validation is buggy, once the validation is better will
+		* probably bugcheck the system.
+		*/
+		status = ValidateSystemModules();
+
+		if (!NT_SUCCESS(status))
+			DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
 
 		break;
 
