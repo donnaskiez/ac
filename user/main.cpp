@@ -11,6 +11,30 @@
 #include "../user/um/umanager.h"
 #include "../user/km/kmanager.h"
 
+//BOOLEAN IsTestSigningModeEnabled()
+//{
+//        ULONG return_length = 0;
+//
+//        SYSTEM_CODEINTEGRITY_INFORMATION info = { 0 };
+//        info.Length = sizeof(SYSTEM_CODEINTEGRITY_INFORMATION);
+//        info.CodeIntegrityOptions = 0;
+//
+//        NTSTATUS status = NtQuerySystemInformation(
+//                SystemCodeIntegrityInformation,
+//                &info,
+//                sizeof(info),
+//                &return_length
+//        );
+//
+//        if (!NT_SUCCESS(status))
+//        {
+//                LOG_ERROR("NtQuerySystemInformation failed with status: %lx", status);
+//                return FALSE;
+//        }
+//
+//        return info.CodeIntegrityOptions & CODEINTEGRITY_OPTION_TESTSIGN;
+//}
+
 DWORD WINAPI Init(HINSTANCE hinstDLL)
 {
         AllocConsole();
@@ -50,7 +74,7 @@ DWORD WINAPI Init(HINSTANCE hinstDLL)
 
         while (!GetAsyncKeyState(VK_DELETE))
         {
-                int seed = (rand() % 11);
+                int seed = (rand() % 12);
 
                 std::cout << "Seed: " << seed << std::endl;
 

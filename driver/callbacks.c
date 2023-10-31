@@ -416,10 +416,16 @@ ObPreOpCallbackRoutine(
 
 	if (!strcmp(protected_process_name, target_process_name))
 	{
-		if (!strcmp(process_creator_name, "lsass.exe") || !strcmp(process_creator_name, "csrss.exe"))
+		/* 
+		* WerFault is some windows 11 application that cries when it cant get a handle,
+		* so well allow it for now... todo; learn more about it
+		*/
+		if (!strcmp(process_creator_name, "lsass.exe") || 
+			!strcmp(process_creator_name, "csrss.exe") ||
+			!strcmp(process_creator_name, "WerFault.exe"))
 		{
 			/* We will downgrade these handles later */
-			DEBUG_LOG("Handles created by CSRSS and LSASS are allowed for now...");
+			DEBUG_LOG("Handles created by CSRSS, LSASS and WerFault are allowed for now...");
 		}
 		else if (target_process == process_creator)
 		{

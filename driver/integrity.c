@@ -1810,8 +1810,6 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                DEBUG_LOG("Disk text size: %lx, memory text size: %lx", disk_text_header->SizeOfRawData, memory_text_header->SizeOfRawData);
-
                 status = ComputeHashOfBuffer(
                         disk_text_base,
                         disk_text_header->SizeOfRawData,
@@ -1840,8 +1838,6 @@ ValidateSystemModules()
 
                 SIZE_T test = RtlCompareMemory(memory_text_base, disk_text_base, memory_text_header->SizeOfRawData);
                 //SIZE_T test2 = RtlCompareMemory(disk_hash, memory_hash, memory_hash_size);
-
-                DEBUG_LOG("num bytes before difference: %llx", test);
 
                 if (test = memory_text_header->SizeOfRawData)
                         DEBUG_LOG("Modules regions are valid!");

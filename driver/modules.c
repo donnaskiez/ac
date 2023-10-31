@@ -951,7 +951,7 @@ NmiCallback(
 )
 {
 	UNREFERENCED_PARAMETER(Handled);
-	__debugbreak();
+
 	PVOID current_thread = KeGetCurrentThread();
 	NMI_CALLBACK_DATA thread_data = { 0 };
 	PNMI_CONTEXT nmi_context = (PNMI_CONTEXT)Context;
@@ -1534,7 +1534,7 @@ LaunchInterProcessInterrupt(
 	if (!NT_SUCCESS(status))
 	{
 		DEBUG_ERROR("Error retriving system module information");
-		return status;
+		goto end;
 	}
 
 	KeIpiGenericCall(NmiCallback, &ipi_context);
@@ -1545,10 +1545,9 @@ LaunchInterProcessInterrupt(
 	*/
 	status = AnalyseNmiData(&ipi_context, &system_modules, Irp);
 
-end:
-
 	if (!NT_SUCCESS(status))
 		DEBUG_ERROR("Error analysing ipi interrupt data");
+end:
 
 	if (system_modules.address)
 		ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);

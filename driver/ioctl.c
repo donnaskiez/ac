@@ -90,19 +90,17 @@ DeviceControl(
 	PKTHREAD thread = NULL;
 	BOOLEAN security_flag = FALSE;
 
-	DEBUG_LOG("IOCTL Code: %lx", stack_location->Parameters.DeviceIoControl.IoControlCode);
-	goto end;
 	/*
 	* LMAO 
 	*/
-	//ReadProcessInitialisedConfigFlag(&security_flag);
+	ReadProcessInitialisedConfigFlag(&security_flag);
 
-	//if (security_flag == FALSE &&
-	//	stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
-	//{
-	//	status = STATUS_ACCESS_DENIED;
-	//	goto end;
-	//}
+	if (security_flag == FALSE &&
+		stack_location->Parameters.DeviceIoControl.IoControlCode != IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
+	{
+		status = STATUS_ACCESS_DENIED;
+		goto end;
+	}
 
 	switch (stack_location->Parameters.DeviceIoControl.IoControlCode)
 	{
@@ -431,7 +429,6 @@ DeviceCreate(
 	PAGED_CODE();
 
 	DEBUG_LOG("Handle opened to DonnaAC");
-	ValidateSystemModules();
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;
