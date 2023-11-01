@@ -32,28 +32,34 @@
 
 # known issues
 
-- the system module validation works on my vm but not on my main pc, not sure if others will experience the same issues. am however working on a fix
+- the system module validation (NOT the driver integrity check) success rate varies. On some versions it works flawlessy, other times 60% or so of modules will fail, stating that the module regions are not equivalent.
+- process modules integrity checks sometimes crash the user mode app on windows 11.
 
-feel free to open any issues if you find more.
+Ive thoroughly tested the driver with verifier in addition to extended testing on my main pc (non vm) so at the least there shouldn't be any bluescreens (hopefully...). If you do find any, feel free to open an issue with the minidump :)
 
-# some things to note:
+# windows versions tested:
 
-- open source anticheat (oxymoron)
-- currently only tested on 10 19045 and since offsets are currently hardcoded u may experience technical difficulties. This will be fixed in the future when i either finish the debuglib or just use a pdb parser or maybe another method ;)
-- as a passion project i am really only implementing methods which i find enjoyable to either research or build which is why you see a lack of hooks and other such. Maybe in the future c:
-- There is still a plethora of work to do with regards to anti tamper, such as packet encryption, string encryption, binary virtualization etc.
-- There is also still much work to be done with regards to the prevention toolset, I would like to implement some form of cr3 protection in the near future.
+- Win10 22H2
+- Win11 22H2
 
 # how 2 use
 
-1. use the osr loader to load the driver at "system" load.
+1. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
+	- `Inf2Cat -> General -> Use Local Time` to `Yes`
+	- `C/C++ -> Treat Warnings As Errors` to `No`
+	- `C/C++ -> Spectre Mitigation` to `Disabled`
+2. Move the `driver.sys` file into `Windows/System32/Drivers` directory
+3. Use the osr loader to load the driver at "system" load.
+	- Osr loader can be found here: https://www.osronline.com/article.cfm%5Earticle=157.htm
 	- driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))
-	- NOTE: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
-2. inject dll into program you want to protect, i used notepad for testing. 
-	- NOTE: it is important that this process is started as administrator, which in turn means the injector you use must also be started as administrator. This is a design flaw. Will be fixed in the future.
+	- IMPORTANT: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
+4. inject dll into program you want to protect, i used notepad for testing. 
+	- IMPORTANT: it is important that this process is started as administrator, which in turn means the injector you use must also be started as administrator. This is a design flaw. Will be fixed in the future.
 	- Obviously in a "real" program, the dll would be embedded into the application - for now this is what we work with.
-3. Logs can be seen both in the terminal and either dbgview or WinDbg depending on what you use. 
+5. Logs can be seen both in the terminal and either dbgview or WinDbg depending on what you use. 
 	- If for some reason you can't see logs in DbgView, you may need to properly set your debugging mask. Tutorial here: https://www.osronline.com/article.cfm%5Earticle=295.htm
-4. The server and service arent needed, youll just see a bunch of "failed to write to pipe" if you dont launch the service, this is fine and the core anti cheat + user mode is still working.
+6. The server and service arent needed, youll just see a bunch of "failed to write to pipe" if you dont launch the service, this is fine and the core anti cheat + user mode is still working.
 
-If you have any suggestions / need help feel free to dm me on discord or uc @donnaskiez
+# contact
+
+feel free to dm me on discord or uc @donnaskiez

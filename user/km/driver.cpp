@@ -271,7 +271,7 @@ VOID kernelmode::Driver::NotifyDriverOnProcessLaunch()
 	);
 
 	if ( status == NULL )
-		LOG_ERROR( "DeviceIoControl failed with status code 0x%x", GetLastError() );
+		LOG_ERROR( "Failed to notify driver on process launch 0x%x", GetLastError() );
 }
 
 VOID kernelmode::Driver::DetectSystemVirtualization()
