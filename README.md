@@ -32,8 +32,8 @@
 
 # known issues
 
-- the system module validation (NOT the driver integrity check) success rate varies. On some versions it works flawlessy, other times 60% or so of modules will fail, stating that the module regions are not equivalent.
-- process modules integrity checks sometimes crash the user mode app on windows 11.
+- The system module integrity checks on win11 fail due to MmCopyMemory error for around 80% of the modules. While it doesn't cause a blue screen, this is a pretty pathetic success rate. Am looking into it.
+- KPRCB thread check rn is kinda broken
 
 Ive thoroughly tested the driver with verifier in addition to extended testing on my main pc (non vm) so at the least there shouldn't be any bluescreens (hopefully...). If you do find any, feel free to open an issue with the minidump :)
 
@@ -41,6 +41,10 @@ Ive thoroughly tested the driver with verifier in addition to extended testing o
 
 - Win10 22H2
 - Win11 22H2
+
+# logs example
+
+video of example logs + running on my machine no vm: [video](https://youtu.be/htY83WsMEcc)
 
 # how 2 use
 

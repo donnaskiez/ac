@@ -1507,6 +1507,8 @@ LaunchInterProcessInterrupt(
 	NMI_CONTEXT ipi_context = { 0 };
 	PVOID callback_handle;
 
+	DEBUG_LOG("Launching interprocess interrupt");
+
 	ipi_context.core_count = KeQueryActiveProcessorCountEx(0);
 	ipi_context.nmi_core_context =
 		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * sizeof(NMI_CORE_CONTEXT), NMI_CONTEXT_POOL);
