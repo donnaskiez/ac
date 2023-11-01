@@ -6,7 +6,12 @@
 #include <Windows.h>
 #include <tlhelp32.h>
 
-DWORD find_process_by_id(int id)
+std::wstring cstr_to_wstr(std::string cstr)
+{
+        return std::wstring(cstr.begin(), cstr.end());
+}
+
+DWORD get_proc_id_by_name(std::string& process_name)
 {
         PROCESSENTRY32 entry = { 0 };
         entry.dwSize = sizeof(PROCESSENTRY32);
@@ -15,36 +20,38 @@ DWORD find_process_by_id(int id)
 
         while (Process32Next(snapshot, &entry))
         {
-                if (entry.th32ProcessID == id)
+                if (entry.szExeFile == cstr_to_wstr(process_name))
                 {
                         return entry.th32ProcessID;
                 }
         }
 
         CloseHandle(snapshot);
+
+        return 0;
 }
 
 int main(int argc, char* argv[])
 {
         if (argc < 2)
         {
-                std::cerr << "Please enter a valid Process ID.";
+                std::cerr << "Please enter a valid Process Name";
                 return EXIT_FAILURE;
         }
 
         const std::vector<std::string_view> args(argv + 1, argv + argc);
 
-        DWORD id = find_process_by_id(std::stoi(args[0].data()));
+        std::string process_name = std::string(args[0].data());
 
-        if (!id)
+        DWORD proc_id = get_proc_id_by_name(process_name);
+
+        if (!proc_id)
         {
-                std::cerr << "Process for the given process ID does not exist" << std::endl;
+                std::cerr << "Process does not exist, please enter a valid running process name." << std::endl;
                 return EXIT_FAILURE;
         }
 
-        std::cout << id << std::endl;
 
 
-        
         return EXIT_SUCCESS;
 }

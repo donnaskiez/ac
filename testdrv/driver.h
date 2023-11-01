@@ -1,7 +1,7 @@
 #ifndef DRIVER_H
 #define DRIVER_H
 
-#include <ntddk.h>
+#include <ntifs.h>
 
 #define STATIC static
 #define VOID void

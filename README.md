@@ -48,7 +48,9 @@ feel free to open any issues if you find more.
 
 1. use the osr loader to load the driver at "system" load.
 	- NOTE: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
-2. inject dll into program you want to protect, i used notepad for testing
-3. logs will be printed to dbgview and the usermode dll via stdout
+2. inject dll into program you want to protect, i used notepad for testing. 
+	- NOTE: it is important that this process is started as administrator, which in turn means the injector you use must also be started as administrator. This is a design flaw. Will be fixed in the future.
+3. Logs can be seen both in the terminal and either dbgview or WinDbg depending on what you use. 
+	- If for some reason you can't see logs in DbgView, you may need to properly set your debugging mask. Tutorial here: https://www.osronline.com/article.cfm%5Earticle=295.htm
 
 driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))

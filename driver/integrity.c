@@ -709,11 +709,17 @@ VerifyInMemoryImageVsDiskImage(
                 goto end;
         }
 
-        disk_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
-        memory_base = (UINT64)((UINT64)in_memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
+        disk_text_header = (PIMAGE_SECTION_HEADER)disk_buffer;
+        memory_text_header = (PIMAGE_SECTION_HEADER)in_memory_buffer;
 
-        disk_text_header = (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-        memory_text_header = (PIMAGE_SECTION_HEADER)((UINT64)in_memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+        WDF_PTR_ADD_OFFSET(disk_text_header, sizeof(INTEGRITY_CHECK_HEADER));
+        WDF_PTR_ADD_OFFSET(memory_text_header, sizeof(INTEGRITY_CHECK_HEADER));
+
+        disk_base = (UINT64)disk_text_header;
+        memory_base = (UINT64)memory_text_header;
+
+        WDF_PTR_ADD_OFFSET(disk_base, sizeof(IMAGE_SECTION_HEADER));
+        WDF_PTR_ADD_OFFSET(memory_base, sizeof(IMAGE_SECTION_HEADER));
 
         if (!disk_base || !memory_base || !disk_buffer || !in_memory_buffer)
         {
@@ -1792,11 +1798,17 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                disk_text_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
-                memory_text_base = (UINT64)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
+                disk_text_header = (PIMAGE_SECTION_HEADER)disk_buffer;
+                memory_text_header = (PIMAGE_SECTION_HEADER)memory_buffer;
 
-                disk_text_header = (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-                memory_text_header = (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+                WDF_PTR_ADD_OFFSET(disk_text_header, sizeof(INTEGRITY_CHECK_HEADER));
+                WDF_PTR_ADD_OFFSET(memory_text_header, sizeof(INTEGRITY_CHECK_HEADER));
+
+                disk_text_base = (UINT64)disk_text_header;
+                memory_text_base = (UINT64)memory_text_header;
+
+                WDF_PTR_ADD_OFFSET(disk_text_base, sizeof(IMAGE_SECTION_HEADER));
+                WDF_PTR_ADD_OFFSET(memory_text_base, sizeof(IMAGE_SECTION_HEADER));
 
                 if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer)
                 {

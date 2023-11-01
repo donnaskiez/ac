@@ -65,7 +65,7 @@ DriverEntry(
 )
 {
 	NTSTATUS status;
-
+	
 	status = IoCreateDevice(
 		DriverObject,
 		NULL,

@@ -938,8 +938,9 @@ DriverUnload(
 	DEBUG_LOG("Unloading driver...");
 
 	/* 
-	* This blocks the thread dispatching the unload action, which I don't think is ideal.
-	* This is the issue with using 
+	* This blocks the thread dispatching the unload routine, which I don't think is ideal.
+	* This is the issue with using APCs, we have very little safe control over when they
+	* complete and thus when we can free them.. For now, thisl do.
 	*/
 	while (DrvUnloadFreeAllApcContextStructures() == FALSE)
 		YieldProcessor();
@@ -1156,7 +1157,7 @@ DriverEntry(
 )
 {
 	BOOLEAN flag = FALSE;
-	NTSTATUS status;
+	NTSTATUS status = STATUS_SUCCESS;
 
 	DEBUG_LOG("Beginning driver entry lolz");
 
