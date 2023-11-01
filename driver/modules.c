@@ -1316,7 +1316,8 @@ ValidateThreadViaKernelApcCallback(
 		!strcmp(process_name, "explorer.exe") ||
 		!strcmp(process_name, "svchost.exe") ||
 		!strcmp(process_name, "lsass.exe") ||
-		!strcmp(process_name, "MemCompression"))
+		!strcmp(process_name, "MemCompression") ||
+		!strcmp(process_name, "WerFault.exe"))
 		return;
 
 	DEBUG_LOG("Process: %s", process_name);

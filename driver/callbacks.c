@@ -425,11 +425,11 @@ ObPreOpCallbackRoutine(
 			!strcmp(process_creator_name, "WerFault.exe"))
 		{
 			/* We will downgrade these handles later */
-			DEBUG_LOG("Handles created by CSRSS, LSASS and WerFault are allowed for now...");
+			//DEBUG_LOG("Handles created by CSRSS, LSASS and WerFault are allowed for now...");
 		}
 		else if (target_process == process_creator)
 		{
-			DEBUG_LOG("handles made by NOTEPAD r okay :)");
+			//DEBUG_LOG("handles made by NOTEPAD r okay :)");
 			/* handles created by the game (notepad) are okay */
 		}
 		else
@@ -447,7 +447,7 @@ ObPreOpCallbackRoutine(
 				!strcmp(process_creator_name, "explorer.exe"))
 				goto end;
 
-			DEBUG_LOG("handle stripped from: %s", process_creator_name);
+			//DEBUG_LOG("handle stripped from: %s", process_creator_name);
 
 			POPEN_HANDLE_FAILURE_REPORT report =
 				ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(OPEN_HANDLE_FAILURE_REPORT), REPORT_POOL_TAG);
