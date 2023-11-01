@@ -47,10 +47,13 @@ feel free to open any issues if you find more.
 # how 2 use
 
 1. use the osr loader to load the driver at "system" load.
+	- driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))
 	- NOTE: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
 2. inject dll into program you want to protect, i used notepad for testing. 
 	- NOTE: it is important that this process is started as administrator, which in turn means the injector you use must also be started as administrator. This is a design flaw. Will be fixed in the future.
+	- Obviously in a "real" program, the dll would be embedded into the application - for now this is what we work with.
 3. Logs can be seen both in the terminal and either dbgview or WinDbg depending on what you use. 
 	- If for some reason you can't see logs in DbgView, you may need to properly set your debugging mask. Tutorial here: https://www.osronline.com/article.cfm%5Earticle=295.htm
+4. The server and service arent needed, youll just see a bunch of "failed to write to pipe" if you dont launch the service, this is fine and the core anti cheat + user mode is still working.
 
-driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))
+If you have any suggestions / need help feel free to dm me on discord or uc @donnaskiez
