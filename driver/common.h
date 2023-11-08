@@ -635,6 +635,36 @@ typedef struct _DBGKD_DEBUG_DATA_HEADER64
     ULONG        Size;
 } DBGKD_DEBUG_DATA_HEADER64, * PDBGKD_DEBUG_DATA_HEADER64;
 
+typedef NTSTATUS(__stdcall* ZwQuerySystemInformation)(
+        _In_ UINT32 SystemInformationClass,
+        _Inout_ PVOID SystemInformation,
+        _In_ ULONG SystemInformationLength,
+        _Out_opt_ PULONG ReturnLength
+        );
+
+#define SYSTEM_BIGPOOL_INFORMATION_ID 0x42
+
+typedef struct _SYSTEM_BIGPOOL_ENTRY
+{
+        union
+        {
+                PVOID VirtualAddress;
+                ULONG_PTR NonPaged : 1;
+        };
+        SIZE_T SizeInBytes;
+        union
+        {
+                UCHAR Tag[4];
+                ULONG TagUlong;
+        };
+} SYSTEM_BIGPOOL_ENTRY, * PSYSTEM_BIGPOOL_ENTRY;
+
+typedef struct _SYSTEM_BIGPOOL_INFORMATION
+{
+        ULONG Count;
+        _Field_size_(Count) SYSTEM_BIGPOOL_ENTRY AllocatedInfo[1];
+} SYSTEM_BIGPOOL_INFORMATION, * PSYSTEM_BIGPOOL_INFORMATION;
+
 typedef struct _KDDEBUGGER_DATA64
 {
     DBGKD_DEBUG_DATA_HEADER64 Header;

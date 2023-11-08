@@ -26,6 +26,7 @@ GetPsActiveProcessHead(
 PKDDEBUGGER_DATA64
 GetGlobalDebuggerData();
 
-
+NTSTATUS
+EnumerateBigPoolAllocations();
 
 #endif

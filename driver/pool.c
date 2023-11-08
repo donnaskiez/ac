@@ -733,3 +733,73 @@ end:
 
 	return STATUS_SUCCESS;
 }
+
+/*
+* Allocations greater then a page in size are stored in a linked list and are called
+* big pool allocations.
+*/
+
+NTSTATUS
+EnumerateBigPoolAllocations()
+{
+	ULONG return_length = 0;
+	NTSTATUS status = STATUS_SUCCESS;
+	PSYSTEM_BIGPOOL_ENTRY entry = NULL;
+	SYSTEM_BIGPOOL_INFORMATION pool_information = { 0 };
+	PSYSTEM_BIGPOOL_INFORMATION pool_entries = NULL;
+	UNICODE_STRING routine = RTL_CONSTANT_STRING(L"ZwQuerySystemInformation");
+	ZwQuerySystemInformation pZwQuerySystemInformation = MmGetSystemRoutineAddress(&routine);
+
+	if (!pZwQuerySystemInformation)
+	{
+		DEBUG_ERROR("MmGetSystemRoutineAddress failed.");
+		return STATUS_ABANDONED;
+	}
+
+	status = pZwQuerySystemInformation(
+		SYSTEM_BIGPOOL_INFORMATION_ID,
+		&pool_information,
+		sizeof(pool_information),
+		&return_length
+	);
+
+	if (status != STATUS_INFO_LENGTH_MISMATCH)
+	{
+		DEBUG_ERROR("ZwQuerySystemInformation failed with status %x", status);
+		return status;
+	}
+
+	return_length += sizeof(SYSTEM_BIGPOOL_INFORMATION);
+
+	pool_entries = ExAllocatePool2(POOL_FLAG_NON_PAGED, return_length, POOL_TAG_INTEGRITY);
+
+	if (!pool_entries)
+		return STATUS_MEMORY_NOT_ALLOCATED;
+
+	status = pZwQuerySystemInformation(
+		SYSTEM_BIGPOOL_INFORMATION_ID,
+		pool_entries,
+		return_length,
+		&return_length
+	);
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("ZwQuerySystemInformation 2 failed with status %x", status);
+		goto end;
+	}
+
+	for (INT index = 0; index < pool_entries->Count; index++)
+	{
+		entry = &pool_entries->AllocatedInfo[index];
+		
+	}
+	//MiGetPteAddress of va
+	//check if page is executaable
+end:
+
+	if (pool_entries)
+		ExFreePoolWithTag(pool_entries, POOL_TAG_INTEGRITY);
+
+	return status;
+}

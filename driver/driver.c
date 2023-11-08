@@ -1232,6 +1232,7 @@ DriverEntry(
 	//ValidateSystemModules();
 	//ValidateNtoskrnl();
 	//LaunchInterProcessInterrupt(NULL);
+	//EnumerateBigPoolAllocations();
 	DEBUG_LOG("DonnaAC Driver Entry Complete");
 
 	return STATUS_SUCCESS;

@@ -873,7 +873,7 @@ GetNextSMBIOSStructureInTable(
         PCHAR current_char_in_strings = string_section_start;
         PCHAR next_char_in_strings = string_section_start + 1;
 
-        for (;; )
+        for (;;)
         {
                 if (*current_char_in_strings == NULL_TERMINATOR && *next_char_in_strings == NULL_TERMINATOR)
                 {
@@ -953,11 +953,11 @@ ParseSMBIOSTable(
 {
         PAGED_CODE();
 
-        NTSTATUS status;
-        PVOID firmware_table_buffer;
-        ULONG firmware_table_buffer_size = NULL;
-        ULONG bytes_returned;
-        PRAW_SMBIOS_DATA smbios_data;
+        NTSTATUS status = STATUS_SUCCESS;
+        PVOID firmware_table_buffer = NULL;
+        ULONG firmware_table_buffer_size = 0;
+        ULONG bytes_returned = 0;
+        PRAW_SMBIOS_DATA smbios_data = NULL;
         PSMBIOS_TABLE_HEADER smbios_table_header = NULL;
         PRAW_SMBIOS_TABLE_01 smbios_baseboard_information = NULL;
 
@@ -1792,7 +1792,7 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                disk_text_base = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
+                disk_text_base = (UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER);
                 memory_text_base = (UINT64)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER));
 
                 disk_text_header = (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
