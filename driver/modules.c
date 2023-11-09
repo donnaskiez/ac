@@ -130,7 +130,7 @@ InitDriverList(
 	_Inout_ PINVALID_DRIVERS_HEAD ListHead);
 
 STATIC 
-VOID 
+NTSTATUS 
 AddDriverToList(
 	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead, 
 	_In_ PDRIVER_OBJECT Driver,
@@ -231,6 +231,7 @@ ValidateThreadViaKernelApcCallback(
 
 /*
 * TODO: this needs to be refactored to just return the entry not the whole fukin thing
+* TODO: return ntstatus and pass result in an out parameter
 */
 PRTL_MODULE_EXTENDED_INFO
 FindSystemModuleByName(
@@ -241,7 +242,7 @@ FindSystemModuleByName(
 	PAGED_CODE();
 
 	if (!ModuleName || !SystemModules)
-		return STATUS_INVALID_PARAMETER;
+		return NULL;
 
 	for (INT index = 0; index < SystemModules->module_count; index++)
 	{
@@ -253,6 +254,8 @@ FindSystemModuleByName(
 			return system_module;
 		}
 	}
+
+	return NULL;
 }
 
 STATIC
@@ -381,7 +384,7 @@ InitDriverList(
 }
 
 STATIC
-VOID
+NTSTATUS
 AddDriverToList(
 	_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
 	_In_ PDRIVER_OBJECT Driver,
@@ -397,12 +400,14 @@ AddDriverToList(
 	);
 
 	if (!new_entry)
-		return;
+		return STATUS_MEMORY_NOT_ALLOCATED;
 
 	new_entry->driver = Driver;
 	new_entry->reason = Reason;
 	new_entry->next = InvalidDriversHead->first_entry;
 	InvalidDriversHead->first_entry = new_entry;
+
+	return STATUS_SUCCESS;
 }
 
 STATIC
@@ -650,8 +655,13 @@ ValidateDriverObjects(
 
 			if (!flag)
 			{
-				InvalidDriverListHead->count += 1;
-				AddDriverToList(InvalidDriverListHead, current_driver, REASON_NO_BACKING_MODULE);
+				status = AddDriverToList(InvalidDriverListHead, current_driver, REASON_NO_BACKING_MODULE);
+
+				if (!NT_SUCCESS(status))
+					DEBUG_ERROR("AddDriverToList failed with status %x", status);
+				else
+					InvalidDriverListHead->count += 1;
+
 			}
 
 			/* validate drivers IOCTL dispatch routines */
@@ -672,8 +682,12 @@ ValidateDriverObjects(
 
 			if (!flag)
 			{
-				InvalidDriverListHead->count += 1;
-				AddDriverToList(InvalidDriverListHead, current_driver, REASON_INVALID_IOCTL_DISPATCH);
+				status = AddDriverToList(InvalidDriverListHead, current_driver, REASON_INVALID_IOCTL_DISPATCH);
+
+				if (!NT_SUCCESS(status))
+					DEBUG_ERROR("AddDriverToList failed with status %x", status);
+				else
+					InvalidDriverListHead->count += 1;
 			}
 
 			sub_entry = sub_entry->ChainLink;
@@ -734,8 +748,8 @@ HandleValidateDriversIOCTL(
 	if (!NT_SUCCESS(ValidateDriverObjects(&system_modules, head)))
 	{
 		DEBUG_ERROR("Failed to validate driver objects");
-		ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-		return STATUS_ABANDONED;
+		status = STATUS_ABANDONED;
+		goto end;
 	}
 
 	MODULE_VALIDATION_FAILURE_HEADER header;
@@ -786,13 +800,13 @@ HandleValidateDriversIOCTL(
 				continue;
 			}
 
-			MODULE_VALIDATION_FAILURE report;
+			MODULE_VALIDATION_FAILURE report = { 0 };
 			report.report_code = REPORT_MODULE_VALIDATION_FAILURE;
 			report.report_type = head->first_entry->reason;
 			report.driver_base_address = head->first_entry->driver->DriverStart;
 			report.driver_size = head->first_entry->driver->DriverSize;
 
-			ANSI_STRING string;
+			ANSI_STRING string = { 0 };
 			string.Length = 0;
 			string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
 			string.Buffer = &report.driver_name;

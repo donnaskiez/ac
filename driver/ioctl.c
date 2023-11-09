@@ -84,6 +84,11 @@ DispatchApcOperation(
 * to DeviceIoControl. The IO manager will then zero our the buffer to the size of the input
 * buffer, so if the output buffer is larger then the input buffer there will be uninitialised 
 * memory in the buffer so we must zero out the buffer to the length of the output buffer.
+* 
+* We then set the IoStatus.Information field to the size of the buffer we are passing back.
+* If we don't do this and we allocate an output buffer of size 0x1000, yet only use 0x100 bytes,
+* the user mode apps output buffer will receive 0x100 bytes + 0x900 bytes of uninitialised memory
+* which is an information leak.
 */
 NTSTATUS
 ValidateIrpOutputBuffer(
@@ -103,6 +108,8 @@ ValidateIrpOutputBuffer(
 		return STATUS_BUFFER_TOO_SMALL;
 
 	RtlSecureZeroMemory(Irp->AssociatedIrp.SystemBuffer, RequiredSize);
+
+	Irp->IoStatus.Information = RequiredSize;
 
 	return STATUS_SUCCESS;
 }

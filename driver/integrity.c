@@ -52,7 +52,7 @@ InitiateEptFunctionAddressArrays();
 STATIC 
 NTSTATUS 
 GetModuleInformationByName(
-        _Inout_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, 
+        _Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, 
         _In_ LPCSTR ModuleName);
 
 STATIC 
@@ -156,6 +156,13 @@ GetDriverImageSize(
                 &modules
         );
 
+        if (!driver_info)
+        {
+                DEBUG_ERROR("FindSystemModuleByName failed");
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+                return STATUS_NOT_FOUND;
+        }
+
         status = ValidateIrpOutputBuffer(Irp, sizeof(ULONG));
 
         if (!NT_SUCCESS(status))
@@ -178,7 +185,7 @@ end:
 STATIC
 NTSTATUS
 GetModuleInformationByName(
-        _Inout_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
+        _Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
         _In_ LPCSTR ModuleName
 )
 {
@@ -200,6 +207,13 @@ GetModuleInformationByName(
                 "driver.sys",
                 &modules
         );
+
+        if (!driver_info)
+        {
+                DEBUG_ERROR("FindSystemModuleByName failed");
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+                return STATUS_NOT_FOUND;
+        }
 
         ModuleInfo->FileNameOffset = driver_info->FileNameOffset;
         ModuleInfo->ImageBase = driver_info->ImageBase;
