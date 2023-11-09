@@ -775,6 +775,14 @@ ProcLoadInitialiseProcessConfig(
 	PEPROCESS eprocess;
 	PDRIVER_INITIATION_INFORMATION information;
 
+	status = ValidateIrpInputBuffer(Irp, sizeof(DRIVER_INITIATION_INFORMATION));
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("Failed to validate input buffer");
+		return status;
+	}
+
 	information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
 	status = PsLookupProcessByProcessId(information->protected_process_id, &eprocess);

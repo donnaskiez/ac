@@ -2,6 +2,7 @@
 
 #include "callbacks.h"
 #include "driver.h"
+#include "ioctl.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -698,6 +699,8 @@ HandleValidateDriversIOCTL(
 	PAGED_CODE();
 
 	NTSTATUS status;
+	PVOID buffer = NULL;
+	ULONG buffer_size = 0;
 	SYSTEM_MODULES system_modules = { 0 };
 
 	/* Fix annoying visual studio linting error */
@@ -745,8 +748,18 @@ HandleValidateDriversIOCTL(
 	{
 		DEBUG_LOG("found INVALID drivers with count: %i", head->count);
 
-		PVOID buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof(MODULE_VALIDATION_FAILURE), MODULES_REPORT_POOL_TAG);
+		buffer_size = sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
+			MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof(MODULE_VALIDATION_FAILURE);
+		
+		status = ValidateIrpOutputBuffer(Irp, buffer_size);
+
+		if (!NT_SUCCESS(status))
+		{
+			DEBUG_ERROR("Failed to validate output buffer.");
+			goto end;
+		}
+
+		buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
 
 		if (!buffer)
 		{
@@ -815,6 +828,7 @@ HandleValidateDriversIOCTL(
 		DEBUG_LOG("No INVALID drivers found :)");
 	}
 
+end:
 	ExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
 	ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
 
@@ -873,6 +887,14 @@ AnalyseNmiData(
 		/* Make sure our NMIs were run  */
 		if (!context->nmi_callbacks_run)
 		{
+			NTSTATUS status = ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
+
+			if (!NT_SUCCESS(status))
+			{
+				DEBUG_ERROR("Failed to validate output buffer.");
+				return status;
+			}
+
 			NMI_CALLBACK_FAILURE report;
 			report.report_code = REPORT_NMI_CALLBACK_FAILURE;
 			report.kthread_address = NULL;
@@ -910,6 +932,14 @@ AnalyseNmiData(
 
 			if (flag == FALSE)
 			{
+				NTSTATUS status = ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
+
+				if (!NT_SUCCESS(status))
+				{
+					DEBUG_ERROR("Failed to validate output buffer.");
+					return status;
+				}
+
 				/*
 				* Note: for now, we only handle 1 report at a time so we stop the
 				* analysis once we receive a report since we only send a buffer

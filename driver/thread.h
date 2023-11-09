@@ -25,9 +25,7 @@ typedef struct _ATTACH_PROCESS_REPORT
 }ATTACH_PROCESS_REPORT, * PATTACH_PROCESS_REPORT;
 
 VOID
-ValidateKPCRBThreads(
-	_Inout_ PIRP Irp
-);
+ValidateKPCRBThreads();
 
 VOID
 DetectThreadsAttachedToProtectedProcess();

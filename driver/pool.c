@@ -661,9 +661,7 @@ CheckIfProcessAllocationIsInProcessList(
 }
 
 NTSTATUS
-FindUnlinkedProcesses(
-	_Inout_ PIRP Irp
-)
+FindUnlinkedProcesses()
 {
 	PAGED_CODE();
 

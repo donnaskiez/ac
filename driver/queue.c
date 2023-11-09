@@ -7,6 +7,7 @@
 #include "queue.h"
 #include "pool.h"
 #include "thread.h"
+#include "ioctl.h"
 #include "common.h"
 
 /*
@@ -176,28 +177,37 @@ HandlePeriodicGlobalReportQueueQuery(
 	_Inout_ PIRP Irp
 )
 {
-	PVOID report = NULL;
 	INT count = 0;
-	GLOBAL_REPORT_QUEUE_HEADER header;
-	PVOID report_buffer = NULL;
-	PREPORT_HEADER report_header;
+	NTSTATUS status = STATUS_SUCCESS;
+	PVOID report = NULL;
 	SIZE_T total_size = NULL;
+	PVOID report_buffer = NULL;
+	ULONG report_buffer_size = 0;
+	PREPORT_HEADER report_header;
+	GLOBAL_REPORT_QUEUE_HEADER header;
 
 	KeAcquireGuardedMutex(&report_queue_config.lock);
 
-	report = QueuePop(&report_queue_config.head);
+	report_buffer_size = sizeof(INVALID_PROCESS_ALLOCATION_REPORT) * MAX_REPORTS_PER_IRP + sizeof(GLOBAL_REPORT_QUEUE_HEADER);
 
-	report_buffer = ExAllocatePool2(
-		POOL_FLAG_NON_PAGED,
-		sizeof(INVALID_PROCESS_ALLOCATION_REPORT) * MAX_REPORTS_PER_IRP + sizeof(GLOBAL_REPORT_QUEUE_HEADER),
-		REPORT_QUEUE_TEMP_BUFFER_TAG
-	);
+	status = ValidateIrpOutputBuffer(Irp, report_buffer_size);
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("Failed to validate Irp output buffer");
+		KeReleaseGuardedMutex(&report_queue_config.lock);
+		return status;
+	}
+
+	report_buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, report_buffer_size, REPORT_QUEUE_TEMP_BUFFER_TAG);
 
 	if (!report_buffer)
 	{
 		KeReleaseGuardedMutex(&report_queue_config.lock);
 		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
+
+	report = QueuePop(&report_queue_config.head);
 
 	if (report == NULL)
 	{

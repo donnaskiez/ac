@@ -74,6 +74,64 @@ DispatchApcOperation(
 	return status;
 }
 
+/*
+* Obviously, its important we check that the output buffer size for each IRP is big enough
+* to hold whatever we are passing back to usermode. 
+* 
+* Another important thing to note is that the windows IO manager will only zero out the size
+* of the input buffer. Given that we use METHOD_BUFFERED for all communication, the input
+* and output buffer are the same, with the size used being that of the greatest buffer passed
+* to DeviceIoControl. The IO manager will then zero our the buffer to the size of the input
+* buffer, so if the output buffer is larger then the input buffer there will be uninitialised 
+* memory in the buffer so we must zero out the buffer to the length of the output buffer.
+*/
+NTSTATUS
+ValidateIrpOutputBuffer(
+	_In_ PIRP Irp,
+	_In_ ULONG RequiredSize
+)
+{
+	if (!Irp || !RequiredSize)
+		return STATUS_INVALID_PARAMETER;
+
+	PIO_STACK_LOCATION io = IoGetCurrentIrpStackLocation(Irp);
+
+	if (!io)
+		return STATUS_ABANDONED;
+
+	if (io->Parameters.DeviceIoControl.OutputBufferLength < RequiredSize)
+		return STATUS_BUFFER_TOO_SMALL;
+
+	RtlSecureZeroMemory(Irp->AssociatedIrp.SystemBuffer, RequiredSize);
+
+	return STATUS_SUCCESS;
+}
+
+/*
+* Here we just check that the input buffers size matches the expected size..
+* It isnt a very secure check but we can work on that later...
+*/
+NTSTATUS
+ValidateIrpInputBuffer(
+	_In_ PIRP Irp,
+	_In_ ULONG RequiredSize
+)
+{
+	if (!Irp || !RequiredSize)
+		return STATUS_INVALID_PARAMETER;
+
+	PIO_STACK_LOCATION io = IoGetCurrentIrpStackLocation(Irp);
+
+	if (!io)
+		return STATUS_ABANDONED;
+
+	if (io->Parameters.DeviceIoControl.InputBufferLength != RequiredSize)
+		return STATUS_INVALID_BUFFER_SIZE;
+
+	return STATUS_SUCCESS;
+}
+
+
 //_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
 DeviceControl(
@@ -280,7 +338,7 @@ DeviceControl(
 
 	case IOCTL_SCAN_FOR_UNLINKED_PROCESS:
 
-		status = FindUnlinkedProcesses(Irp);
+		status = FindUnlinkedProcesses();
 
 		if (!NT_SUCCESS(status))
 			DEBUG_ERROR("FindUNlinekdProcesses failed with status %x", status);
@@ -289,7 +347,7 @@ DeviceControl(
 
 	case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD:
 
-		ValidateKPCRBThreads(Irp);
+		ValidateKPCRBThreads();
 
 		break;
 
@@ -325,6 +383,14 @@ DeviceControl(
 		if (system_information == NULL)
 		{
 			DEBUG_ERROR("GetDriverConfigSystemInformation failed");
+			goto end;
+		}
+
+		status = ValidateIrpOutputBuffer(Irp, sizeof(SYSTEM_INFORMATION));
+
+		if (!NT_SUCCESS(status))
+		{
+			DEBUG_ERROR("Failed to validate IRP output buffer");
 			goto end;
 		}
 

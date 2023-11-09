@@ -4,6 +4,7 @@
 #include "driver.h"
 #include "modules.h"
 #include "callbacks.h"
+#include "ioctl.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -155,8 +156,18 @@ GetDriverImageSize(
                 &modules
         );
 
+        status = ValidateIrpOutputBuffer(Irp, sizeof(ULONG));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Failed to validate IRP output buffer");
+                goto end;
+        }
+
         Irp->IoStatus.Information = sizeof(ULONG);
         RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, &driver_info->ImageSize, sizeof(ULONG));
+
+end:
 
         if (modules.address)
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -834,6 +845,14 @@ RetrieveInMemoryModuleExecutableSections(
                 return status;
         }
 
+        status = ValidateIrpOutputBuffer(Irp, bytes_written);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Failed to validate IRP output buffer");
+                goto end;
+        }
+
         Irp->IoStatus.Information = bytes_written;
 
         RtlCopyMemory(
@@ -841,6 +860,8 @@ RetrieveInMemoryModuleExecutableSections(
                 buffer,
                 bytes_written
         );
+
+end:
 
         if (buffer)
                 ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
@@ -1071,6 +1092,14 @@ ValidateProcessLoadedModule(
         PVOID section = NULL;
         ULONG section_size = NULL;
 
+        status = ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Failed to validate IRP input buffer");
+                return status;
+        }
+
         module_info = (PPROCESS_MODULE_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
         GetProtectedProcessEProcess(&process);
@@ -1153,6 +1182,14 @@ ValidateProcessLoadedModule(
                 goto end;
 
         bstatus = RtlEqualMemory(in_memory_hash, disk_hash, in_memory_hash_size);
+
+        status = ValidateIrpOutputBuffer(Irp, sizeof(PROCESS_MODULE_VALIDATION_RESULT));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Failed to validate IRP output buffer");
+                goto end;
+        }
 
         /*
         * Because each module is passed per IRP we don't need to send any reports

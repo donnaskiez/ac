@@ -33,4 +33,16 @@ DeviceCreate(
 	_Inout_ PIRP Irp
 );
 
+NTSTATUS
+ValidateIrpOutputBuffer(
+	_In_ PIRP Irp,
+	_In_ ULONG RequiredSize
+);
+
+NTSTATUS
+ValidateIrpInputBuffer(
+	_In_ PIRP Irp,
+	_In_ ULONG RequiredSize
+);
+
 #endif

@@ -71,9 +71,7 @@ KPRCBThreadValidationProcessCallback(
 *
 */
 VOID
-ValidateKPCRBThreads(
-	_Inout_ PIRP Irp
-)
+ValidateKPCRBThreads()
 {
 	PAGED_CODE();
 

@@ -14,9 +14,7 @@ typedef struct _INVALID_PROCESS_ALLOCATION_REPORT
 }INVALID_PROCESS_ALLOCATION_REPORT, * PINVALID_PROCESS_ALLOCATION_REPORT;
 
 NTSTATUS
-FindUnlinkedProcesses(
-	_Inout_ PIRP Irp
-);
+FindUnlinkedProcesses();
 
 VOID
 GetPsActiveProcessHead(

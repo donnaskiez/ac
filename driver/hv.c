@@ -3,6 +3,7 @@
 #include <intrin.h>
 
 #include "common.h"
+#include "ioctl.h"
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, PerformVirtualizationDetection)
@@ -89,6 +90,14 @@ PerformVirtualizationDetection(
 )
 {
 	PAGED_CODE();
+
+	NTSTATUS status = ValidateIrpOutputBuffer(Irp, sizeof(HYPERVISOR_DETECTION_REPORT));
+
+	if (!NT_SUCCESS(status))
+	{
+		DEBUG_ERROR("Failed to validate IRP output buffer");
+		return status;
+	}
 
 	HYPERVISOR_DETECTION_REPORT report;
 	report.aperf_msr_timing_check = APERFMsrTimingCheck();
