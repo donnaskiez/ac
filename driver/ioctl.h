@@ -8,7 +8,7 @@
 
 typedef struct _DRIVER_INITIATION_INFORMATION
 {
-	LONG protected_process_id;
+	ULONG protected_process_id;
 
 } DRIVER_INITIATION_INFORMATION, * PDRIVER_INITIATION_INFORMATION;
 

@@ -1080,6 +1080,9 @@ end:
 *    StoreModuleExecutableRegionsInBuffer() just as we did before.
 * 5. With the 2 buffers that contain both images executable regions, we hash them and compare
 *    for anomalies.
+* 
+* note: Its important to realise that since these are user mode modules, they are often hooked
+* by various legitimate programs - such as discord, nvidia etc. So this needs to be rethinked.
 */
 NTSTATUS
 ValidateProcessLoadedModule(
@@ -1088,23 +1091,23 @@ ValidateProcessLoadedModule(
 {
         PAGED_CODE();
 
-        NTSTATUS status;
-        BOOLEAN bstatus;
-        PROCESS_MODULE_VALIDATION_RESULT validation_result;
-        PPROCESS_MODULE_INFORMATION module_info;
-        PKPROCESS process;
-        KAPC_STATE apc_state;
+        NTSTATUS status = STATUS_ABANDONED;
+        BOOLEAN bstatus = FALSE;
+        PROCESS_MODULE_VALIDATION_RESULT validation_result = { 0 };
+        PPROCESS_MODULE_INFORMATION module_info = NULL;
+        PKPROCESS process = NULL;
+        KAPC_STATE apc_state = { 0 };
         PVOID in_memory_buffer = NULL;
         PVOID disk_buffer = NULL;
         PVOID in_memory_hash = NULL;
         PVOID disk_hash = NULL;
-        ULONG in_memory_hash_size = NULL;
-        ULONG disk_hash_size = NULL;
-        SIZE_T bytes_written = NULL;
-        UNICODE_STRING module_path;
+        ULONG in_memory_hash_size = 0;
+        ULONG disk_hash_size = 0;
+        SIZE_T bytes_written = 0;
+        UNICODE_STRING module_path = { 0 };
         HANDLE section_handle = NULL;
         PVOID section = NULL;
-        ULONG section_size = NULL;
+        ULONG section_size = 0;
 
         status = ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
 
@@ -1222,7 +1225,7 @@ ValidateProcessLoadedModule(
         );
 
 end:
-
+        
         if (section_handle != NULL)
                 ZwClose(section_handle);
 
@@ -1269,6 +1272,10 @@ GetHardDiskDriveSerialNumber(
 
         RtlInitUnicodeString(&physical_drive_path, L"\\DosDevices\\PhysicalDrive0");
 
+        /*
+        * No need to use the flag OBJ_FORCE_ACCESS_CHECK since we arent passing a handle given
+        * to us from usermode.
+        */
         InitializeObjectAttributes(
                 &attributes,
                 &physical_drive_path,
@@ -1945,6 +1952,16 @@ ValidateSystemModules()
         return status;
 }
 
+/*
+* After some further research it appears that performing integrity checks the same way as validating
+* other modules is not as straight forward as there are many (thousands) of hooks that take place in
+* a legitmate ntoskrnl.exe image. 
+* 
+* Initial ideas are to maybe only validate the text sections of key functions such as MmCopyMemory, 
+* though this is quite manual and the potential to miss functions could be common.
+* 
+* Need to do some more research & testing in this department.
+*/
 NTSTATUS
 ValidateNtoskrnl()
 {

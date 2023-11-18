@@ -11,7 +11,7 @@ std::wstring cstr_to_wstr(std::string cstr)
         return std::wstring(cstr.begin(), cstr.end());
 }
 
-DWORD get_proc_id_by_name(std::string& process_name)
+DWORD get_proc_id_by_name(const std::string& process_name)
 {
         PROCESSENTRY32 entry = { 0 };
         entry.dwSize = sizeof(PROCESSENTRY32);

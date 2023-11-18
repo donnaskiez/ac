@@ -75,8 +75,8 @@ DispatchApcOperation(
 }
 
 /*
-* Obviously, its important we check that the output buffer size for each IRP is big enough
-* to hold whatever we are passing back to usermode. 
+* Obviously, its important we check that the input and output buffer sizes for each IRP is big
+* enough to hold the incoming and outgoing information.
 * 
 * Another important thing to note is that the windows IO manager will only zero out the size
 * of the input buffer. Given that we use METHOD_BUFFERED for all communication, the input
@@ -151,7 +151,7 @@ DeviceControl(
 
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation(Irp);
-	HANDLE handle;
+	HANDLE handle = NULL;
 	PKTHREAD thread = NULL;
 	BOOLEAN security_flag = FALSE;
 
@@ -502,6 +502,8 @@ DeviceCreate(
 	PAGED_CODE();
 
 	DEBUG_LOG("Handle opened to DonnaAC");
+
+
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Irp->IoStatus.Status;

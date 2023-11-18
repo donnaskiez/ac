@@ -180,11 +180,11 @@ HandlePeriodicGlobalReportQueueQuery(
 	INT count = 0;
 	NTSTATUS status = STATUS_SUCCESS;
 	PVOID report = NULL;
-	SIZE_T total_size = NULL;
+	SIZE_T total_size = 0;
 	PVOID report_buffer = NULL;
 	ULONG report_buffer_size = 0;
-	PREPORT_HEADER report_header;
-	GLOBAL_REPORT_QUEUE_HEADER header;
+	PREPORT_HEADER report_header = NULL;
+	GLOBAL_REPORT_QUEUE_HEADER header = { 0 };
 
 	KeAcquireGuardedMutex(&report_queue_config.lock);
 

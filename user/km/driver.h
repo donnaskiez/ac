@@ -87,7 +87,7 @@ namespace kernelmode
 
 	struct DRIVER_INITIATION_INFORMATION
 	{
-		LONG protected_process_id;
+		ULONG protected_process_id;
 	};
 
 	struct HYPERVISOR_DETECTION_REPORT

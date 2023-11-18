@@ -161,6 +161,14 @@ _IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 VOID
+ImageLoadSetProcessId(
+	_In_ HANDLE ProcessId
+);
+
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID
 GetDriverDeviceName(
 	_Out_ PUNICODE_STRING DeviceName
 );

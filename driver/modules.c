@@ -461,6 +461,9 @@ ValidateDriverObjectHasBackingModule(
 		PRTL_MODULE_EXTENDED_INFO system_module = (PRTL_MODULE_EXTENDED_INFO)(
 			(uintptr_t)ModuleInformation->address + i * sizeof(RTL_MODULE_EXTENDED_INFO));
 
+		if (system_module->ImageSize == 0 || system_module->ImageBase == 0)
+			return STATUS_INVALID_MEMBER;
+
 		if (system_module->ImageBase == DriverObject->DriverStart)
 		{
 			*Result = TRUE;
@@ -477,7 +480,7 @@ ValidateDriverObjectHasBackingModule(
 //https://imphash.medium.com/windows-process-internals-a-few-concepts-to-know-before-jumping-on-memory-forensics-part-3-4a0e195d947b
 NTSTATUS
 GetSystemModuleInformation(
-	_Inout_ PSYSTEM_MODULES ModuleInformation
+	_Out_ PSYSTEM_MODULES ModuleInformation
 )
 {
 	PAGED_CODE();
@@ -511,7 +514,7 @@ GetSystemModuleInformation(
 	if (!driver_information)
 	{
 		DEBUG_ERROR("Failed to allocate pool LOL");
-		return STATUS_ABANDONED;
+		return STATUS_MEMORY_NOT_ALLOCATED;
 	}
 
 	/* Query the modules again this time passing a pointer to the allocated buffer */
@@ -635,8 +638,8 @@ ValidateDriverObjects(
 
 		while (sub_entry)
 		{
+			BOOLEAN flag = FALSE;
 			PDRIVER_OBJECT current_driver = sub_entry->Object;
-			BOOLEAN flag;
 
 			/* validate driver has backing module */
 
@@ -752,7 +755,7 @@ HandleValidateDriversIOCTL(
 		goto end;
 	}
 
-	MODULE_VALIDATION_FAILURE_HEADER header;
+	MODULE_VALIDATION_FAILURE_HEADER header = { 0 };
 
 	header.module_count = head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
 		? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
@@ -964,7 +967,7 @@ AnalyseNmiData(
 				* single report.
 				*/
 
-				NMI_CALLBACK_FAILURE report;
+				NMI_CALLBACK_FAILURE report = { 0 };
 				report.report_code = REPORT_NMI_CALLBACK_FAILURE;
 				report.kthread_address = thread_data->kthread_address;
 				report.invalid_rip = stack_frame;
@@ -1310,14 +1313,14 @@ ApcNormalRoutine(
 VOID
 FlipKThreadMiscFlagsFlag(
 	_In_ PKTHREAD Thread,
-	_In_ LONG FlagIndex,
+	_In_ ULONG FlagIndex,
 	_In_ BOOLEAN NewValue
 )
 {
 	PAGED_CODE();
 
 	PLONG misc_flags = (PLONG)((UINT64)Thread + KTHREAD_MISC_FLAGS_OFFSET);
-	LONG mask = 1U << FlagIndex;
+	ULONG mask = 1ul << FlagIndex;
 
 	if (NewValue)
 		*misc_flags |= mask;
@@ -1348,7 +1351,11 @@ ValidateThreadViaKernelApcCallback(
 	PAPC_STACKWALK_CONTEXT context = (PAPC_STACKWALK_CONTEXT)Context;
 	LPCSTR process_name = PsGetProcessImageFileName(ThreadListEntry->owning_process);
 
-	/* we dont want to schedule an apc to threads owned by the kernel */
+	/* 
+	* we dont want to schedule an apc to threads owned by the kernel 
+	* 
+	* Actually we do... todo: fix this.
+	*/
 	if (ThreadListEntry->owning_process == PsInitialSystemProcess || !Context)
 		return;
 
@@ -1546,7 +1553,7 @@ LaunchInterProcessInterrupt(
 {
 	PAGED_CODE();
 
-	NTSTATUS status;
+	NTSTATUS status = STATUS_SUCCESS;
 	SYSTEM_MODULES system_modules = { 0 };
 	NMI_CONTEXT ipi_context = { 0 };
 	PVOID callback_handle;
@@ -1564,13 +1571,20 @@ LaunchInterProcessInterrupt(
 		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * STACK_FRAME_POOL_SIZE, STACK_FRAMES_POOL);
 
 	if (!ipi_context.stack_frames)
+	{
+		status = STATUS_MEMORY_NOT_ALLOCATED;
 		goto end;
+	}
+
 
 	ipi_context.thread_data_pool =
 		ExAllocatePool2(POOL_FLAG_NON_PAGED, ipi_context.core_count * sizeof(NMI_CALLBACK_DATA), THREAD_DATA_POOL);
 
 	if (!ipi_context.thread_data_pool)
+	{
+		status = STATUS_MEMORY_NOT_ALLOCATED;
 		goto end;
+	}
 
 	/*
 	* We query the system modules each time since they can potentially

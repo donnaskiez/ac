@@ -71,7 +71,7 @@ typedef struct _APC_STACKWALK_CONTEXT
 
 NTSTATUS
 GetSystemModuleInformation(
-	_Inout_ PSYSTEM_MODULES ModuleInformation
+	_Out_ PSYSTEM_MODULES ModuleInformation
 );
 
 NTSTATUS
@@ -113,7 +113,7 @@ IsInstructionPointerInInvalidRegion(
 BOOLEAN
 FlipKThreadMiscFlagsFlag(
 	_In_ PKTHREAD Thread,
-	_In_ LONG FlagIndex,
+	_In_ ULONG FlagIndex,
 	_In_ BOOLEAN NewValue
 );
 
