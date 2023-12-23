@@ -67,14 +67,16 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation)
 {
         PAGED_CODE();
 
-        NTSTATUS status;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        DEBUG_VERBOSE("Dispatching APC Operation...");
 
         switch (Operation->operation_id)
         {
         case APC_OPERATION_STACKWALK:
 
-                DEBUG_LOG("Initiating APC stackwalk operation with operation id %i",
-                          Operation->operation_id);
+                DEBUG_INFO("Initiating APC stackwalk operation with operation id %i",
+                           Operation->operation_id);
 
                 status = ValidateThreadsViaKernelApc();
 
@@ -83,7 +85,7 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation)
 
                 return status;
 
-        default: DEBUG_ERROR("Invalid operation ID passed"); return STATUS_INVALID_PARAMETER;
+        default: DEBUG_WARNING("Invalid operation ID passed"); return STATUS_INVALID_PARAMETER;
         }
 
         return status;
@@ -176,6 +178,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
         {
         case IOCCTL_RUN_NMI_CALLBACKS:
 
+                DEBUG_INFO("IOCTL_RUN_NMI_CALLBACKS Received.");
+
                 status = HandleNmiIOCTL(Irp);
 
                 if (!NT_SUCCESS(status))
@@ -184,6 +188,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                 break;
 
         case IOCTL_VALIDATE_DRIVER_OBJECTS:
+
+                DEBUG_INFO("IOCTL_VALIDATE_DRIVER_OBJECTS Received.");
 
                 /*
                  * The reason this function is run in a new thread and not the thread
@@ -198,7 +204,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("Failed to start thread to validate system drivers");
+                        DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
                         goto end;
                 }
 
@@ -227,39 +233,44 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
+                DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH Received");
+
                 status = ProcLoadInitialiseProcessConfig(Irp);
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR(
-                            "Failed to initialise driver config on proc launch with status %x",
-                            status);
+                        DEBUG_ERROR("InitialiseProcessConfig failed with status %x", status);
                         goto end;
                 }
 
                 status = ProcLoadEnableObCallbacks();
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("InitiateDriverCallbacks failed with status %x", status);
+                        DEBUG_ERROR("EnableObCallbacks failed with status %x", status);
 
                 break;
 
         case IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE:
 
+                DEBUG_INFO("IOCTL_HANDLE_REPORTS_IN_CALLBACK_QUEUE Received");
+
                 status = QueryActiveApcContextsForCompletion();
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("QueryActiveApcContextsForCompletion filed with status %x",
+                        DEBUG_ERROR("QueryActiveApcContextsForCompletion failed with status %x",
                                     status);
 
                 status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("Failed to handle period callback report queue");
+                        DEBUG_ERROR("HandlePeriodicGlobalReportQueueQuery failed with status %x",
+                                    status);
 
                 break;
 
         case IOCTL_PERFORM_VIRTUALIZATION_CHECK:
+
+                DEBUG_INFO("IOCTL_PERFORM_VIRTUALIZATION_CHECK Received");
 
                 status = PerformVirtualizationDetection(Irp);
 
@@ -270,12 +281,16 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_ENUMERATE_HANDLE_TABLES:
 
+                DEBUG_INFO("IOCTL_ENUMERATE_HANDLE_TABLES Received");
+
                 /* can maybe implement this better so we can extract a status value */
                 EnumerateProcessListWithCallbackRoutine(EnumerateProcessHandles, NULL);
 
                 break;
 
         case IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS:
+
+                DEBUG_VERBOSE("IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS Received");
 
                 status = PsCreateSystemThread(&handle,
                                               PROCESS_ALL_ACCESS,
@@ -287,7 +302,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("Failed to start system thread to get executable regions");
+                        DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
                         goto end;
                 }
 
@@ -302,26 +317,26 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                 }
 
                 KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
-                ;
 
                 ZwClose(handle);
                 ObDereferenceObject(thread);
-
-                if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("Failed to retrieve executable regions");
 
                 break;
 
         case IOCTL_REQUEST_TOTAL_MODULE_SIZE:
 
+                DEBUG_INFO("IOCTL_REQUEST_TOTAL_MODULE_SIZE Received");
+
                 status = GetDriverImageSize(Irp);
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("Failed to retrieve driver image size");
+                        DEBUG_ERROR("GetDriverImageSize failed with status %x", status);
 
                 break;
 
         case IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION:
+
+                DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION Received");
 
                 ProcCloseClearProcessConfiguration();
                 ProcCloseDisableObCallbacks();
@@ -330,27 +345,45 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_SCAN_FOR_UNLINKED_PROCESS:
 
+                DEBUG_INFO("IOCTL_SCAN_FOR_UNLINKED_PROCESS Received");
+
                 status = FindUnlinkedProcesses();
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("FindUNlinekdProcesses failed with status %x", status);
+                        DEBUG_ERROR("FindUnlinkedProcesses failed with status %x", status);
 
                 break;
 
-        case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD: ValidateKPCRBThreads(); break;
+        case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD:
+
+                DEBUG_INFO("IOCTL_VALIDATE_KPRCB_CURRENT_THREAD Received");
+
+                ValidateKPCRBThreads();
+
+                break;
 
         case IOCTL_PERFORM_INTEGRITY_CHECK:
+
+                DEBUG_INFO("IOCTL_PERFORM_INTEGRITY_CHECK Received");
 
                 status = VerifyInMemoryImageVsDiskImage();
 
                 if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("VerifyInMemoryImageVsDisk failed with status %x", status);
+                        DEBUG_ERROR("VerifyInMemoryImageVsDiskImage failed with status %x", status);
 
                 break;
 
-        case IOCTL_DETECT_ATTACHED_THREADS: DetectThreadsAttachedToProtectedProcess(); break;
+        case IOCTL_DETECT_ATTACHED_THREADS:
+
+                DEBUG_INFO("IOCTL_DETECT_ATTACHED_THREADS Received");
+
+                DetectThreadsAttachedToProtectedProcess();
+
+                break;
 
         case IOCTL_VALIDATE_PROCESS_LOADED_MODULE:
+
+                DEBUG_INFO("IOCTL_VALIDATE_PROCESS_LOADED_MODULE Received");
 
                 status = ValidateProcessLoadedModule(Irp);
 
@@ -361,12 +394,15 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_REQUEST_HARDWARE_INFORMATION:;
 
+                DEBUG_INFO("IOCTL_REQUEST_HARDWARE_INFORMATION Received");
+
                 PSYSTEM_INFORMATION system_information = NULL;
+
                 GetDriverConfigSystemInformation(&system_information);
 
-                if (system_information == NULL)
+                if (!system_information)
                 {
-                        DEBUG_ERROR("GetDriverConfigSystemInformation failed");
+                        DEBUG_ERROR("GetDriverConfigSystemInformation failed with no status.");
                         goto end;
                 }
 
@@ -374,7 +410,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("Failed to validate IRP output buffer");
+                        DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
                         goto end;
                 }
 
@@ -388,6 +424,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_INITIATE_APC_OPERATION:;
 
+                DEBUG_INFO("IOCTL_INITIATE_APC_OPERATION Received");
+
                 PAPC_OPERATION_ID operation = (PAPC_OPERATION_ID)Irp->AssociatedIrp.SystemBuffer;
 
                 status = DispatchApcOperation(operation);
@@ -399,6 +437,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_CHECK_FOR_EPT_HOOK:
 
+                DEBUG_INFO("IOCTL_CHECK_FOR_EPT_HOOK Received");
+
                 status = DetectEptHooksInKeyFunctions();
 
                 if (!NT_SUCCESS(status))
@@ -408,6 +448,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         case IOCTL_LAUNCH_IPI_INTERRUPT:
 
+                DEBUG_INFO("IOCTL_LAUNCH_IPI_INTERRUPT Received");
+
                 status = LaunchInterProcessInterrupt(Irp);
 
                 if (!NT_SUCCESS(status))
@@ -416,6 +458,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                 break;
 
         case IOCTL_VALIDATE_SYSTEM_MODULES:
+
+                DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
 
                 /*
                  * Currently the validation is buggy, once the validation is better will
@@ -429,13 +473,15 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                 break;
 
         default:
-                DEBUG_ERROR("Invalid IOCTL passed to driver: %lx",
+                DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
                             stack_location->Parameters.DeviceIoControl.IoControlCode);
+
                 status = STATUS_INVALID_PARAMETER;
                 break;
         }
 
 end:
+        DEBUG_VERBOSE("Completing IRP with status %x", status);
         Irp->IoStatus.Status = status;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return status;
@@ -448,7 +494,7 @@ _Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
 
         UNREFERENCED_PARAMETER(DeviceObject);
 
-        DEBUG_LOG("Handle closed to DonnaAC");
+        DEBUG_INFO("Handle to driver closed.");
 
         /*
          * For now its fine, but this will need to be moved to our process load callbacks
@@ -469,7 +515,7 @@ _Dispatch_type_(IRP_MJ_CREATE) NTSTATUS
 {
         PAGED_CODE();
 
-        DEBUG_LOG("Handle opened to DonnaAC");
+        DEBUG_INFO("Handle to driver opened.");
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;

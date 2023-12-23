@@ -1,5 +1,7 @@
 # ac
 
+open source anti cheat (lol) which I made for fun.
+
 # features
 
 - Attached thread detection
@@ -22,47 +24,104 @@
 
 # planned features
 
-- Heartbeat between components
-- ntoskrnl integrity checks (currently in progress)
-- some way of identifying spoofed stacks
-- some way of dynamically resolving offsets. Will probably use a pdb parser but i am working on a debuglib atm using the windows debug api. We will see.
-- some form of cr3 protection
-- some more detection methods other then stackwalking xD
-- various forms of encryption and other things 
+- Heartbeat
+- ntoskrnl integrity checks, or atleast a small subset of the kernel encompasing critical functions
+- spoofed stack identifier
+- process module inline hook detection (this would include checking whether the hook is valid, as many legimate programs hook user mode modules such as discord, nvidia overlay etc.)
+- cr3 protection 
+- string, packet and other encryption
+- tpm ek extraction
+- tpm spoofer detection
+- pcileech firmware detection 
+- testing program to test the features
 
 # known issues
 
-- The system module integrity checks on win11 fail due to MmCopyMemory error for around 80% of the modules. While it doesn't cause a blue screen, this is a pretty pathetic success rate. Am looking into it.
-- KPRCB thread check rn is kinda broken
-
-Ive thoroughly tested the driver with verifier in addition to extended testing on my main pc (non vm) so at the least there shouldn't be any bluescreens (hopefully...). If you do find any, feel free to open an issue with the minidump :)
+- [See the issues page](https://github.com/donnaskiez/ac/issues)
+- Feel free to open a new issue if you find any bugs
 
 # windows versions tested:
 
 - Win10 22H2
 - Win11 22H2
 
-# logs example
+# how to build
 
-video of example logs + running on my machine no vm: [video](https://youtu.be/htY83WsMEcc)
-
-# how 2 use
+Requires [Visual Studio](https://visualstudio.microsoft.com/downloads/) and the [WDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) for compilation.
 
 1. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
 	- `Inf2Cat -> General -> Use Local Time` to `Yes`
 	- `C/C++ -> Treat Warnings As Errors` to `No`
 	- `C/C++ -> Spectre Mitigation` to `Disabled`
-2. Move the `driver.sys` file into `Windows/System32/Drivers` directory
-3. Use the osr loader to load the driver at "system" load.
-	- Osr loader can be found here: https://www.osronline.com/article.cfm%5Earticle=157.htm
+2. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
+3. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
 	- driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))
-	- IMPORTANT: its important that you only click "Register" in the OSR loader, dont actually load the driver only register it. Then restart. This is very important as the driver needs an accurate representation of system threads and processes in order for many of the detection methods to work.
-4. inject dll into program you want to protect, i used notepad for testing. 
-	- IMPORTANT: it is important that this process is started as administrator, which in turn means the injector you use must also be started as administrator. This is a design flaw. Will be fixed in the future.
-	- Obviously in a "real" program, the dll would be embedded into the application - for now this is what we work with.
-5. Logs can be seen both in the terminal and either dbgview or WinDbg depending on what you use. 
-	- If for some reason you can't see logs in DbgView, you may need to properly set your debugging mask. Tutorial here: https://www.osronline.com/article.cfm%5Earticle=295.htm
-6. The server and service arent needed, youll just see a bunch of "failed to write to pipe" if you dont launch the service, this is fine and the core anti cheat + user mode is still working.
+4. Under `Service Start` select `System`. This is VERY important!
+5. Click `Register Service`. *Do NOT click* `Start Service`!
+6. Restart Windows. 
+7. Once restarted, open the program you would like to protect as Administrator.
+	- Yes I understand this is not realistic
+8. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
+9. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
+
+Logs will be printed to both the terminal output and the kernel debugger. See below for configuring kernel debugger output.
+
+Note: The server is not needed for the program to function properly.
+
+# how to configure kernel debugging output
+
+The kernel driver is setup to log at 4 distinct levels:
+
+```C
+#define DPFLTR_ERROR_LEVEL  
+#define DPFLTR_WARNING_LEVEL
+#define DPFLTR_INFO_LEVEL   
+#define DPFLTR_VERBOSE_LEVEL
+```
+
+As the names suggest, `ERROR_LEVEL` is for errors, `WARNING_LEVEL` is for warnings. `INFO_LEVEL` is for general information regarding what requests the driver is processing and `VERBOSE_LEVEL` contains very detailed information for each request.
+
+## creating the registry key
+
+If you are unfamiliar with the kernel debugging mask, you probably need to set one up. If you already have a debugging mask setup, you can skip to `setting the mask` below.
+
+1. Open the Registry Editor
+2. Copy and pase `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager` into the bar at the top and press enter
+3. On the left hand side, right click `Session Manager` and select `New -> Key`
+4. Name the key `Debug Print Filter`
+5. On the left hand side you should now see `Debug Print Filter`, right click and select `New -> DWORD (32 bit) Value`
+6. Name the key `DEFAULT`
+
+## setting the mask
+
+1. Within the `Debug Print Filter` registry, double click the key named `DEFAULT`
+2. Determine the level(s) of logging you would like to see. For most people interested I would set either `INFO_LEVEL` or `VERBOSE_LEVEL`. Remember that if you set `INFO_LEVEL`, you will see all `INFO_LEVEL`, `WARNING_LEVEL` and `ERROR_LEVEL` logs. Ie you see all logs above and including your set level.
+
+```
+ERROR_LEVEL    = 0x2
+WARNING_LEVEL  = 0x7
+INFO_LEVEL     = 0xf
+VERBOSE_LEVEL  = 0x1f
+```
+
+3. Enter the value for the given logging level (seen above)
+4. Click `Ok` and restart Windows.
+
+## filtering debug output
+
+If you choose to use `INFO_LEVEL` or `VERBOSE_LEVEL` there may be many logs from the kernel so we want to filter them out.
+
+### windbg
+
+With WinDbg connected to the target:
+
+1. Pause the target using the `Break` button
+2. Use the command: `.ofilter donna-ac*`
+
+### debugview
+
+1. Click `Edit -> Filter/Highlight`
+2. Set the `Include` string to `donna-ac*`
 
 # contact
 

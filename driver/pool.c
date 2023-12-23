@@ -319,7 +319,7 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
                                 if (process == NULL)
                                         break;
 
-                                DEBUG_LOG("Process: %llx", (UINT64)process);
+                                DEBUG_VERBOSE("Found process via pt walk: %llx", (UINT64)process);
 
                                 address_list = (PUINT64)Context->process_buffer;
 
@@ -438,9 +438,9 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
         physical_memory_ranges = MmGetPhysicalMemoryRangesEx2(NULL, NULL);
 
-        if (physical_memory_ranges == NULL)
+        if (!physical_memory_ranges)
         {
-                DEBUG_ERROR("LOL stupid cunt not working");
+                DEBUG_ERROR("MmGetPhysicalMemoryRangesEx2 failed with no status.");
                 return;
         }
 
@@ -596,7 +596,7 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                 }
         }
 
-        DEBUG_LOG("Finished scanning memory");
+        DEBUG_VERBOSE("Finished scanning memory for unlinked processes.");
 }
 
 STATIC
@@ -656,7 +656,7 @@ FindUnlinkedProcesses()
 
         if (context.process_count == 0)
         {
-                DEBUG_ERROR("Failed to get process count");
+                DEBUG_ERROR("IncrementProcessCounter failed with no status.");
                 return STATUS_ABANDONED;
         }
 
@@ -678,13 +678,16 @@ FindUnlinkedProcesses()
                 if (allocation_address[index] == NULL)
                         continue;
 
+                UINT64 allocation = (UINT64)allocation_address[index] - OBJECT_HEADER_SIZE;
+
                 /*
                  * It's important to remember that at this point it is still not guaranteed that we
                  * have found an unlinked process allocation. It is better to have a few false
                  * positives that can be later analysed rather then enforce a strict signature and
                  * potentially miss a real unlinked process.
                  */
-                DEBUG_ERROR("INVALID POOL proc OMGGG");
+                DEBUG_WARNING("Potentially found an unlinked process allocation at address: %llx",
+                              allocation);
 
                 report_buffer = ExAllocatePool2(
                     POOL_FLAG_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
@@ -694,9 +697,8 @@ FindUnlinkedProcesses()
 
                 report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
 
-                RtlCopyMemory(report_buffer->process,
-                              (UINT64)allocation_address[index] - OBJECT_HEADER_SIZE,
-                              REPORT_INVALID_PROCESS_BUFFER_SIZE);
+                RtlCopyMemory(
+                    report_buffer->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
                 InsertReportToQueue(report_buffer);
         }
@@ -718,7 +720,7 @@ NTSTATUS
 EnumerateBigPoolAllocations()
 {
         ULONG                       return_length    = 0;
-        NTSTATUS                    status           = STATUS_ABANDONED;
+        NTSTATUS                    status           = STATUS_UNSUCCESSFUL;
         PSYSTEM_BIGPOOL_ENTRY       entry            = NULL;
         SYSTEM_BIGPOOL_INFORMATION  pool_information = {0};
         PSYSTEM_BIGPOOL_INFORMATION pool_entries     = NULL;
@@ -727,8 +729,8 @@ EnumerateBigPoolAllocations()
 
         if (!pZwQuerySystemInformation)
         {
-                DEBUG_ERROR("MmGetSystemRoutineAddress failed.");
-                return STATUS_ABANDONED;
+                DEBUG_ERROR("MmGetSystemRoutineAddress failed with no status.");
+                return status;
         }
 
         status = pZwQuerySystemInformation(SYSTEM_BIGPOOL_INFORMATION_ID,

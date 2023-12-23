@@ -26,7 +26,7 @@ _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
                                          _Inout_opt_ PVOID       Context)
 {
         UINT32                       thread_id = 0;
-        PKPRCB_THREAD_VALIDATION_CTX context = (PKPRCB_THREAD_VALIDATION_CTX)Context;
+        PKPRCB_THREAD_VALIDATION_CTX context   = (PKPRCB_THREAD_VALIDATION_CTX)Context;
 
         if (!Context || context->finished == TRUE)
                 return;
@@ -93,9 +93,9 @@ ValidateKPCRBThreads()
 
                 context.current_kpcrb_thread = *(UINT64*)(kprcb + KPCRB_CURRENT_THREAD);
 
-                DEBUG_LOG("Proc number: %lx, Current thread: %llx",
-                          processor_index,
-                          context.current_kpcrb_thread);
+                DEBUG_VERBOSE("Proc number: %lx, Current thread: %llx",
+                              processor_index,
+                              context.current_kpcrb_thread);
 
                 if (!context.current_kpcrb_thread)
                         continue;
@@ -103,9 +103,9 @@ ValidateKPCRBThreads()
                 EnumerateThreadListWithCallbackRoutine(KPRCBThreadValidationProcessCallback,
                                                        &context);
 
-                DEBUG_LOG("Found in kthread: %lx, found in pspcid: %lx",
-                          (UINT32)context.thread_found_in_kthreadlist,
-                          (UINT32)context.thread_found_in_pspcidtable);
+                DEBUG_VERBOSE("Was thread found in kthread: %lx, Was thread found in cid table: %lx",
+                           (UINT32)context.thread_found_in_kthreadlist,
+                           (UINT32)context.thread_found_in_pspcidtable);
 
                 if (context.current_kpcrb_thread == FALSE ||
                     context.thread_found_in_pspcidtable == FALSE)
@@ -153,7 +153,8 @@ _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
 
         if (apc_state->Process == protected_process)
         {
-                DEBUG_LOG("Program attached to notepad: %llx", (UINT64)ThreadListEntry->thread);
+                DEBUG_WARNING("Thread is attached to our protected process: %llx",
+                              (UINT64)ThreadListEntry->thread);
 
                 PATTACH_PROCESS_REPORT report = ExAllocatePool2(
                     POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);

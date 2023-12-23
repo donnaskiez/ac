@@ -90,7 +90,7 @@ PerformVirtualizationDetection(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate IRP output buffer");
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
                 return status;
         }
 

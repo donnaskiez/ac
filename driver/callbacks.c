@@ -556,7 +556,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 if (strcmp(process_name, protected_process_name))
                         goto end;
 
-                DEBUG_LOG("Handle references our protected process with access mask: %lx",
+                DEBUG_VERBOSE("Handle references our protected process with access mask: %lx",
                           (ACCESS_MASK)Entry->GrantedAccessBits);
 
                 handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
@@ -565,42 +565,42 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 if (handle_access_mask & PROCESS_CREATE_PROCESS)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_CREATE_PROCESS;
-                        DEBUG_LOG("Stripped PROCESS_CREATE_PROCESS");
+                        DEBUG_VERBOSE("Stripped PROCESS_CREATE_PROCESS");
                 }
 
                 if (handle_access_mask & PROCESS_CREATE_THREAD)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_CREATE_THREAD;
-                        DEBUG_LOG("Stripped PROCESS_CREATE_THREAD");
+                        DEBUG_VERBOSE("Stripped PROCESS_CREATE_THREAD");
                 }
 
                 if (handle_access_mask & PROCESS_DUP_HANDLE)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_DUP_HANDLE;
-                        DEBUG_LOG("Stripped PROCESS_DUP_HANDLE");
+                        DEBUG_VERBOSE("Stripped PROCESS_DUP_HANDLE");
                 }
 
                 if (handle_access_mask & PROCESS_QUERY_INFORMATION)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_QUERY_INFORMATION;
-                        DEBUG_LOG("Stripped PROCESS_QUERY_INFORMATION");
+                        DEBUG_VERBOSE("Stripped PROCESS_QUERY_INFORMATION");
                 }
 
                 if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_QUERY_LIMITED_INFORMATION;
-                        DEBUG_LOG("Stripped PROCESS_QUERY_LIMITED_INFORMATION");
+                        DEBUG_VERBOSE("Stripped PROCESS_QUERY_LIMITED_INFORMATION");
                 }
 
                 if (handle_access_mask & PROCESS_VM_READ)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_READ;
-                        DEBUG_LOG("Stripped PROCESS_VM_READ");
+                        DEBUG_VERBOSE("Stripped PROCESS_VM_READ");
                 }
 
                 if (!strcmp(process_name, "csrss.exe") || !strcmp(process_name, "lsass.exe"))
                 {
-                        DEBUG_LOG(
+                        DEBUG_VERBOSE(
                             "Required system process allowed, only stripping some permissions");
                         goto end;
                 }
@@ -609,37 +609,37 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 if (handle_access_mask & PROCESS_SET_INFORMATION)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_SET_INFORMATION;
-                        DEBUG_LOG("Stripped PROCESS_SET_INFORMATION");
+                        DEBUG_VERBOSE("Stripped PROCESS_SET_INFORMATION");
                 }
 
                 if (handle_access_mask & PROCESS_SET_QUOTA)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_SET_QUOTA;
-                        DEBUG_LOG("Stripped PROCESS_SET_QUOTA");
+                        DEBUG_VERBOSE("Stripped PROCESS_SET_QUOTA");
                 }
 
                 if (handle_access_mask & PROCESS_SUSPEND_RESUME)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_SUSPEND_RESUME;
-                        DEBUG_LOG("Stripped PROCESS_SUSPEND_RESUME ");
+                        DEBUG_VERBOSE("Stripped PROCESS_SUSPEND_RESUME ");
                 }
 
                 if (handle_access_mask & PROCESS_TERMINATE)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_TERMINATE;
-                        DEBUG_LOG("Stripped PROCESS_TERMINATE");
+                        DEBUG_VERBOSE("Stripped PROCESS_TERMINATE");
                 }
 
                 if (handle_access_mask & PROCESS_VM_OPERATION)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_OPERATION;
-                        DEBUG_LOG("Stripped PROCESS_VM_OPERATION");
+                        DEBUG_VERBOSE("Stripped PROCESS_VM_OPERATION");
                 }
 
                 if (handle_access_mask & PROCESS_VM_WRITE)
                 {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_WRITE;
-                        DEBUG_LOG("Stripped PROCESS_VM_WRITE");
+                        DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
                 }
 
                 POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2(
@@ -661,6 +661,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 report->process_id       = PsGetProcessId(process);
                 report->thread_id        = 0;
                 report->access           = handle_access_mask;
+
                 RtlCopyMemory(
                     &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 

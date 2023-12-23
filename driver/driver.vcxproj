@@ -141,7 +141,6 @@
     <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
     <ClCompile Include="thread.c" />
-    <ClCompile Include="version.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="callbacks.h" />
@@ -154,7 +153,6 @@
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
     <ClInclude Include="thread.h" />
-    <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="asm.asm" />

@@ -4,10 +4,38 @@
 #include <ntifs.h>
 #include <wdftypes.h>
 
-#define DEBUG_LOG(fmt, ...) \
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, "donna-ac [INFO] " fmt "\n", ##__VA_ARGS__)
+/*
+ * For numbers < 32, these are equivalent to 0ul < x.
+ *
+ * For an item to be printed, its bitwise AND'd with the set filter. If the result is non zero the
+ * log will be printed.
+ */
+#define LOG_ERROR_LEVEL   1
+#define LOG_WARNING_LEVEL 2
+#define LOG_INFO_LEVEL    3
+#define LOG_VERBOSE_LEVEL 4
+
+#define DPFLTR_MASK 0x80000000
+
 #define DEBUG_ERROR(fmt, ...) \
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, 0, "donna-ac [ERROR] " fmt "\n", ##__VA_ARGS__)
+        DbgPrintEx(           \
+            DPFLTR_DEFAULT_ID, LOG_ERROR_LEVEL, "donna-ac : [ERROR] ::: " fmt "\n", ##__VA_ARGS__)
+
+#define DEBUG_WARNING(fmt, ...)                        \
+        DbgPrintEx(DPFLTR_DEFAULT_ID,                  \
+                   LOG_WARNING_LEVEL,                  \
+                   "donna-ac : [WARNING] : " fmt "\n", \
+                   ##__VA_ARGS__)
+
+#define DEBUG_INFO(fmt, ...) \
+        DbgPrintEx(          \
+            DPFLTR_DEFAULT_ID, LOG_INFO_LEVEL, "donna-ac : [INFO] :::: " fmt "\n", ##__VA_ARGS__)
+
+#define DEBUG_VERBOSE(fmt, ...)                        \
+        DbgPrintEx(DPFLTR_DEFAULT_ID,                  \
+                   LOG_VERBOSE_LEVEL,                  \
+                   "donna-ac : [VERBOSE] : " fmt "\n", \
+                   ##__VA_ARGS__)
 
 #define STATIC static
 
@@ -360,7 +388,7 @@ typedef struct _HANDLE_TABLE_ENTRY // Size=16
                         ULONG_PTR RefCnt : 16;    // Size=8 Offset=0 BitOffset=1 BitCount=16
                         ULONG_PTR Attributes : 3; // Size=8 Offset=0 BitOffset=17 BitCount=3
                         ULONG_PTR
-                            ObjectPointerBits : 44; // Size=8 Offset=0 BitOffset=20 BitCount=44
+                        ObjectPointerBits : 44; // Size=8 Offset=0 BitOffset=20 BitCount=44
                 };
         };
         union

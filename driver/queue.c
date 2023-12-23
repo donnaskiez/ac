@@ -45,7 +45,7 @@ InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status)
 // PQUEUE_HEAD QueueCreate()
 //{
 //	PQUEUE_HEAD head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( QUEUE_HEAD ),
-//QUEUE_POOL_TAG );
+// QUEUE_POOL_TAG );
 //
 //	if ( !head )
 //		return NULL;
@@ -147,7 +147,8 @@ FreeGlobalReportQueueObjects()
         {
                 ExFreePoolWithTag(report, REPORT_POOL_TAG);
                 report = QueuePop(&report_queue_config.head);
-                DEBUG_LOG("Queu Unload Remaining Entries: %i", report_queue_config.head.entries);
+                DEBUG_VERBOSE("Unloading report queue. Entries remaining: %i",
+                              report_queue_config.head.entries);
         }
 
 end:
@@ -169,7 +170,7 @@ NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 {
         INT                        count              = 0;
-        NTSTATUS                   status             = STATUS_ABANDONED;
+        NTSTATUS                   status             = STATUS_UNSUCCESSFUL;
         PVOID                      report             = NULL;
         SIZE_T                     total_size         = 0;
         PVOID                      report_buffer      = NULL;
@@ -186,7 +187,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate Irp output buffer");
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
                 KeReleaseGuardedMutex(&report_queue_config.lock);
                 return status;
         }
@@ -204,7 +205,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 
         if (report == NULL)
         {
-                DEBUG_LOG("callback report queue is empty, returning");
+                DEBUG_VERBOSE("Callback report queue is empty. No reports to be sent to usermode.");
                 goto end;
         }
 
@@ -292,7 +293,7 @@ end:
         if (report_buffer)
                 ExFreePoolWithTag(report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG);
 
-        DEBUG_LOG("Moved all reports into the IRP, sending !");
+        DEBUG_VERBOSE("All reports moved into the IRP, sending to usermode.");
         return STATUS_SUCCESS;
 }
 

@@ -143,7 +143,7 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 
         if (!driver_info)
         {
-                DEBUG_ERROR("FindSystemModuleByName failed");
+                DEBUG_ERROR("FindSystemModuleByName failed with no status code");
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_NOT_FOUND;
         }
@@ -152,7 +152,7 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate IRP output buffer");
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
                 goto end;
         }
 
@@ -189,7 +189,7 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
 
         if (!driver_info)
         {
-                DEBUG_ERROR("FindSystemModuleByName failed");
+                DEBUG_ERROR("FindSystemModuleByName failed with no status");
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_NOT_FOUND;
         }
@@ -336,7 +336,7 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
 {
         PAGED_CODE();
 
-        NTSTATUS          status            = STATUS_ABANDONED;
+        NTSTATUS          status            = STATUS_UNSUCCESSFUL;
         HANDLE            file_handle       = NULL;
         OBJECT_ATTRIBUTES object_attributes = {0};
         PIO_STATUS_BLOCK  pio_block         = NULL;
@@ -350,12 +350,11 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
         InitializeObjectAttributes(
             &object_attributes, &path, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
 
-        status =
-            ZwOpenFile(&file_handle, FILE_GENERIC_READ, &object_attributes, &pio_block, NULL, NULL);
+        status = ZwOpenFile(&file_handle, GENERIC_READ, &object_attributes, &pio_block, NULL, NULL);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ZwOpenFile failed with statsu %x", status);
+                DEBUG_ERROR("ZwOpenFile failed with status %x", status);
                 return status;
         }
 
@@ -640,7 +639,7 @@ VerifyInMemoryImageVsDiskImage(
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffe failed with status %x", status);
+                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
                 goto end;
         }
 
@@ -656,14 +655,14 @@ VerifyInMemoryImageVsDiskImage(
 
         if (!disk_base || !memory_base || !disk_buffer || !in_memory_buffer)
         {
-                DEBUG_ERROR("buffers are null lmao");
+                DEBUG_ERROR("Buffer(s) are null. An error has occured.");
                 goto end;
         }
 
         if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
         {
                 /* report or bug check etc. */
-                DEBUG_LOG("Executable section size differs, LOL");
+                DEBUG_WARNING("Executable section sizes differ between images.");
                 goto end;
         }
 
@@ -689,7 +688,8 @@ VerifyInMemoryImageVsDiskImage(
 
         if (memory_text_hash_size != disk_text_hash_size)
         {
-                DEBUG_ERROR("Error with the hash algorithm, hash sizes are different.");
+                DEBUG_WARNING(
+                    "Error with the hash algorithm, hash sizes are different. An error has occured.");
                 goto end;
         }
 
@@ -698,11 +698,11 @@ VerifyInMemoryImageVsDiskImage(
         if (result != memory_text_hash_size)
         {
                 /* report etc. bug check etc. */
-                DEBUG_ERROR("Text sections are different from each other!!");
+                DEBUG_WARNING("Text section hashes are different, the section has been modified.");
                 goto end;
         }
 
-        DEBUG_LOG("Text sections are fine, integrity check complete.");
+        DEBUG_INFO("Text sections are valid. Integrity check has been complete.");
 
 end:
 
@@ -732,7 +732,7 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                 status        = STATUS_ABANDONED;
+        NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
         SIZE_T                   bytes_written = NULL;
         PVOID                    buffer        = NULL;
         RTL_MODULE_EXTENDED_INFO module_info   = {0};
@@ -758,7 +758,7 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate IRP output buffer");
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
                 goto end;
         }
 
@@ -882,7 +882,7 @@ ParseSMBIOSTable(_In_ PVOID  ConfigMotherboardSerialNumber,
 {
         PAGED_CODE();
 
-        NTSTATUS             status                       = STATUS_ABANDONED;
+        NTSTATUS             status                       = STATUS_UNSUCCESSFUL;
         PVOID                firmware_table_buffer        = NULL;
         ULONG                firmware_table_buffer_size   = 0;
         ULONG                bytes_returned               = 0;
@@ -890,8 +890,7 @@ ParseSMBIOSTable(_In_ PVOID  ConfigMotherboardSerialNumber,
         PSMBIOS_TABLE_HEADER smbios_table_header          = NULL;
         PRAW_SMBIOS_TABLE_01 smbios_baseboard_information = NULL;
 
-        status =
-            ExGetSystemFirmwareTable(SMBIOS_TABLE, NULL, NULL, NULL, &firmware_table_buffer_size);
+        status = ExGetSystemFirmwareTable(SMBIOS_TABLE, 0, NULL, 0, &firmware_table_buffer_size);
 
         /*
          * Because we pass a null buffer here, the NTSTATUS result will be a BUFFER_TOO_SMALL error,
@@ -974,7 +973,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                         status              = STATUS_ABANDONED;
+        NTSTATUS                         status              = STATUS_UNSUCCESSFUL;
         BOOLEAN                          bstatus             = FALSE;
         PROCESS_MODULE_VALIDATION_RESULT validation_result   = {0};
         PPROCESS_MODULE_INFORMATION      module_info         = NULL;
@@ -996,7 +995,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate IRP input buffer");
+                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
                 return status;
         }
 
@@ -1025,7 +1024,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x:", status);
+                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
                 goto end;
         }
 
@@ -1116,7 +1115,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 {
         PAGED_CODE();
 
-        NTSTATUS                   status                    = STATUS_ABANDONED;
+        NTSTATUS                   status                    = STATUS_UNSUCCESSFUL;
         HANDLE                     handle                    = NULL;
         OBJECT_ATTRIBUTES          attributes                = {0};
         IO_STATUS_BLOCK            status_block              = {0};
@@ -1143,7 +1142,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_LOG("ZwOpenFile on PhysicalDrive0 failed with status %x", status);
+                DEBUG_ERROR("ZwOpenFile on PhysicalDrive0 failed with status %x", status);
                 goto end;
         }
 
@@ -1163,7 +1162,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_LOG("ZwDeviceIoControlFile first call failed with status %x", status);
+                DEBUG_ERROR("ZwDeviceIoControlFile first call failed with status %x", status);
                 goto end;
         }
 
@@ -1189,7 +1188,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_LOG("ZwDeviceIoControlFile second call failed with status %x", status);
+                DEBUG_ERROR("ZwDeviceIoControlFile second call failed with status %x", status);
                 goto end;
         }
 
@@ -1201,7 +1200,8 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 
                 if (serial_length > ConfigDrive0MaxSize)
                 {
-                        DEBUG_ERROR("Serial length is greater then config drive 0 buffer size");
+                        DEBUG_ERROR(
+                            "Serial length is greater then the allocated buffer size for the drives serial number.");
                         status = STATUS_BUFFER_TOO_SMALL;
                         goto end;
                 }
@@ -1209,6 +1209,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                 RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
         }
 
+        DEBUG_INFO("Successfully retrieved hard disk serial number.");
 end:
 
         if (handle)
@@ -1332,7 +1333,7 @@ MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
         _enable();
         __writecr8(old_irql);
 
-        DEBUG_LOG("REad average: %llx", read_average);
+        DEBUG_VERBOSE("EPT Detection - Read Average: %llx", read_average);
 
         return read_average / Count;
 }
@@ -1360,11 +1361,11 @@ NTSTATUS
 GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime)
 {
         if (!RoutineAddress || !AverageTime)
-                return STATUS_ABANDONED;
+                return STATUS_UNSUCCESSFUL;
 
         *AverageTime = MeasureReads(RoutineAddress, EPT_CHECK_NUM_ITERATIONS);
 
-        return *AverageTime == 0 ? STATUS_ABANDONED : STATUS_SUCCESS;
+        return *AverageTime == 0 ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
 }
 
 /*
@@ -1420,7 +1421,7 @@ InitiateEptFunctionAddressArrays()
                 CONTROL_FUNCTION_ADDRESSES[index] = MmGetSystemRoutineAddress(&current_function);
 
                 if (!CONTROL_FUNCTION_ADDRESSES[index])
-                        return STATUS_ABANDONED;
+                        return STATUS_UNSUCCESSFUL;
         }
 
         for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
@@ -1429,7 +1430,7 @@ InitiateEptFunctionAddressArrays()
                 PROTECTED_FUNCTION_ADDRESSES[index] = MmGetSystemRoutineAddress(&current_function);
 
                 if (!PROTECTED_FUNCTION_ADDRESSES[index])
-                        return STATUS_ABANDONED;
+                        return STATUS_UNSUCCESSFUL;
         }
 
         return STATUS_SUCCESS;
@@ -1440,7 +1441,7 @@ DetectEptHooksInKeyFunctions()
 {
         PAGED_CODE();
 
-        NTSTATUS status           = STATUS_ABANDONED;
+        NTSTATUS status           = STATUS_UNSUCCESSFUL;
         UINT32   control_fails    = 0;
         UINT64   instruction_time = 0;
         UINT64   control_time_sum = 0;
@@ -1492,7 +1493,7 @@ DetectEptHooksInKeyFunctions()
                  * 149b7777777 */
                 if (control_average * EPT_EXECUTION_TIME_MULTIPLIER < instruction_time)
                 {
-                        DEBUG_LOG(
+                        DEBUG_WARNING(
                             "EPT hook detected at function: %llx with execution time of: %llx",
                             PROTECTED_FUNCTION_ADDRESSES[index],
                             instruction_time);
@@ -1501,8 +1502,8 @@ DetectEptHooksInKeyFunctions()
                 }
                 else
                 {
-                        DEBUG_LOG("No ept hook detected at function: %llx",
-                                  PROTECTED_FUNCTION_ADDRESSES[index]);
+                        DEBUG_INFO("No ept hook detected at function: %llx",
+                                   PROTECTED_FUNCTION_ADDRESSES[index]);
                 }
         }
 
@@ -1523,7 +1524,8 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 
         if (!strcmp(process_name, "winlogon.exe"))
         {
-                DEBUG_LOG("Found winlogon: %llx", (UINT64)Entry->process);
+                DEBUG_VERBOSE("32 bit WinLogon.exe process found at address: %llx",
+                              (UINT64)Entry->process);
                 *process = Entry->process;
         }
 }
@@ -1534,7 +1536,7 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 NTSTATUS
 ValidateSystemModules()
 {
-        NTSTATUS                  status             = STATUS_ABANDONED;
+        NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
         BOOLEAN                   bstatus            = FALSE;
         ANSI_STRING               ansi_string        = {0};
         UNICODE_STRING            path               = {0};
@@ -1552,6 +1554,7 @@ ValidateSystemModules()
         ULONG                     memory_hash_size   = 0;
         PVOID                     memory_buffer      = NULL;
         ULONG                     memory_buffer_size = 0;
+        ULONG                     result             = 0;
         PEPROCESS                 process            = NULL;
         KAPC_STATE                apc_state          = {0};
         SYSTEM_MODULES            modules            = {0};
@@ -1559,7 +1562,7 @@ ValidateSystemModules()
         PIMAGE_SECTION_HEADER     disk_text_header   = NULL;
         PIMAGE_SECTION_HEADER     memory_text_header = NULL;
 
-        DEBUG_LOG("Validating system modules");
+        DEBUG_VERBOSE("Beginning to validate system modules.");
 
         status = GetSystemModuleInformation(&modules);
 
@@ -1626,14 +1629,13 @@ ValidateSystemModules()
                  */
                 if (!MmIsAddressValid(module_info->ImageBase))
                 {
-                        DEBUG_LOG("Win32k process");
+                        DEBUG_VERBOSE(
+                            "Win32k related module found, acquiring 32 bit address space...");
 
                         EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
 
                         if (!process)
                                 goto free_iteration;
-
-                        DEBUG_LOG("WinLogonPRocess: %llx", (UINT64)process);
 
                         KeStackAttachProcess(process, &apc_state);
 
@@ -1671,15 +1673,16 @@ ValidateSystemModules()
                 memory_text_header =
                     (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
 
-                if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer)
+                if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer ||
+                    !MmIsAddressValid(disk_buffer) || !MmIsAddressValid(memory_buffer))
                 {
-                        DEBUG_ERROR("buffers are null lmao");
-                        goto free_iteration;
+                        DEBUG_ERROR("Buffer(s) are null. An error has occured.");
+                        goto free_section;
                 }
 
                 if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
                 {
-                        DEBUG_LOG("Executable section size differs, LOL");
+                        DEBUG_WARNING("Executable section sizes differ between images.");
                         goto free_iteration;
                 }
 
@@ -1703,15 +1706,40 @@ ValidateSystemModules()
                         goto free_iteration;
                 }
 
-                SIZE_T test = RtlCompareMemory(
-                    memory_text_base, disk_text_base, memory_text_header->SizeOfRawData);
+                if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
+                        goto free_iteration;
 
-                if (test = memory_text_header->SizeOfRawData)
-                        DEBUG_LOG("Modules regions are valid!");
+                result =
+                    RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
+
+                if (result = memory_text_header->SizeOfRawData)
+                        DEBUG_VERBOSE("Module executable sections are valid for the module: %s",
+                                      module_info->FullPathName);
                 else
-                        DEBUG_ERROR("Module regions are NOT valid LOL!");
+                        DEBUG_WARNING("Module regions are not valid for module: %s",
+                                      module_info->FullPathName);
 
         free_iteration:
+
+                if (memory_buffer)
+                        ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
+
+                if (memory_hash)
+                        ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
+
+                if (disk_buffer)
+                        ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
+
+                if (disk_hash)
+                        ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
+
+        free_section:
+
+                if (section_handle)
+                        ZwClose(section_handle);
+
+                if (section)
+                        ZwUnmapViewOfSection(ZwCurrentProcess(), section);
 
                 /*
                  * Its times like this where you see why allocating all local variables at the
@@ -1728,24 +1756,6 @@ ValidateSystemModules()
                 ansi_string.Buffer        = NULL;
                 ansi_string.Length        = 0;
                 ansi_string.MaximumLength = 0;
-
-                if (section_handle)
-                        ZwClose(section_handle);
-
-                if (section)
-                        ZwUnmapViewOfSection(ZwCurrentProcess(), section);
-
-                if (memory_buffer)
-                        ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
-
-                if (memory_hash)
-                        ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
-
-                if (disk_buffer)
-                        ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
-
-                if (disk_hash)
-                        ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
 
                 section_handle = NULL;
                 section        = NULL;
@@ -1774,7 +1784,7 @@ ValidateSystemModules()
 NTSTATUS
 ValidateNtoskrnl()
 {
-        NTSTATUS                  status             = STATUS_ABANDONED;
+        NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
         SIZE_T                    bytes_written      = 0;
         KAPC_STATE                apc_state          = {0};
         PVOID                     memory_buffer      = NULL;
@@ -1792,7 +1802,7 @@ ValidateNtoskrnl()
 
         module_info = (PRTL_MODULE_EXTENDED_INFO)modules.address;
 
-        DEBUG_LOG("Module base: %llx", module_info->ImageBase);
+        DEBUG_VERBOSE("Module base: %llx", module_info->ImageBase);
 
         PVOID buffer =
             ExAllocatePool2(POOL_FLAG_NON_PAGED, module_info->ImageSize, POOL_TAG_INTEGRITY);
@@ -1823,7 +1833,7 @@ ValidateNtoskrnl()
                 goto end;
         }
 
-        DEBUG_LOG("buf size: %lx", memory_buffer_size);
+        DEBUG_VERBOSE("buf size: %lx", memory_buffer_size);
 
 end:
 
@@ -1832,6 +1842,35 @@ end:
 
         if (modules.address)
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
+        return status;
+}
+
+NTSTATUS
+GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
+{
+        NTSTATUS           status = STATUS_ABANDONED;
+        RTL_OSVERSIONINFOW info   = {0};
+
+        if (!VersionInfo)
+                return STATUS_INVALID_PARAMETER;
+
+        status = RtlGetVersion(&info);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("RtlGetVersion failed with status %x", status);
+                return status;
+        }
+
+        VersionInfo->dwBuildNumber       = info.dwBuildNumber;
+        VersionInfo->dwMajorVersion      = info.dwMajorVersion;
+        VersionInfo->dwMinorVersion      = info.dwMinorVersion;
+        VersionInfo->dwOSVersionInfoSize = info.dwOSVersionInfoSize;
+        VersionInfo->dwPlatformId        = info.dwPlatformId;
+
+        RtlCopyMemory(
+            VersionInfo->szCSDVersion, info.szCSDVersion, sizeof(VersionInfo->szCSDVersion));
 
         return status;
 }

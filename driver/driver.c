@@ -69,7 +69,7 @@ DrvLoadInitialiseProcessConfig();
 
 STATIC
 NTSTATUS
-DrvLoadInitialiseDriverConfig(_In_ PUNICODE_STRING RegistryPath);
+DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(INIT, DriverEntry)
@@ -103,6 +103,29 @@ DrvLoadInitialiseDriverConfig(_In_ PUNICODE_STRING RegistryPath);
 
 #define MAXIMUM_APC_CONTEXTS 10
 
+/*
+ * Determines whether a protection routine is active. This allows us to deactivate a method based on
+ * some criteria, such as windows version. Some things should never be disabled though, so having
+ * them as an option here such as the integrity check is probably not the best idea.
+ */
+typedef struct _PROTECTION_METHOD_FLAGS
+{
+        BOOLEAN process_module_verification;
+        BOOLEAN nmi_callbacks;
+        BOOLEAN apc_stackwalk;
+        BOOLEAN ipi_stackwalk;
+        BOOLEAN validate_driver_objects;
+        BOOLEAN virtualization_check;
+        BOOLEAN enumerate_handle_tables;
+        BOOLEAN unlinked_process_scan;
+        BOOLEAN kpcrb_validation;
+        BOOLEAN driver_integrity_check;
+        BOOLEAN attached_threads;
+        BOOLEAN validate_system_modules;
+        BOOLEAN ept_hook;
+
+} PROTECTION_METHOD_FLAGS, *PPROTECTION_METHOD_FLAGS;
+
 typedef struct _DRIVER_CONFIG
 {
         UNICODE_STRING     unicode_driver_name;
@@ -113,6 +136,8 @@ typedef struct _DRIVER_CONFIG
         UNICODE_STRING     registry_path;
         SYSTEM_INFORMATION system_information;
         PVOID              apc_contexts[MAXIMUM_APC_CONTEXTS];
+        PDRIVER_OBJECT     driver_object;
+        PDEVICE_OBJECT     device_object;
         volatile BOOLEAN   unload_in_progress;
         KGUARDED_MUTEX     lock;
 
@@ -251,6 +276,33 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
  *
  */
 
+NTSTATUS
+SelfReferenceDriver()
+{
+        NTSTATUS          status = STATUS_UNSUCCESSFUL;
+        HANDLE            handle = NULL;
+        UNICODE_STRING    path   = {0};
+        OBJECT_ATTRIBUTES oa     = {0};
+        IO_STATUS_BLOCK   io     = {0};
+
+        DEBUG_VERBOSE("Opening self referencing handle");
+
+        GetDriverPath(&path);
+        __debugbreak();
+        InitializeObjectAttributes(
+            &oa, &path, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+        status = ZwOpenFile(&handle, GENERIC_READ, &oa, &io, NULL, NULL);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ZwOpenFile failed with status %x", status);
+                return status;
+        }
+        __debugbreak();
+        return status;
+}
+
 /*
  * No need to hold the lock here as the thread freeing the APCs will
  * already hold the configuration lock. We also dont want to release and
@@ -263,7 +315,7 @@ FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
 {
         BOOLEAN result = FALSE;
 
-        DEBUG_LOG("All APCs executed, freeing context structure");
+        DEBUG_VERBOSE("All APCs executed, freeing context structure");
 
         for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
         {
@@ -277,6 +329,8 @@ FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
                         ExFreePoolWithTag(Context, POOL_TAG_APC);
                         entry[index] = NULL;
                         result       = TRUE;
+                        ObDereferenceObject(driver_config.driver_object);
+                        ObDereferenceObject(driver_config.device_object);
                         goto unlock;
                 }
         }
@@ -365,8 +419,8 @@ QueryActiveApcContextsForCompletion()
                         continue;
                 }
 
-                DEBUG_LOG("APC Context Id: %lx", entry->context_id);
-                DEBUG_LOG("Active APC Count: %i", entry->count);
+                DEBUG_VERBOSE("APC Context Id: %lx", entry->context_id);
+                DEBUG_VERBOSE("Active APC Count: %i", entry->count);
 
                 if (entry->count > 0 || entry->allocation_in_progress == TRUE)
                 {
@@ -400,8 +454,8 @@ InsertApcContext(_In_ PVOID Context)
          * is attempted to start, ensuring that even if it holds
          */
         if (InterlockedExchange(&driver_config.unload_in_progress,
-                                driver_config.unload_in_progress))
-                return STATUS_ABANDONED;
+                                driver_config.unload_in_progress) == TRUE)
+                return STATUS_UNSUCCESSFUL;
 
         KeAcquireGuardedMutex(&driver_config.lock);
 
@@ -414,6 +468,18 @@ InsertApcContext(_In_ PVOID Context)
                 if (entry[index] == NULL)
                 {
                         entry[index] = Context;
+
+                        /*
+                         * When we insert a new APC context, lets increment our drivers reference
+                         * count. When we remove an APC context, we will decrement this reference
+                         * count. This allows us to queue the driver for deletion but the unload
+                         * routine wont execute until all APC contexts have been completed, allowing
+                         * us to cleanup everything properly. The old strategy of blocking the
+                         * unload routine method was not very nice and I think this is a much better
+                         * method of going about it.
+                         */
+                        ObReferenceObject(driver_config.driver_object);
+                        ObReferenceObject(driver_config.device_object);
                         goto end;
                 }
         }
@@ -653,7 +719,8 @@ ProcCloseClearProcessConfiguration()
 {
         PAGED_CODE();
 
-        DEBUG_LOG("Process closed, clearing driver process_configuration");
+        DEBUG_INFO("Protected process closed. Clearing process configuration.");
+
         KeAcquireGuardedMutex(&process_config.lock);
         process_config.km_handle   = NULL;
         process_config.um_handle   = NULL;
@@ -685,7 +752,9 @@ ProcLoadEnableObCallbacks()
 {
         PAGED_CODE();
 
-        NTSTATUS status;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
 
         KeAcquireGuardedMutex(&process_config.lock);
 
@@ -709,7 +778,7 @@ ProcLoadEnableObCallbacks()
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("failed to launch obregisters with status %x", status);
+                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
                 goto end;
         }
 
@@ -745,7 +814,7 @@ ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                       status      = STATUS_ABANDONED;
+        NTSTATUS                       status      = STATUS_UNSUCCESSFUL;
         PEPROCESS                      process     = NULL;
         PDRIVER_INITIATION_INFORMATION information = NULL;
 
@@ -753,7 +822,7 @@ ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to validate input buffer");
+                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
                 return status;
         }
 
@@ -930,17 +999,17 @@ STATIC
 VOID
 DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
-        InterlockedExchange(&driver_config.unload_in_progress, TRUE);
+        DEBUG_VERBOSE("Unloading...");
 
-        DEBUG_LOG("Unloading driver...");
+        InterlockedExchange(&driver_config.unload_in_progress, TRUE);
 
         /*
          * This blocks the thread dispatching the unload routine, which I don't think is ideal.
          * This is the issue with using APCs, we have very little safe control over when they
          * complete and thus when we can free them.. For now, thisl do.
          */
-        while (DrvUnloadFreeAllApcContextStructures() == FALSE)
-                YieldProcessor();
+         while (DrvUnloadFreeAllApcContextStructures() == FALSE)
+                 YieldProcessor();
 
         DrvUnloadUnregisterObCallbacks();
         DrvUnloadFreeThreadList();
@@ -951,7 +1020,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 
         IoDeleteDevice(DriverObject->DeviceObject);
 
-        DEBUG_LOG("Driver unloaded");
+        DEBUG_INFO("Driver successfully unloaded.");
 }
 
 /*
@@ -966,7 +1035,9 @@ DrvLoadEnableNotifyRoutines()
 {
         PAGED_CODE();
 
-        NTSTATUS status = STATUS_ABANDONED;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        DEBUG_VERBOSE("Enabling driver wide notify routines.");
 
         status = InitialiseThreadList();
 
@@ -1018,6 +1089,8 @@ DrvLoadEnableNotifyRoutines()
         //	return status;
         // }
 
+        DEBUG_VERBOSE("Successfully enabled driver wide notify routines.");
+
         return status;
 }
 
@@ -1054,16 +1127,23 @@ DrvLoadInitialiseProcessConfig()
 
 STATIC
 NTSTATUS
-DrvLoadInitialiseDriverConfig(_In_ PUNICODE_STRING RegistryPath)
+DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
         PAGED_CODE();
 
-        NTSTATUS status;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
 
         /* 3rd page acts as a null terminator for the callback routine */
         RTL_QUERY_REGISTRY_TABLE query_table[3] = {0};
 
+        DEBUG_VERBOSE("Initialising driver configuration");
+
         KeInitializeGuardedMutex(&driver_config.lock);
+
+        /*
+         * Lets do something cheeky and not reference our driver object here even though we do hold
+         * a reference to it, purely for APC reasons...
+         */
         driver_config.unload_in_progress = FALSE;
 
         RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
@@ -1101,7 +1181,7 @@ DrvLoadInitialiseDriverConfig(_In_ PUNICODE_STRING RegistryPath)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("Failed to convert unicode string to ansi string");
+                DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
@@ -1136,8 +1216,9 @@ DrvLoadInitialiseDriverConfig(_In_ PUNICODE_STRING RegistryPath)
                 return status;
         }
 
-        DEBUG_LOG("Motherboard serial: %s", driver_config.system_information.motherboard_serial);
-        DEBUG_LOG("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
+        DEBUG_VERBOSE("Motherboard serial: %s",
+                      driver_config.system_information.motherboard_serial);
+        DEBUG_VERBOSE("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
 
         return status;
 }
@@ -1147,11 +1228,11 @@ NTSTATUS
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
         BOOLEAN  flag   = FALSE;
-        NTSTATUS status = STATUS_ABANDONED;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-        DEBUG_LOG("Beginning driver entry lolz");
+        DEBUG_VERBOSE("Beginning driver entry routine...");
 
-        status = DrvLoadInitialiseDriverConfig(RegistryPath);
+        status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
 
         if (!NT_SUCCESS(status))
         {
@@ -1176,12 +1257,15 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
+        driver_config.driver_object = DriverObject;
+        driver_config.device_object = DriverObject->DeviceObject;
+
         status =
             IoCreateSymbolicLink(&driver_config.device_symbolic_link, &driver_config.device_name);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("failed to create symbolic link");
+                DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 IoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
@@ -1196,7 +1280,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         if (!flag)
         {
-                DEBUG_ERROR("failed to init report queue");
+                DEBUG_ERROR("InitialiseReportQueue failed with no status.");
                 DrvUnloadFreeConfigStrings();
                 IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
                 IoDeleteDevice(DriverObject->DeviceObject);
@@ -1207,7 +1291,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("failed to init callback routines on driver entry");
+                DEBUG_ERROR("EnablenotifyRoutines failed with status %x", status);
                 DrvUnloadFreeGlobalReportQueue();
                 DrvUnloadFreeConfigStrings();
                 IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
@@ -1219,7 +1303,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         // ValidateNtoskrnl();
         // LaunchInterProcessInterrupt(NULL);
         // EnumerateBigPoolAllocations();
-        DEBUG_LOG("DonnaAC Driver Entry Complete");
+        DEBUG_VERBOSE("Driver Entry Complete.");
 
         return STATUS_SUCCESS;
 }
