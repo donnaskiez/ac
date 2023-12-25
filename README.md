@@ -99,7 +99,7 @@ If you are unfamiliar with the kernel debugging mask, you probably need to set o
 
 ```
 ERROR_LEVEL    = 0x2
-WARNING_LEVEL  = 0x7
+WARNING_LEVEL  = 0x8
 INFO_LEVEL     = 0xf
 VERBOSE_LEVEL  = 0x1f
 ```
