@@ -1,87 +1,112 @@
 #include "kmanager.h"
 
-kernelmode::KManager::KManager( LPCWSTR DriverName, std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Client> ReportInterface)
+kernelmode::KManager::KManager(LPCWSTR                             DriverName,
+                               std::shared_ptr<global::ThreadPool> ThreadPool,
+                               std::shared_ptr<global::Client>     ReportInterface)
 {
-	this->driver_interface = std::make_unique<Driver>(DriverName, ReportInterface);
-	this->thread_pool = ThreadPool;
+        this->driver_interface = std::make_unique<Driver>(DriverName, ReportInterface);
+        this->thread_pool      = ThreadPool;
 }
 
-void kernelmode::KManager::RunNmiCallbacks()
+void
+kernelmode::KManager::RunNmiCallbacks()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RunNmiCallbacks(); } );
+        this->thread_pool->QueueJob([this]() { this->driver_interface->RunNmiCallbacks(); });
 }
 
-void kernelmode::KManager::VerifySystemModuleDriverObjects()
+void
+kernelmode::KManager::VerifySystemModuleDriverObjects()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifySystemModuleDriverObjects(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->VerifySystemModuleDriverObjects(); });
 }
 
-void kernelmode::KManager::MonitorCallbackReports()
+void
+kernelmode::KManager::MonitorCallbackReports()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->QueryReportQueue(); } );
+        this->thread_pool->QueueJob([this]() { this->driver_interface->QueryReportQueue(); });
 }
 
-void kernelmode::KManager::DetectSystemVirtualization()
+void
+kernelmode::KManager::DetectSystemVirtualization()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->DetectSystemVirtualization(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->DetectSystemVirtualization(); });
 }
 
-void kernelmode::KManager::EnumerateHandleTables()
+void
+kernelmode::KManager::EnumerateHandleTables()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->CheckHandleTableEntries(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->CheckHandleTableEntries(); });
 }
 
-void kernelmode::KManager::RequestModuleExecutableRegionsForIntegrityCheck()
+void
+kernelmode::KManager::RequestModuleExecutableRegionsForIntegrityCheck()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->RequestModuleExecutableRegions(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->RequestModuleExecutableRegions(); });
 }
 
-VOID kernelmode::KManager::ScanPoolsForUnlinkedProcesses()
+VOID
+kernelmode::KManager::ScanPoolsForUnlinkedProcesses()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->ScanForUnlinkedProcess(); } );
+        this->thread_pool->QueueJob([this]() { this->driver_interface->ScanForUnlinkedProcess(); });
 }
 
-VOID kernelmode::KManager::PerformIntegrityCheck()
+VOID
+kernelmode::KManager::PerformIntegrityCheck()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->PerformIntegrityCheck(); } );
+        this->thread_pool->QueueJob([this]() { this->driver_interface->PerformIntegrityCheck(); });
 }
 
-VOID kernelmode::KManager::CheckForAttachedThreads()
+VOID
+kernelmode::KManager::CheckForAttachedThreads()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->CheckForAttachedThreads(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->CheckForAttachedThreads(); });
 }
 
-VOID kernelmode::KManager::ValidateProcessModules()
+VOID
+kernelmode::KManager::ValidateProcessModules()
 {
-	this->thread_pool->QueueJob( [ this ]() { this->driver_interface->VerifyProcessLoadedModuleExecutableRegions(); } );
+        this->thread_pool->QueueJob(
+            [this]() { this->driver_interface->VerifyProcessLoadedModuleExecutableRegions(); });
 }
 
-VOID kernelmode::KManager::SendClientHardwareInformation()
+VOID
+kernelmode::KManager::SendClientHardwareInformation()
 {
-	this->driver_interface->SendClientHardwareInformation();
+        this->driver_interface->SendClientHardwareInformation();
 }
 
-VOID kernelmode::KManager::InitiateApcStackwalkOperation()
+VOID
+kernelmode::KManager::InitiateApcStackwalkOperation()
 {
-	this->driver_interface->InitiateApcOperation( kernelmode::APC_OPERATION_IDS::operation_stackwalk );
+        this->driver_interface->InitiateApcOperation(
+            kernelmode::APC_OPERATION_IDS::operation_stackwalk);
 }
 
-VOID kernelmode::KManager::CheckForHiddenThreads()
+VOID
+kernelmode::KManager::CheckForHiddenThreads()
 {
-	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForHiddenThreads(); });
+        this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForHiddenThreads(); });
 }
 
-VOID kernelmode::KManager::CheckForEptHooks()
+VOID
+kernelmode::KManager::CheckForEptHooks()
 {
-	this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForEptHooks(); });
+        this->thread_pool->QueueJob([this]() { this->driver_interface->CheckForEptHooks(); });
 }
 
-VOID kernelmode::KManager::LaunchIpiInterrupt()
+VOID
+kernelmode::KManager::LaunchIpiInterrupt()
 {
-	this->thread_pool->QueueJob([this]() { this->driver_interface->LaunchIpiInterrupt(); });
+        this->thread_pool->QueueJob([this]() { this->driver_interface->LaunchIpiInterrupt(); });
 }
 
-VOID kernelmode::KManager::ValidateSystemModules()
+VOID
+kernelmode::KManager::ValidateSystemModules()
 {
-	this->thread_pool->QueueJob([this]() { this->driver_interface->ValidateSystemModules(); });
+        this->thread_pool->QueueJob([this]() { this->driver_interface->ValidateSystemModules(); });
 }

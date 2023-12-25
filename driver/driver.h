@@ -19,10 +19,33 @@
 
 #define IOCTL_STORAGE_QUERY_PROPERTY 0x002D1400
 
+typedef enum _ENVIRONMENT_TYPE
+{
+        NativeWindows = 0,
+        Vmware,
+        VirtualBox
+
+} ENVIRONMENT_TYPE;
+
+typedef enum _PROCESSOR_TYPE
+{
+        Unknown = 0,
+        GenuineIntel,
+        AuthenticAmd
+
+} PROCESSOR_TYPE;
+
+#define VENDOR_STRING_MAX_LENGTH 256
+
 typedef struct _SYSTEM_INFORMATION
 {
-        CHAR motherboard_serial[MOTHERBOARD_SERIAL_CODE_LENGTH];
-        CHAR drive_0_serial[DEVICE_DRIVE_0_SERIAL_CODE_LENGTH];
+        CHAR               motherboard_serial[MOTHERBOARD_SERIAL_CODE_LENGTH];
+        CHAR               drive_0_serial[DEVICE_DRIVE_0_SERIAL_CODE_LENGTH];
+        CHAR               vendor[VENDOR_STRING_MAX_LENGTH];
+        BOOLEAN            virtualised_environment;
+        ENVIRONMENT_TYPE   environment;
+        PROCESSOR_TYPE     processor;
+        RTL_OSVERSIONINFOW os_information;
 
 } SYSTEM_INFORMATION, *PSYSTEM_INFORMATION;
 

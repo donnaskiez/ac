@@ -10,18 +10,6 @@
 #include <initguid.h>
 #include <devpkey.h>
 
-#define SMBIOS_TABLE 'RSMB'
-
-/* for generic intel */
-#define SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE 2
-#define MOTHERBOARD_SERIAL_CODE_TABLE_INDEX    4
-
-#define NULL_TERMINATOR '\0'
-
-/* for testing purposes in vmware */
-#define VMWARE_SMBIOS_TABLE       1
-#define VMWARE_SMBIOS_TABLE_INDEX 3
-
 typedef struct _INTEGRITY_CHECK_HEADER
 {
         INT  executable_section_count;
@@ -773,7 +761,8 @@ end:
 
         return status;
 }
-
+#define SMBIOS_TABLE    'RSMB'
+#define NULL_TERMINATOR '\0'
 /*
  * From line 727 in the SMBIOS Specification:
  *
@@ -876,9 +865,19 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
         return STATUS_NOT_FOUND;
 }
 
+/* for generic intel */
+//#define SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE 2
+//#define MOTHERBOARD_SERIAL_CODE_TABLE_INDEX    4
+
+/* for testing purposes in vmware */
+//#define VMWARE_SMBIOS_TABLE       1
+//#define VMWARE_SMBIOS_TABLE_INDEX 3
+
 NTSTATUS
-ParseSMBIOSTable(_In_ PVOID  ConfigMotherboardSerialNumber,
-                 _In_ SIZE_T ConfigMotherboardSerialNumberMaxSize)
+ParseSMBIOSTable(_Out_ PVOID Buffer,
+                 _In_ SIZE_T BufferSize,
+                 _In_ SMBIOS_TABLE_INDEX TableIndex,
+                 _In_ ULONG  TableSubIndex)
 {
         PAGED_CODE();
 
@@ -928,13 +927,11 @@ ParseSMBIOSTable(_In_ PVOID  ConfigMotherboardSerialNumber,
          * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
          * line 823
          */
-        while (smbios_table_header->Type != VMWARE_SMBIOS_TABLE)
+        while (smbios_table_header->Type != TableIndex)
                 GetNextSMBIOSStructureInTable(&smbios_table_header);
 
-        status = GetStringAtIndexFromSMBIOSTable(smbios_table_header,
-                                                 VMWARE_SMBIOS_TABLE_INDEX,
-                                                 ConfigMotherboardSerialNumber,
-                                                 ConfigMotherboardSerialNumberMaxSize);
+        status =
+            GetStringAtIndexFromSMBIOSTable(smbios_table_header, TableSubIndex, Buffer, BufferSize);
 
         if (!NT_SUCCESS(status))
         {
@@ -1709,8 +1706,7 @@ ValidateSystemModules()
                 if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
                         goto free_iteration;
 
-                result =
-                    RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
+                result = RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
 
                 if (result = memory_text_header->SizeOfRawData)
                         DEBUG_VERBOSE("Module executable sections are valid for the module: %s",

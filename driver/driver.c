@@ -103,29 +103,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
 #define MAXIMUM_APC_CONTEXTS 10
 
-/*
- * Determines whether a protection routine is active. This allows us to deactivate a method based on
- * some criteria, such as windows version. Some things should never be disabled though, so having
- * them as an option here such as the integrity check is probably not the best idea.
- */
-typedef struct _PROTECTION_METHOD_FLAGS
-{
-        BOOLEAN process_module_verification;
-        BOOLEAN nmi_callbacks;
-        BOOLEAN apc_stackwalk;
-        BOOLEAN ipi_stackwalk;
-        BOOLEAN validate_driver_objects;
-        BOOLEAN virtualization_check;
-        BOOLEAN enumerate_handle_tables;
-        BOOLEAN unlinked_process_scan;
-        BOOLEAN kpcrb_validation;
-        BOOLEAN driver_integrity_check;
-        BOOLEAN attached_threads;
-        BOOLEAN validate_system_modules;
-        BOOLEAN ept_hook;
-
-} PROTECTION_METHOD_FLAGS, *PPROTECTION_METHOD_FLAGS;
-
 typedef struct _DRIVER_CONFIG
 {
         UNICODE_STRING     unicode_driver_name;
@@ -1008,8 +985,8 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
          * This is the issue with using APCs, we have very little safe control over when they
          * complete and thus when we can free them.. For now, thisl do.
          */
-         while (DrvUnloadFreeAllApcContextStructures() == FALSE)
-                 YieldProcessor();
+        while (DrvUnloadFreeAllApcContextStructures() == FALSE)
+                YieldProcessor();
 
         DrvUnloadUnregisterObCallbacks();
         DrvUnloadFreeThreadList();
@@ -1125,26 +1102,184 @@ DrvLoadInitialiseProcessConfig()
         KeInitializeGuardedMutex(&process_config.lock);
 }
 
+/*
+ * Values returned from CPUID that are equval to the vendor string
+ */
+#define CPUID_AUTHENTIC_AMD_EBX 0x68747541
+#define CPUID_AUTHENTIC_AMD_EDX 0x69746e65
+#define CPUID_AUTHENTIC_AMD_ECX 0x444d4163
+
+#define CPUID_GENUINE_INTEL_EBX 0x756e6547
+#define CPUID_GENUINE_INTEL_EDX 0x49656e69
+#define CPUID_GENUINE_INTEL_ECX 0x6c65746e
+
+STATIC
+NTSTATUS
+GetSystemProcessorType()
+{
+        UINT32 cpuid[4] = {0};
+
+        __cpuid(cpuid, 0);
+
+        DEBUG_VERBOSE("Cpuid: EBX: %lx, ECX: %lx, EDX: %lx", cpuid[1], cpuid[2], cpuid[3]);
+
+        if (cpuid[1] == CPUID_AUTHENTIC_AMD_EBX && cpuid[2] == CPUID_AUTHENTIC_AMD_ECX &&
+            cpuid[3] == CPUID_AUTHENTIC_AMD_EDX)
+        {
+                driver_config.system_information.processor = GenuineIntel;
+                return STATUS_SUCCESS;
+        }
+        else if (cpuid[1] == CPUID_GENUINE_INTEL_EBX && cpuid[2] == CPUID_GENUINE_INTEL_ECX &&
+                 cpuid[3] == CPUID_GENUINE_INTEL_EDX)
+        {
+                driver_config.system_information.processor = AuthenticAmd;
+                return STATUS_SUCCESS;
+        }
+        else
+        {
+                driver_config.system_information.processor = Unknown;
+                return STATUS_UNSUCCESSFUL;
+        }
+}
+
+/*
+ * Even though we are technically not meant to be operating when running under a virtualized system,
+ * it is still useful to test the attainment of system information under a virtualized system for
+ * testing purposes.
+ */
+STATIC
+NTSTATUS
+ParseSmbiosForGivenSystemEnvironment()
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        status = ParseSMBIOSTable(&driver_config.system_information.vendor,
+                                  VENDOR_STRING_MAX_LENGTH,
+                                  SmbiosInformation,
+                                  SMBIOS_VENDOR_STRING_SUB_INDEX);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
+                return status;
+        }
+
+        if (strstr(&driver_config.system_information.vendor, "VMware, Inc"))
+                driver_config.system_information.environment = Vmware;
+        else if (strstr(&driver_config.system_information.vendor, "innotek GmbH"))
+                driver_config.system_information.environment = VirtualBox;
+        else
+                driver_config.system_information.environment = NativeWindows;
+
+        switch (driver_config.system_information.environment)
+        {
+        case NativeWindows:
+        {
+                status = ParseSMBIOSTable(&driver_config.system_information.motherboard_serial,
+                                          MOTHERBOARD_SERIAL_CODE_LENGTH,
+                                          VendorSpecificInformation,
+                                          SMBIOS_NATIVE_SERIAL_NUMBER_SUB_INDEX);
+
+                break;
+        }
+        case Vmware:
+        {
+                status = ParseSMBIOSTable(&driver_config.system_information.motherboard_serial,
+                                          MOTHERBOARD_SERIAL_CODE_LENGTH,
+                                          SystemInformation,
+                                          SMBIOS_VMWARE_SERIAL_NUMBER_SUB_INDEX);
+
+                break;
+        }
+        case VirtualBox:
+        default: DEBUG_WARNING("Environment type not supported."); return STATUS_NOT_SUPPORTED;
+        }
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
+                return status;
+        }
+
+        return status;
+}
+
+STATIC
+NTSTATUS
+DrvLoadGatherSystemEnvironmentSettings()
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        /*
+         * On Vmware, the APERF_MSR is not emulated hence this will return TRUE.
+         */
+        if (APERFMsrTimingCheck())
+                driver_config.system_information.virtualised_environment = TRUE;
+
+        status = GetOsVersionInformation(&driver_config.system_information.os_information);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetOsVersionInformation failed with status %x", status);
+                return status;
+        }
+
+        status = GetSystemProcessorType();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetSystemProcessorType failed with status %x", status);
+                return status;
+        }
+
+        status = ParseSmbiosForGivenSystemEnvironment();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ParseSmbiosForGivenSystemEnvironment failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
+                return status;
+        }
+
+        status =
+            GetHardDiskDriveSerialNumber(&driver_config.system_information.drive_0_serial,
+                                         sizeof(driver_config.system_information.drive_0_serial));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetHardDiskDriverSerialNumber failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
+                return status;
+        }
+
+        DEBUG_VERBOSE("OS Major Version: %lx, Minor Version: %lx, Build Number: %lx",
+                      driver_config.system_information.os_information.dwMajorVersion,
+                      driver_config.system_information.os_information.dwMinorVersion,
+                      driver_config.system_information.os_information.dwBuildNumber);
+        DEBUG_VERBOSE("Environment type: %lx", driver_config.system_information.environment);
+        DEBUG_VERBOSE("Processor type: %lx", driver_config.system_information.processor);
+        DEBUG_VERBOSE("Motherboard serial: %s",
+                      driver_config.system_information.motherboard_serial);
+        DEBUG_VERBOSE("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
+
+        return status;
+}
+
 STATIC
 NTSTATUS
 DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
         PAGED_CODE();
 
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        /* 3rd page acts as a null terminator for the callback routine */
+        NTSTATUS                 status         = STATUS_UNSUCCESSFUL;
         RTL_QUERY_REGISTRY_TABLE query_table[3] = {0};
 
         DEBUG_VERBOSE("Initialising driver configuration");
 
         KeInitializeGuardedMutex(&driver_config.lock);
 
-        /*
-         * Lets do something cheeky and not reference our driver object here even though we do hold
-         * a reference to it, purely for APC reasons...
-         */
-        driver_config.unload_in_progress = FALSE;
+        driver_config.unload_in_progress                         = FALSE;
+        driver_config.system_information.virtualised_environment = FALSE;
 
         RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
         RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
@@ -1186,23 +1321,11 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
                 return status;
         }
 
-        status = ParseSMBIOSTable(&driver_config.system_information.motherboard_serial,
-                                  sizeof(driver_config.system_information.motherboard_serial));
+        status = DrvLoadGatherSystemEnvironmentSettings();
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
-                return status;
-        }
-
-        status =
-            GetHardDiskDriveSerialNumber(&driver_config.system_information.drive_0_serial,
-                                         sizeof(driver_config.system_information.drive_0_serial));
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetHardDiskDriverSerialNumber failed with status %x", status);
+                DEBUG_ERROR("GatherSystemEnvironmentSettings failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
@@ -1215,10 +1338,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
-
-        DEBUG_VERBOSE("Motherboard serial: %s",
-                      driver_config.system_information.motherboard_serial);
-        DEBUG_VERBOSE("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
 
         return status;
 }

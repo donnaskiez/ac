@@ -22,7 +22,7 @@
  * reference: https://secret.club/2020/01/12/battleye-hypervisor-detection.html
  */
 
-_IRQL_always_function_max_(HIGH_LEVEL) STATIC INT APERFMsrTimingCheck()
+_IRQL_always_function_max_(HIGH_LEVEL) INT APERFMsrTimingCheck()
 {
         KAFFINITY new_affinity = {0};
         KAFFINITY old_affinity = {0};

@@ -6,22 +6,21 @@
 #include <map>
 #include <string>
 
-typedef NTSTATUS( WINAPI* pNtQueryInformationThread )( HANDLE, LONG, PVOID, ULONG, PULONG );
-typedef BOOLEAN( NTAPI pRtlDosPathNameToNtPathName_U( PCWSTR, PVOID, PCWSTR*, PVOID ));
+typedef NTSTATUS(WINAPI* pNtQueryInformationThread)(HANDLE, LONG, PVOID, ULONG, PULONG);
+typedef BOOLEAN(NTAPI pRtlDosPathNameToNtPathName_U(PCWSTR, PVOID, PCWSTR*, PVOID));
 
-namespace usermode
+namespace usermode {
+class Imports
 {
-	class Imports
-	{
-	public:
-		std::map<std::string, void*> ImportMap;
+    public:
+        std::map<std::string, void*> ImportMap;
 
-		void* NtQueryInformationThread;
-		void* NtQueryVirtualMemory;
-		void* RtlDosPathNameToNtPathName_U;
+        void* NtQueryInformationThread;
+        void* NtQueryVirtualMemory;
+        void* RtlDosPathNameToNtPathName_U;
 
-		Imports();
-	};
+        Imports();
+};
 }
 
 #endif

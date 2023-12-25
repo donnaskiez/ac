@@ -12,26 +12,26 @@
 
 #include "process.h"
 
-namespace usermode
+namespace usermode {
+/*
+ * The manager class is meant to abstract away the interaction between the Process
+ * class and the threadpool class to allow a single thread (or multiple) to easily run
+ * the core business logic of running tasks in a certain order.
+ */
+class UManager
 {
-	/*
-	* The manager class is meant to abstract away the interaction between the Process
-	* class and the threadpool class to allow a single thread (or multiple) to easily run
-	* the core business logic of running tasks in a certain order.
-	*/
-	class UManager
-	{
-		std::unique_ptr<Process> process;
-		std::shared_ptr<global::ThreadPool> thread_pool;
+        std::unique_ptr<Process>            process;
+        std::shared_ptr<global::ThreadPool> thread_pool;
 
-	public:
-		UManager( std::shared_ptr<global::ThreadPool> ThreadPool, std::shared_ptr<global::Client> ReportInterface );
-		~UManager();
+    public:
+        UManager(std::shared_ptr<global::ThreadPool> ThreadPool,
+                 std::shared_ptr<global::Client>     ReportInterface);
+        ~UManager();
 
-		void ValidateProcessThreads();
-		void ValidateProcessMemory();
-		void ValidateProcessModules();
-	};
+        void ValidateProcessThreads();
+        void ValidateProcessMemory();
+        void ValidateProcessModules();
+};
 }
 
 #endif

@@ -1366,7 +1366,7 @@ ValidateThreadsViaKernelApc()
         if (context)
         {
                 DEBUG_WARNING("Existing APC_STACKWALK operation already in progress.");
-                return STATUS_ALREADY_INITIALIZED;
+                return STATUS_SUCCESS;
         }
 
         context = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
