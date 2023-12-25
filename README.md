@@ -98,8 +98,8 @@ If you are unfamiliar with the kernel debugging mask, you probably need to set o
 2. Determine the level(s) of logging you would like to see. For most people interested I would set either `INFO_LEVEL` or `VERBOSE_LEVEL`. Remember that if you set `INFO_LEVEL`, you will see all `INFO_LEVEL`, `WARNING_LEVEL` and `ERROR_LEVEL` logs. Ie you see all logs above and including your set level.
 
 ```
-ERROR_LEVEL    = 0x2
-WARNING_LEVEL  = 0x8
+ERROR_LEVEL    = 0x3
+WARNING_LEVEL  = 0x7
 INFO_LEVEL     = 0xf
 VERBOSE_LEVEL  = 0x1f
 ```
