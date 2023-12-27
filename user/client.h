@@ -69,6 +69,9 @@ class Client
         template <typename T>
         void ReportViolation(T* Report)
         {
+#if NO_SERVER
+                return;
+#else
                 mutex.lock();
 
                 global::headers::PIPE_PACKET_HEADER header = {0};
@@ -85,6 +88,7 @@ class Client
                 RtlZeroMemory(this->report_buffer, REPORT_BUFFER_SIZE);
 
                 mutex.unlock();
+#endif
         }
 
         void ServerReceive(PVOID Buffer, SIZE_T Size);

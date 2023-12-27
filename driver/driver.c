@@ -167,7 +167,7 @@ TerminateProtectedProcessOnViolation()
 {
         PAGED_CODE();
 
-        NTSTATUS status     = STATUS_ABANDONED;
+        NTSTATUS status     = STATUS_UNSUCCESSFUL;
         ULONG    process_id = 0;
 
         GetProtectedProcessId(&process_id);
@@ -226,21 +226,28 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
 
                 driver_config.driver_path.Buffer        = (PWCH)temp_buffer;
                 driver_config.driver_path.Length        = ValueLength;
-                driver_config.driver_path.MaximumLength = ValueLength + 1;
+                driver_config.driver_path.MaximumLength = ValueLength;
         }
 
         if (RtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
         {
-                temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
+                temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
 
                 if (!temp_buffer)
                         return STATUS_MEMORY_NOT_ALLOCATED;
 
+                /*
+                 * The registry path driver name does not contain the .sys extension which is
+                 * required for us since when we enumerate the system modules we are comparing the
+                 * entire path including the .sys extension. Hence we add it to the end of the
+                 * buffer here.
+                 */
                 RtlCopyMemory(temp_buffer, ValueData, ValueLength);
+                wcscpy((UINT64)temp_buffer + ValueLength - 2, L".sys");
 
                 driver_config.unicode_driver_name.Buffer        = (PWCH)temp_buffer;
-                driver_config.unicode_driver_name.Length        = ValueLength;
-                driver_config.unicode_driver_name.MaximumLength = ValueLength + 1;
+                driver_config.unicode_driver_name.Length        = ValueLength + 20;
+                driver_config.unicode_driver_name.MaximumLength = ValueLength + 20;
         }
 
         return STATUS_SUCCESS;
@@ -252,33 +259,6 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
  * APC related routines
  *
  */
-
-NTSTATUS
-SelfReferenceDriver()
-{
-        NTSTATUS          status = STATUS_UNSUCCESSFUL;
-        HANDLE            handle = NULL;
-        UNICODE_STRING    path   = {0};
-        OBJECT_ATTRIBUTES oa     = {0};
-        IO_STATUS_BLOCK   io     = {0};
-
-        DEBUG_VERBOSE("Opening self referencing handle");
-
-        GetDriverPath(&path);
-        __debugbreak();
-        InitializeObjectAttributes(
-            &oa, &path, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-        status = ZwOpenFile(&handle, GENERIC_READ, &oa, &io, NULL, NULL);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ZwOpenFile failed with status %x", status);
-                return status;
-        }
-        __debugbreak();
-        return status;
-}
 
 /*
  * No need to hold the lock here as the thread freeing the APCs will
@@ -306,8 +286,6 @@ FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
                         ExFreePoolWithTag(Context, POOL_TAG_APC);
                         entry[index] = NULL;
                         result       = TRUE;
-                        ObDereferenceObject(driver_config.driver_object);
-                        ObDereferenceObject(driver_config.device_object);
                         goto unlock;
                 }
         }
@@ -445,18 +423,6 @@ InsertApcContext(_In_ PVOID Context)
                 if (entry[index] == NULL)
                 {
                         entry[index] = Context;
-
-                        /*
-                         * When we insert a new APC context, lets increment our drivers reference
-                         * count. When we remove an APC context, we will decrement this reference
-                         * count. This allows us to queue the driver for deletion but the unload
-                         * routine wont execute until all APC contexts have been completed, allowing
-                         * us to cleanup everything properly. The old strategy of blocking the
-                         * unload routine method was not very nice and I think this is a much better
-                         * method of going about it.
-                         */
-                        ObReferenceObject(driver_config.driver_object);
-                        ObReferenceObject(driver_config.device_object);
                         goto end;
                 }
         }
@@ -1113,6 +1079,10 @@ DrvLoadInitialiseProcessConfig()
 #define CPUID_GENUINE_INTEL_EDX 0x49656e69
 #define CPUID_GENUINE_INTEL_ECX 0x6c65746e
 
+#define EBX_REGISTER 1
+#define ECX_REGISTER 2
+#define EDX_REGISTER 3
+
 STATIC
 NTSTATUS
 GetSystemProcessorType()
@@ -1123,14 +1093,16 @@ GetSystemProcessorType()
 
         DEBUG_VERBOSE("Cpuid: EBX: %lx, ECX: %lx, EDX: %lx", cpuid[1], cpuid[2], cpuid[3]);
 
-        if (cpuid[1] == CPUID_AUTHENTIC_AMD_EBX && cpuid[2] == CPUID_AUTHENTIC_AMD_ECX &&
-            cpuid[3] == CPUID_AUTHENTIC_AMD_EDX)
+        if (cpuid[EBX_REGISTER] == CPUID_AUTHENTIC_AMD_EBX &&
+            cpuid[ECX_REGISTER] == CPUID_AUTHENTIC_AMD_ECX &&
+            cpuid[EDX_REGISTER] == CPUID_AUTHENTIC_AMD_EDX)
         {
                 driver_config.system_information.processor = GenuineIntel;
                 return STATUS_SUCCESS;
         }
-        else if (cpuid[1] == CPUID_GENUINE_INTEL_EBX && cpuid[2] == CPUID_GENUINE_INTEL_ECX &&
-                 cpuid[3] == CPUID_GENUINE_INTEL_EDX)
+        else if (cpuid[EBX_REGISTER] == CPUID_GENUINE_INTEL_EBX &&
+                 cpuid[ECX_REGISTER] == CPUID_GENUINE_INTEL_ECX &&
+                 cpuid[EDX_REGISTER] == CPUID_GENUINE_INTEL_EDX)
         {
                 driver_config.system_information.processor = AuthenticAmd;
                 return STATUS_SUCCESS;
@@ -1175,6 +1147,10 @@ ParseSmbiosForGivenSystemEnvironment()
         {
         case NativeWindows:
         {
+                /*
+                 * TODO: double check that amd indexes are the same should be, but should check just
+                 * in case
+                 */
                 status = ParseSMBIOSTable(&driver_config.system_information.motherboard_serial,
                                           MOTHERBOARD_SERIAL_CODE_LENGTH,
                                           VendorSpecificInformation,
@@ -1197,7 +1173,7 @@ ParseSmbiosForGivenSystemEnvironment()
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
+                DEBUG_ERROR("ParseSMBIOSTable 2 failed with status %x", status);
                 return status;
         }
 
@@ -1267,23 +1243,10 @@ DrvLoadGatherSystemEnvironmentSettings()
 
 STATIC
 NTSTATUS
-DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
+DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
 {
-        PAGED_CODE();
-
         NTSTATUS                 status         = STATUS_UNSUCCESSFUL;
         RTL_QUERY_REGISTRY_TABLE query_table[3] = {0};
-
-        DEBUG_VERBOSE("Initialising driver configuration");
-
-        KeInitializeGuardedMutex(&driver_config.lock);
-
-        driver_config.unload_in_progress                         = FALSE;
-        driver_config.system_information.virtualised_environment = FALSE;
-
-        RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
-        RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
-        RtlCopyUnicodeString(&driver_config.registry_path, RegistryPath);
 
         query_table[0].Flags         = RTL_QUERY_REGISTRY_NOEXPAND;
         query_table[0].Name          = L"ImagePath";
@@ -1307,9 +1270,14 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
+
+        /*
+         * The registry path contains the name of the driver i.e Driver, but does not contain the
+         * .sys extension. Lets add it to our stored driver name since we need the .sys extension
+         * when querying the system modules for our driver.
+         */
 
         status = RtlUnicodeStringToAnsiString(
             &driver_config.ansi_driver_name, &driver_config.unicode_driver_name, TRUE);
@@ -1317,6 +1285,34 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
+                return status;
+        }
+}
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
+{
+        PAGED_CODE();
+
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        DEBUG_VERBOSE("Initialising driver configuration");
+
+        KeInitializeGuardedMutex(&driver_config.lock);
+
+        driver_config.unload_in_progress                         = FALSE;
+        driver_config.system_information.virtualised_environment = FALSE;
+
+        RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
+        RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
+        RtlCopyUnicodeString(&driver_config.registry_path, RegistryPath);
+
+        status = DrvLoadRetrieveDriverNameFromRegistry(RegistryPath);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("DrvLoadRetrieveDriverNameFromRegistry failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
@@ -1338,6 +1334,8 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
+
+        DEBUG_VERBOSE("driver name: %s", driver_config.ansi_driver_name.Buffer);
 
         return status;
 }
@@ -1417,6 +1415,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 IoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
+
+        LPCSTR driver_name = NULL;
+        GetDriverName(&driver_name);
+        DEBUG_VERBOSE("Driver name: %s", driver_name);
 
         // ValidateSystemModules();
         // ValidateNtoskrnl();

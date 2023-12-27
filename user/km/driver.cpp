@@ -184,6 +184,7 @@ kernelmode::Driver::QueryReportQueue()
         buffer_size =
             sizeof(APC_STACKWALK_REPORT) * MAX_REPORTS_PER_IRP + sizeof(REPORT_QUEUE_HEADER);
 
+        /* this isnt very c++ of us... */
         buffer = malloc(buffer_size);
 
         status = DeviceIoControl(this->driver_handle,
@@ -586,7 +587,13 @@ kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
                 module_information.module_base = module_entry.modBaseAddr;
                 module_information.module_size = module_entry.modBaseSize;
 
-                (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath, &nt_path_name, NULL, NULL);
+                status = (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath, &nt_path_name, NULL, NULL);
+
+                if (!status)
+                {
+                        LOG_ERROR("RtlDosPathNameToNtPathName_U failed with no status.");
+                        continue;
+                }
 
                 memcpy(module_information.module_path, nt_path_name.Buffer, MAX_MODULE_PATH);
 

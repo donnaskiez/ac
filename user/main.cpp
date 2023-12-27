@@ -58,7 +58,7 @@ Init(HINSTANCE hinstDLL)
         global::headers::SYSTEM_INFORMATION system_information = {0};
         kmanager.SendClientHardwareInformation();
 
-        global::report_structures::SYSTEM_INFORMATION_REQUEST_RESPONSE response;
+        global::report_structures::SYSTEM_INFORMATION_REQUEST_RESPONSE response = {0};
 
         // client_interface->ServerReceive( &response, sizeof( response ) );
 
@@ -68,8 +68,10 @@ Init(HINSTANCE hinstDLL)
         /*
          * Note that this is really just for testing the methods for extended periods of time.
          * The "real business logic" would execute the methods with varying degrees of uncertaintity
-         * but still allow for bias, i.e we don't want NMI callbacks to be running every 10 seconds
-         * since they are "dangerous" for the CPU given the IRQL they run at.
+         * but still allow for bias, i.e we don't want NMI callbacks to be running every 10 seconds.
+         * We also need to take into account the performance penalty that some of these routines
+         * have, such as the process module validation. At the end of the day an anti cheat that
+         * imposes a significant performance pentalty on the game its protecting is useless.
          */
 
         srand(time(NULL));
@@ -82,66 +84,18 @@ Init(HINSTANCE hinstDLL)
 
                 switch (seed)
                 {
-                case 0:
-                {
-                        kmanager.EnumerateHandleTables();
-                        break;
-                }
-                case 1:
-                {
-                        kmanager.PerformIntegrityCheck();
-                        break;
-                }
-                case 2:
-                {
-                        kmanager.ScanPoolsForUnlinkedProcesses();
-                        break;
-                }
-                case 3:
-                {
-                        kmanager.VerifySystemModuleDriverObjects();
-                        break;
-                }
-                case 4:
-                {
-                        kmanager.ValidateProcessModules();
-                        break;
-                }
-                case 5:
-                {
-                        kmanager.RunNmiCallbacks();
-                        break;
-                }
-                case 6:
-                {
-                        kmanager.CheckForAttachedThreads();
-                        break;
-                }
-                case 7:
-                {
-                        kmanager.InitiateApcStackwalkOperation();
-                        break;
-                }
-                case 8:
-                {
-                        kmanager.CheckForHiddenThreads();
-                        break;
-                }
-                case 9:
-                {
-                        kmanager.CheckForEptHooks();
-                        break;
-                }
-                case 10:
-                {
-                        kmanager.LaunchIpiInterrupt();
-                        break;
-                }
-                case 11:
-                {
-                        kmanager.ValidateSystemModules();
-                        break;
-                }
+                case 0: kmanager.EnumerateHandleTables(); break;
+                case 1: kmanager.PerformIntegrityCheck(); break;
+                case 2: kmanager.ScanPoolsForUnlinkedProcesses(); break;
+                case 3: kmanager.VerifySystemModuleDriverObjects(); break;
+                case 4: kmanager.ValidateProcessModules(); break;
+                case 5: kmanager.RunNmiCallbacks(); break;
+                case 6: kmanager.CheckForAttachedThreads(); break;
+                case 7: kmanager.InitiateApcStackwalkOperation(); break;
+                case 8: kmanager.CheckForHiddenThreads(); break;
+                case 9: kmanager.CheckForEptHooks(); break;
+                case 10: kmanager.LaunchIpiInterrupt(); break;
+                case 11: kmanager.ValidateSystemModules(); break;
                 }
 
                 kmanager.MonitorCallbackReports();

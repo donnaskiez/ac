@@ -115,9 +115,18 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                  status      = STATUS_ABANDONED;
+        NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
+        LPCSTR                    driver_name = NULL;
         SYSTEM_MODULES            modules     = {0};
         PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
+
+        GetDriverName(&driver_name);
+
+        if (!driver_name)
+        {
+                DEBUG_ERROR("GetDriverName failed with no status.");
+                return status;
+        }
 
         status = GetSystemModuleInformation(&modules);
 
@@ -127,7 +136,7 @@ GetDriverImageSize(_Inout_ PIRP Irp)
                 return status;
         }
 
-        driver_info = FindSystemModuleByName("driver.sys", &modules);
+        driver_info = FindSystemModuleByName(driver_name, &modules);
 
         if (!driver_info)
         {
@@ -161,9 +170,18 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
 {
         PAGED_CODE();
 
-        NTSTATUS                  status      = STATUS_ABANDONED;
+        NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
+        LPCSTR                    driver_name = NULL;
         SYSTEM_MODULES            modules     = {0};
         PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
+
+        GetDriverName(&driver_name);
+
+        if (!driver_name)
+        {
+                DEBUG_ERROR("GetDriverName failed with no status.");
+                return status;
+        }
 
         status = GetSystemModuleInformation(&modules);
 
@@ -173,7 +191,7 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
                 return status;
         }
 
-        driver_info = FindSystemModuleByName("driver.sys", &modules);
+        driver_info = FindSystemModuleByName(driver_name, &modules);
 
         if (!driver_info)
         {
@@ -572,7 +590,7 @@ VerifyInMemoryImageVsDiskImage(
 {
         PAGED_CODE();
 
-        NTSTATUS                 status                = STATUS_ABANDONED;
+        NTSTATUS                 status                = STATUS_UNSUCCESSFUL;
         UNICODE_STRING           path                  = {0};
         HANDLE                   section_handle        = NULL;
         PVOID                    section               = NULL;
@@ -590,8 +608,16 @@ VerifyInMemoryImageVsDiskImage(
         ULONG                    disk_text_hash_size   = 0;
         ULONG                    memory_text_hash_size = 0;
         SIZE_T                   result                = 0;
+        LPCSTR                   driver_name           = NULL;
 
         GetDriverPath(&path);
+        GetDriverName(&driver_name);
+
+        if (!driver_name)
+        {
+                DEBUG_ERROR("GetDriverName failed with no status");
+                return status;
+        }
 
         status =
             MapDiskImageIntoVirtualAddressSpace(&section_handle, &section, &path, &section_size);
@@ -614,7 +640,7 @@ VerifyInMemoryImageVsDiskImage(
         /*
          * Parse the in-memory module
          */
-        status = GetModuleInformationByName(&module_info, "driver.sys");
+        status = GetModuleInformationByName(&module_info, driver_name);
 
         if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
         {
@@ -721,11 +747,20 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
         PAGED_CODE();
 
         NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
+        LPCSTR                   driver_name   = NULL;
         SIZE_T                   bytes_written = NULL;
         PVOID                    buffer        = NULL;
         RTL_MODULE_EXTENDED_INFO module_info   = {0};
 
-        status = GetModuleInformationByName(&module_info, "driver.sys");
+        GetDriverName(&driver_name);
+
+        if (!driver_name)
+        {
+                DEBUG_ERROR("GetDriverName failed with no status");
+                return status;
+        }
+
+        status = GetModuleInformationByName(&module_info, driver_name);
 
         if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
         {
@@ -866,18 +901,18 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
 }
 
 /* for generic intel */
-//#define SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE 2
-//#define MOTHERBOARD_SERIAL_CODE_TABLE_INDEX    4
+// #define SMBIOS_SYSTEM_INFORMATION_TYPE_2_TABLE 2
+// #define MOTHERBOARD_SERIAL_CODE_TABLE_INDEX    4
 
 /* for testing purposes in vmware */
-//#define VMWARE_SMBIOS_TABLE       1
-//#define VMWARE_SMBIOS_TABLE_INDEX 3
+// #define VMWARE_SMBIOS_TABLE       1
+// #define VMWARE_SMBIOS_TABLE_INDEX 3
 
 NTSTATUS
-ParseSMBIOSTable(_Out_ PVOID Buffer,
-                 _In_ SIZE_T BufferSize,
+ParseSMBIOSTable(_Out_ PVOID             Buffer,
+                 _In_ SIZE_T             BufferSize,
                  _In_ SMBIOS_TABLE_INDEX TableIndex,
-                 _In_ ULONG  TableSubIndex)
+                 _In_ ULONG              TableSubIndex)
 {
         PAGED_CODE();
 

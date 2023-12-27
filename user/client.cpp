@@ -9,7 +9,11 @@
 global::Client::Client(std::shared_ptr<global::ThreadPool> ThreadPool, LPTSTR PipeName)
 {
         this->thread_pool = ThreadPool;
+#if NO_SERVER
+        LOG_INFO("No_Server build used. Not opening named pipe.");
+#else 
         this->pipe        = std::make_shared<global::Pipe>(PipeName);
+#endif
 }
 
 /*
@@ -27,6 +31,9 @@ global::Client::ServerReceive(PVOID Buffer, SIZE_T Size)
 void
 global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 {
+#if NO_SERVER
+        return;
+#else
         mutex.lock();
 
         SIZE_T total_header_size = sizeof(global::headers::CLIENT_SEND_PACKET_HEADER) +
@@ -49,9 +56,9 @@ global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 
         RtlZeroMemory(send_buffer, total_header_size + Size);
 
-        global::headers::PIPE_PACKET_HEADER header;
-        header.message_type = MESSAGE_TYPE_CLIENT_SEND;
-        header.steam64_id   = TEST_STEAM_64_ID;
+        global::headers::PIPE_PACKET_HEADER header = {0};
+        header.message_type                        = MESSAGE_TYPE_CLIENT_SEND;
+        header.steam64_id                          = TEST_STEAM_64_ID;
 
         memcpy(send_buffer, &header, sizeof(global::headers::PIPE_PACKET_HEADER));
 
@@ -71,4 +78,6 @@ global::Client::ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId)
 
         mutex.unlock();
         free(send_buffer);
+#endif
+
 }

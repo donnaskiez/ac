@@ -35,6 +35,12 @@ open source anti cheat (lol) which I made for fun.
 - pcileech firmware detection 
 - testing program to test the features
 
+# example
+
+- I have recorded an example of the program running with CS2. Note that vac was obviously disabled. *If you decide to test with a steam game do not forget to launch in insecure mode*
+- Shown are the kernel `VERBOSE` level logs in DebugView along with the usermode application console.
+- You can find the video here
+
 # known issues
 
 - [See the issues page](https://github.com/donnaskiez/ac/issues)
@@ -49,20 +55,23 @@ open source anti cheat (lol) which I made for fun.
 
 Requires [Visual Studio](https://visualstudio.microsoft.com/downloads/) and the [WDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) for compilation.
 
-1. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
+add test signing thing here
+
+1. Open the project in visual studio
+2. Select `Release - No Server`
+3. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
 	- `Inf2Cat -> General -> Use Local Time` to `Yes`
 	- `C/C++ -> Treat Warnings As Errors` to `No`
 	- `C/C++ -> Spectre Mitigation` to `Disabled`
-2. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
-3. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
-	- driver must be named "driver.sys" (sorry.. will be fixed soon (i am lazy))
-4. Under `Service Start` select `System`. This is VERY important!
-5. Click `Register Service`. *Do NOT click* `Start Service`!
-6. Restart Windows. 
-7. Once restarted, open the program you would like to protect as Administrator.
-	- Yes I understand this is not realistic
-8. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
-9. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
+4. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
+	- You can rename the driver if you would like
+5. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` (or whatever you named it) that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
+6. Under `Service Start` select `System`. This is VERY important!
+7. Click `Register Service`. *Do NOT click* `Start Service`!
+8. Restart Windows. 
+9. Once restarted, open the program you would like to protect. This could be anything i.e game, notepad etc.
+10. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
+11. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
 
 Logs will be printed to both the terminal output and the kernel debugger. See below for configuring kernel debugger output.
 
@@ -73,10 +82,10 @@ Note: The server is not needed for the program to function properly.
 The kernel driver is setup to log at 4 distinct levels:
 
 ```C
-#define DPFLTR_ERROR_LEVEL  
-#define DPFLTR_WARNING_LEVEL
-#define DPFLTR_INFO_LEVEL   
-#define DPFLTR_VERBOSE_LEVEL
+#define LOG_ERROR_LEVEL  
+#define LOG_WARNING_LEVEL
+#define LOG_INFO_LEVEL   
+#define LOG_VERBOSE_LEVEL
 ```
 
 As the names suggest, `ERROR_LEVEL` is for errors, `WARNING_LEVEL` is for warnings. `INFO_LEVEL` is for general information regarding what requests the driver is processing and `VERBOSE_LEVEL` contains very detailed information for each request.
