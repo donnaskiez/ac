@@ -34,12 +34,14 @@ open source anti cheat (lol) which I made for fun.
 - tpm spoofer detection
 - pcileech firmware detection 
 - testing program to test the features
+- simple user mode logger + usermode logging overhaul
+- some more which i cant think of
 
 # example
 
 - I have recorded an example of the program running with CS2. Note that vac was obviously disabled. *If you decide to test with a steam game do not forget to launch in insecure mode*
-- Shown are the kernel `VERBOSE` level logs in DebugView along with the usermode application console.
-- You can find the video here
+- Shown are the kernel `VERBOSE` level logs in DebugView along with the usermode application console and some additional performance benchmarking things.
+- (You can find the video here)[https://youtu.be/b3mH7w8pOxs]
 
 # known issues
 
@@ -55,23 +57,36 @@ open source anti cheat (lol) which I made for fun.
 
 Requires [Visual Studio](https://visualstudio.microsoft.com/downloads/) and the [WDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) for compilation.
 
-add test signing thing here
+## test signing mode
 
-1. Open the project in visual studio
-2. Select `Release - No Server`
-3. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
+Before we continue, ensure you enable test signing mode as this driver is not signed.
+
+1. Open a command prompt as Administrator
+2. Enter the following commands:
+
+```bash
+bcdedit -set TESTSIGNING on
+bcdedit /debug on
+```
+## building and running the project
+
+1. Clone the project i.e `git clone git@github.com:donnaskiez/ac.git`
+2. Open the project in visual studio
+3. Select `Release - No Server`
+4. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
 	- `Inf2Cat -> General -> Use Local Time` to `Yes`
 	- `C/C++ -> Treat Warnings As Errors` to `No`
 	- `C/C++ -> Spectre Mitigation` to `Disabled`
-4. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
+5. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
 	- You can rename the driver if you would like
-5. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` (or whatever you named it) that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
-6. Under `Service Start` select `System`. This is VERY important!
-7. Click `Register Service`. *Do NOT click* `Start Service`!
-8. Restart Windows. 
-9. Once restarted, open the program you would like to protect. This could be anything i.e game, notepad etc.
-10. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
-11. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
+6. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` (or whatever you named it) that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
+7. Under `Service Start` select `System`. This is VERY important!
+8. Click `Register Service`. *Do NOT click* `Start Service`!
+9. Restart Windows. 
+10. Once restarted, open the program you would like to protect. This could be anything i.e cs2, notepad etc.
+	- if you do use a game to test, ensure the games anti-cheat is turned off before testing
+11. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
+12. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
 
 Logs will be printed to both the terminal output and the kernel debugger. See below for configuring kernel debugger output.
 
