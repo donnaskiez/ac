@@ -33,7 +33,7 @@ class KManager
         VOID InitiateApcStackwalkOperation();
         VOID CheckForHiddenThreads();
         VOID CheckForEptHooks();
-        VOID LaunchIpiInterrupt();
+        VOID StackwalkThreadsViaDpc();
         VOID ValidateSystemModules();
 };
 }

@@ -1416,15 +1416,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
-        LPCSTR driver_name = NULL;
-        GetDriverName(&driver_name);
-        DEBUG_VERBOSE("Driver name: %s", driver_name);
-
-        // ValidateSystemModules();
-        // ValidateNtoskrnl();
-        // LaunchInterProcessInterrupt(NULL);
-        // EnumerateBigPoolAllocations();
         DEBUG_VERBOSE("Driver Entry Complete.");
-
         return STATUS_SUCCESS;
 }

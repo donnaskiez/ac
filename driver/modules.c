@@ -3,6 +3,7 @@
 #include "callbacks.h"
 #include "driver.h"
 #include "ioctl.h"
+#include "ia32.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -58,12 +59,6 @@ typedef struct _NMI_POOLS
 
 } NMI_POOLS, *PNMI_POOLS;
 
-typedef struct _NMI_CORE_CONTEXT
-{
-        INT nmi_callbacks_run;
-
-} NMI_CORE_CONTEXT, *PNMI_CORE_CONTEXT;
-
 typedef struct _MODULE_VALIDATION_FAILURE_HEADER
 {
         INT module_count;
@@ -72,25 +67,13 @@ typedef struct _MODULE_VALIDATION_FAILURE_HEADER
 
 typedef struct _NMI_CONTEXT
 {
-        PVOID thread_data_pool;
-        PVOID stack_frames;
-        PVOID nmi_core_context;
-        INT   core_count;
+        UINT64  interrupted_rip;
+        UINT64  interrupted_rsp;
+        UINT64  kthread;
+        UINT32  callback_count;
+        BOOLEAN user_thread;
 
 } NMI_CONTEXT, *PNMI_CONTEXT;
-
-typedef struct _NMI_CALLBACK_DATA
-{
-        UINT64    kthread_address;
-        UINT64    kprocess_address;
-        UINT64    start_address;
-        UINT64    stack_limit;
-        UINT64    stack_base;
-        uintptr_t stack_frames_offset;
-        INT       num_frames_captured;
-        UINT64    cr3;
-
-} NMI_CALLBACK_DATA, *PNMI_CALLBACK_DATA;
 
 typedef struct _INVALID_DRIVER
 {
@@ -609,8 +592,9 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
 
                         if (!NT_SUCCESS(status))
                         {
-                                DEBUG_ERROR("ValidateDriverIOCTLDispatchRegion failed with status %x",
-                                          status);
+                                DEBUG_ERROR(
+                                    "ValidateDriverIOCTLDispatchRegion failed with status %x",
+                                    status);
                                 goto end;
                         }
 
@@ -781,6 +765,10 @@ end:
         return status;
 }
 
+/*
+ * TODO: this probably doesnt need to return an NTSTATUS, we can just return a boolean and remove
+ * the out variable.
+ */
 NTSTATUS
 IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
                                     _In_ PSYSTEM_MODULES SystemModules,
@@ -813,27 +801,24 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
 }
 
 /*
-* todo: rename this to analyse stackwalk or something
-*/
+ * todo: rename this to analyse stackwalk or something
+ */
 STATIC
 NTSTATUS
 AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+        BOOLEAN  flag   = FALSE;
+
         if (!NmiContext || !SystemModules)
                 return STATUS_INVALID_PARAMETER;
 
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        for (INT core = 0; core < NmiContext->core_count; core++)
+        for (INT core = 0; core < KeQueryActiveProcessorCount(0); core++)
         {
-                PNMI_CORE_CONTEXT context =
-                    (PNMI_CORE_CONTEXT)((uintptr_t)NmiContext->nmi_core_context +
-                                        core * sizeof(NMI_CORE_CONTEXT));
-
                 /* Make sure our NMIs were run  */
-                if (!context->nmi_callbacks_run)
+                if (!NmiContext[core].callback_count)
                 {
                         NTSTATUS status =
                             ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
@@ -842,7 +827,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                         {
                                 DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
                                             status);
-                                return status;
+                                continue;
                         }
 
                         NMI_CALLBACK_FAILURE report = {0};
@@ -859,68 +844,56 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                         return STATUS_SUCCESS;
                 }
 
-                PNMI_CALLBACK_DATA thread_data =
-                    (PNMI_CALLBACK_DATA)((uintptr_t)NmiContext->thread_data_pool +
-                                         core * sizeof(NMI_CALLBACK_DATA));
-
-                DEBUG_VERBOSE("Analysing Nmi Data for: cpu number: %i callback count: %i",
+                DEBUG_VERBOSE("Analysing Nmi Data for: cpu number: %i callback count: %lx",
                               core,
-                              context->nmi_callbacks_run);
+                              NmiContext[core].callback_count);
 
-                /* Walk the stack */
-                for (INT frame = 0; frame < thread_data->num_frames_captured; frame++)
+                if (NmiContext[core].user_thread)
+                        continue;
+
+                status = IsInstructionPointerInInvalidRegion(
+                    NmiContext[core].interrupted_rip, SystemModules, &flag);
+
+                if (!NT_SUCCESS(status))
                 {
-                        BOOLEAN flag = TRUE;
-                        DWORD64 stack_frame =
-                            *(DWORD64*)(((uintptr_t)NmiContext->stack_frames +
-                                         thread_data->stack_frames_offset + frame * sizeof(PVOID)));
+                        DEBUG_ERROR("IsInstructionPointerInInvalidRegion failed with status %x",
+                                    status);
+                        continue;
+                }
 
-                        status =
-                            IsInstructionPointerInInvalidRegion(stack_frame, SystemModules, &flag);
+                if (!flag)
+                {
+                        status = ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
 
                         if (!NT_SUCCESS(status))
                         {
-                                DEBUG_ERROR(
-                                    "IsInstructionPointerInInvalidRegion failed with status %x",
-                                    status);
-                                continue;
+                                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
+                                            status);
+                                return status;
                         }
 
-                        if (flag == FALSE)
-                        {
-                                status = ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
+                        /*
+                         * Note: for now, we only handle 1 report at a time so we stop the
+                         * analysis once we receive a report since we only send a buffer
+                         * large enough for 1 report. In the future this should be changed
+                         * to a buffer that can hold atleast 4 reports (since the chance we
+                         * get 4 reports with a single NMI would be impossible) so we can
+                         * continue parsing the rest of the stack frames after receiving a
+                         * single report.
+                         */
 
-                                if (!NT_SUCCESS(status))
-                                {
-                                        DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
-                                                    status);
-                                        return status;
-                                }
+                        NMI_CALLBACK_FAILURE report = {0};
+                        report.report_code          = REPORT_NMI_CALLBACK_FAILURE;
+                        report.kthread_address      = NmiContext[core].kthread;
+                        report.invalid_rip          = NmiContext[core].interrupted_rip;
+                        report.were_nmis_disabled   = FALSE;
 
-                                /*
-                                 * Note: for now, we only handle 1 report at a time so we stop the
-                                 * analysis once we receive a report since we only send a buffer
-                                 * large enough for 1 report. In the future this should be changed
-                                 * to a buffer that can hold atleast 4 reports (since the chance we
-                                 * get 4 reports with a single NMI would be impossible) so we can
-                                 * continue parsing the rest of the stack frames after receiving a
-                                 * single report.
-                                 */
+                        Irp->IoStatus.Information = sizeof(NMI_CALLBACK_FAILURE);
 
-                                NMI_CALLBACK_FAILURE report = {0};
-                                report.report_code          = REPORT_NMI_CALLBACK_FAILURE;
-                                report.kthread_address      = thread_data->kthread_address;
-                                report.invalid_rip          = stack_frame;
-                                report.were_nmis_disabled   = FALSE;
+                        RtlCopyMemory(
+                            Irp->AssociatedIrp.SystemBuffer, &report, sizeof(NMI_CALLBACK_FAILURE));
 
-                                Irp->IoStatus.Information = sizeof(NMI_CALLBACK_FAILURE);
-
-                                RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                                              &report,
-                                              sizeof(NMI_CALLBACK_FAILURE));
-
-                                return STATUS_SUCCESS;
-                        }
+                        return STATUS_SUCCESS;
                 }
         }
 
@@ -934,63 +907,51 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
 {
         UNREFERENCED_PARAMETER(Handled);
 
-        PKTHREAD          current_thread = KeGetCurrentThread();
-        NMI_CALLBACK_DATA thread_data    = {0};
-        PNMI_CONTEXT      nmi_context    = (PNMI_CONTEXT)Context;
-        ULONG             proc_num       = KeGetCurrentProcessorNumber();
-
-        if (!nmi_context)
-                return TRUE;
+        PNMI_CONTEXT           nmi_context   = (PNMI_CONTEXT)Context;
+        ULONG                  proc_num      = KeGetCurrentProcessorNumber();
+        UINT64                 kpcr          = 0;
+        TASK_STATE_SEGMENT_64* tss           = NULL;
+        PMACHINE_FRAME         machine_frame = NULL;
 
         /*
-         * Cannot allocate pool in this function as it runs at IRQL >= dispatch level
-         * so ive just allocated a global pool with size equal to 0x200 * num_procs
+         * To find the IRETQ frame (MACHINE_FRAME) we need to find the top of the NMI ISR stack.
+         * This is stored at TSS->Ist[3]. To find the TSS, we can read it from KPCR->TSS_BASE. Once
+         * we have our TSS, we can read the value at TSS->Ist[3] which points to the top of the ISR
+         * stack, and subtract the size of the MACHINE_FRAME struct. Allowing us read the
+         * interrupted RIP.
+         *
+         * The reason this is needed is because RtlCaptureStackBackTrace is not safe to run
+         * at IRQL = HIGH_LEVEL, hence we need to manually unwind the ISR stack to find the
+         * interrupted rip.
          */
-        INT num_frames_captured = RtlCaptureStackBackTrace(NULL,
-                                                           STACK_FRAME_POOL_SIZE / sizeof(UINT64),
-                                                           (uintptr_t)nmi_context->stack_frames +
-                                                               proc_num * STACK_FRAME_POOL_SIZE,
-                                                           NULL);
+        kpcr          = __readmsr(IA32_GS_BASE);
+        tss           = *(TASK_STATE_SEGMENT_64**)(kpcr + KPCR_TSS_BASE_OFFSET);
+        machine_frame = tss->Ist3 - sizeof(MACHINE_FRAME);
 
-        /*
-         * This function is run in the context of the interrupted thread hence we can
-         * gather any and all information regarding the thread that may be useful for analysis
-         */
-        thread_data.kthread_address  = (UINT64)current_thread;
-        thread_data.kprocess_address = (UINT64)PsGetCurrentProcess();
-        thread_data.stack_base =
-            *((UINT64*)((uintptr_t)current_thread + KTHREAD_STACK_BASE_OFFSET));
-        thread_data.stack_limit =
-            *((UINT64*)((uintptr_t)current_thread + KTHREAD_STACK_LIMIT_OFFSET));
-        thread_data.start_address =
-            *((UINT64*)((uintptr_t)current_thread + KTHREAD_START_ADDRESS_OFFSET));
-        thread_data.cr3                 = __readcr3();
-        thread_data.stack_frames_offset = proc_num * STACK_FRAME_POOL_SIZE;
-        thread_data.num_frames_captured = num_frames_captured;
+        if (machine_frame->rip <= WINDOWS_USERMODE_MAX_ADDRESS)
+                nmi_context[proc_num].user_thread = TRUE;
 
-        RtlCopyMemory(((uintptr_t)nmi_context->thread_data_pool) + proc_num * sizeof(thread_data),
-                      &thread_data,
-                      sizeof(thread_data));
+        nmi_context[proc_num].interrupted_rip = machine_frame->rip;
+        nmi_context[proc_num].interrupted_rsp = machine_frame->rsp;
+        nmi_context[proc_num].kthread         = PsGetCurrentThread();
+        nmi_context[proc_num].callback_count += 1;
 
-        PNMI_CORE_CONTEXT core_context =
-            (PNMI_CORE_CONTEXT)((uintptr_t)nmi_context->nmi_core_context +
-                                proc_num * sizeof(NMI_CORE_CONTEXT));
-
-        core_context->nmi_callbacks_run += 1;
+        DEBUG_VERBOSE(
+            "[NMI CALLBACK]: Core Number: %lx, Interrupted RIP: %llx, Interrupted RSP: %llx",
+            proc_num,
+            machine_frame->rip,
+            machine_frame->rsp);
 
         return TRUE;
 }
 
-#define NMI_DELAY_TIME 100 * 10000
+#define NMI_DELAY_TIME 200 * 10000
 
 STATIC
 NTSTATUS
-LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext)
+LaunchNonMaskableInterrupt()
 {
         PAGED_CODE();
-
-        if (!NmiContext)
-                return STATUS_INVALID_PARAMETER;
 
         PKAFFINITY_EX ProcAffinityPool =
             ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAFFINITY_EX), PROC_AFFINITY_POOL);
@@ -998,35 +959,15 @@ LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext)
         if (!ProcAffinityPool)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
-        NmiContext->stack_frames = ExAllocatePool2(
-            POOL_FLAG_NON_PAGED, NmiContext->core_count * STACK_FRAME_POOL_SIZE, STACK_FRAMES_POOL);
-
-        if (!NmiContext->stack_frames)
-        {
-                ExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
-                return STATUS_MEMORY_NOT_ALLOCATED;
-        }
-
-        NmiContext->thread_data_pool =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                            NmiContext->core_count * sizeof(NMI_CALLBACK_DATA),
-                            THREAD_DATA_POOL);
-
-        if (!NmiContext->thread_data_pool)
-        {
-                ExFreePoolWithTag(NmiContext->stack_frames, STACK_FRAMES_POOL);
-                ExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
-                return STATUS_MEMORY_NOT_ALLOCATED;
-        }
-
         LARGE_INTEGER delay = {0};
         delay.QuadPart -= NMI_DELAY_TIME;
 
-        for (ULONG core = 0; core < NmiContext->core_count; core++)
+        for (ULONG core = 0; core < KeQueryActiveProcessorCount(0); core++)
         {
                 KeInitializeAffinityEx(ProcAffinityPool);
                 KeAddProcessorAffinityEx(ProcAffinityPool, core);
 
+                DEBUG_VERBOSE("Sending NMI");
                 HalSendNMI(ProcAffinityPool);
 
                 /*
@@ -1047,29 +988,30 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         PAGED_CODE();
 
         NTSTATUS       status          = STATUS_UNSUCCESSFUL;
-        SYSTEM_MODULES system_modules  = {0};
-        NMI_CONTEXT    nmi_context     = {0};
         PVOID          callback_handle = NULL;
+        SYSTEM_MODULES system_modules  = {0};
+        PNMI_CONTEXT   nmi_context     = NULL;
 
-        nmi_context.core_count = KeQueryActiveProcessorCountEx(0);
-        nmi_context.nmi_core_context =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                            nmi_context.core_count * sizeof(NMI_CORE_CONTEXT),
-                            NMI_CONTEXT_POOL);
 
-        if (!nmi_context.nmi_core_context)
+
+
+        nmi_context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                      KeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
+                                      NMI_CONTEXT_POOL);
+
+        if (!nmi_context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
-
+        
         /*
          * We want to register and unregister our callback each time so it becomes harder
          * for people to hook our callback and get up to some funny business
          */
-        callback_handle = KeRegisterNmiCallback(NmiCallback, &nmi_context);
+        callback_handle = KeRegisterNmiCallback(NmiCallback, nmi_context);
 
         if (!callback_handle)
         {
                 DEBUG_ERROR("KeRegisterNmiCallback failed with no status.");
-                ExFreePoolWithTag(nmi_context.nmi_core_context, NMI_CONTEXT_POOL);
+                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 return STATUS_UNSUCCESSFUL;
         }
 
@@ -1081,37 +1023,30 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+                KeDeregisterNmiCallback(callback_handle);
+                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                DEBUG_ERROR("Error retriving system module information");
                 return status;
         }
-        status = LaunchNonMaskableInterrupt(&nmi_context);
+
+        status = LaunchNonMaskableInterrupt();
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("LaunchNonMaskableInterrupt failed with status %x", status);
-
-                if (system_modules.address)
-                        ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-
+                DEBUG_ERROR("Error running NMI callbacks");
+                KeDeregisterNmiCallback(callback_handle);
+                ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 return status;
         }
-        status = AnalyseNmiData(&nmi_context, &system_modules, Irp);
+
+        status = AnalyseNmiData(nmi_context, &system_modules, Irp);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("AnalyseNmiData failed with status %x", status);
+                DEBUG_ERROR("Error analysing nmi data");
 
-        if (system_modules.address)
-                ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-
-        if (nmi_context.nmi_core_context)
-                ExFreePoolWithTag(nmi_context.nmi_core_context, NMI_CONTEXT_POOL);
-
-        if (nmi_context.stack_frames)
-                ExFreePoolWithTag(nmi_context.stack_frames, STACK_FRAMES_POOL);
-
-        if (nmi_context.thread_data_pool)
-                ExFreePoolWithTag(nmi_context.thread_data_pool, THREAD_DATA_POOL);
-
+        ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+        ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
         KeDeregisterNmiCallback(callback_handle);
 
         return status;
@@ -1132,8 +1067,8 @@ ApcRundownRoutine(_In_ PRKAPC Apc)
 }
 
 /*
- * The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered. This
- * is also where we want to free our APC object.
+ * The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered.
+ * This is also where we want to free our APC object.
  */
 _IRQL_requires_max_(APC_LEVEL)
 STATIC
@@ -1169,7 +1104,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
         frames_captured =
             RtlCaptureStackBackTrace(NULL, STACK_FRAME_POOL_SIZE / sizeof(UINT64), buffer, NULL);
 
-        if (frames_captured == NULL)
+        if (!frames_captured)
                 goto free;
 
         for (INT index = 0; index < frames_captured; index++)
@@ -1177,8 +1112,8 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                 stack_frame = *(UINT64*)((UINT64)buffer + index * sizeof(UINT64));
 
                 /*
-                 * Apc->NormalContext holds the address of our context data structure that we passed
-                 * into KeInitializeApc as the last argument.
+                 * Apc->NormalContext holds the address of our context data structure that
+                 * we passed into KeInitializeApc as the last argument.
                  */
                 status = IsInstructionPointerInInvalidRegion(stack_frame, context->modules, &flag);
 
@@ -1285,16 +1220,16 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                 return;
 
         DEBUG_VERBOSE("Validating thread: %llx, process name: %s via kernel APC stackwalk.",
-                    ThreadListEntry->thread,
-                    process_name);
+                      ThreadListEntry->thread,
+                      process_name);
 
         if (ThreadListEntry->thread == KeGetCurrentThread() || !ThreadListEntry->thread)
                 return;
         /*
-         * Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs can be
-         * queued to the thread, as KeInsertQueueApc will check this flag before queueing an APC so
-         * lets make sure we flip this before before queueing ours. Since we filter out any system
-         * threads this should be fine... c:
+         * Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs
+         * can be queued to the thread, as KeInsertQueueApc will check this flag before
+         * queueing an APC so lets make sure we flip this before before queueing ours. Since
+         * we filter out any system threads this should be fine... c:
          */
         misc_flags    = (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
         previous_mode = (PCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_PREVIOUS_MODE_OFFSET);
@@ -1310,8 +1245,8 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                     ThreadListEntry->thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
 
         /*
-         * force thread into an alertable state, noting that this does not guarantee that our APC
-         * will be run.
+         * force thread into an alertable state, noting that this does not guarantee that
+         * our APC will be run.
          */
         if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
                 FlipKThreadMiscFlagsFlag(
@@ -1348,9 +1283,9 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 
 /*
  * Since NMIs are only executed on the thread that is running on each logical core, it makes
- * sense to make use of APCs that, while can be masked off, provide us to easily issue a callback
- * routine to threads we want a stack trace of. Hence by utilising both APCs and NMIs we get
- * excellent coverage of the entire system.
+ * sense to make use of APCs that, while can be masked off, provide us to easily issue a
+ * callback routine to threads we want a stack trace of. Hence by utilising both APCs and
+ * NMIs we get excellent coverage of the entire system.
  */
 NTSTATUS
 ValidateThreadsViaKernelApc()
@@ -1421,58 +1356,122 @@ FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context)
                 ExFreePoolWithTag(Context->modules, POOL_TAG_APC);
 }
 
+#define DPC_STACKWALK_STACKFRAME_COUNT 10
+#define DPC_STACKWALK_FRAMES_TO_SKIP   3
+
+typedef struct _DPC_CONTEXT
+{
+        UINT64           stack_frame[DPC_STACKWALK_STACKFRAME_COUNT];
+        UINT16           frames_captured;
+        volatile BOOLEAN executed;
+
+} DPC_CONTEXT, *PDPC_CONTEXT;
+
+_Function_class_(KDEFERRED_ROUTINE) _IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_min_(DISPATCH_LEVEL)
+_IRQL_requires_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+VOID
+DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
+{
+        PDPC_CONTEXT context = &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
+
+        context->frames_captured = RtlCaptureStackBackTrace(DPC_STACKWALK_FRAMES_TO_SKIP,
+                                                            DPC_STACKWALK_STACKFRAME_COUNT,
+                                                            &context->stack_frame,
+                                                            NULL);
+        InterlockedExchange(&context->executed, TRUE);
+        KeSignalCallDpcDone(SystemArgument1);
+
+        DEBUG_VERBOSE("Executed DPC on core: %lx, with %lx frames captured.",
+                      KeGetCurrentProcessorNumber(),
+                      context->frames_captured);
+}
+
+STATIC
+BOOLEAN
+CheckForDpcCompletion(_In_ PDPC_CONTEXT Context)
+{
+        for (UINT32 index = 0; index < KeQueryActiveProcessorCount(0); index++)
+        {
+                if (!InterlockedExchange(&Context[index].executed, Context[index].executed))
+                        return FALSE;
+        }
+
+        return TRUE;
+}
+
+STATIC
+NTSTATUS
+ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context)
+{
+        NTSTATUS              status = STATUS_UNSUCCESSFUL;
+        BOOLEAN               flag   = FALSE;
+        PDPC_STACKWALK_REPORT report = NULL;
+
+        for (UINT32 core = 0; core < KeQueryActiveProcessorCount(0); core++)
+        {
+                for (UINT32 frame = 0; frame < Context[core].frames_captured; frame++)
+                {
+                        status = IsInstructionPointerInInvalidRegion(
+                            Context[core].stack_frame[frame], Modules, &flag);
+
+                        if (!NT_SUCCESS(status))
+                        {
+                                DEBUG_ERROR(
+                                    "IsInstructionPointerInInvalidRegion failed with status %x",
+                                    status);
+                                continue;
+                        }
+
+                        if (!flag)
+                        {
+                                report = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                         sizeof(DPC_STACKWALK_REPORT),
+                                                         POOL_TAG_DPC);
+
+                                if (!report)
+                                        continue;
+
+                                report->report_code     = REPORT_DPC_STACKWALK;
+                                report->kthread_address = PsGetCurrentThread();
+                                report->invalid_rip     = Context[core].stack_frame[frame];
+
+                                RtlCopyMemory(report->driver,
+                                              (UINT64)Context[core].stack_frame[frame] - 0x500,
+                                              APC_STACKWALK_BUFFER_SIZE);
+
+                                InsertReportToQueue(report);
+                        }
+                }
+        }
+}
+
 /*
- * Since NMI evasion methods are becoming commonplace, we can use interprocess
- * interrupts. For now i am just using the same nmi methods. To accomplish this
- * we can use KeIpiGenericCall, which runs a specified routine on all processors
- * simultaneously. The callback routine runs at IRQL IPI_LEVEL which is > DIRQL.
+ * Lets use DPCs as another form of stackwalking rather then inter-process interrupts
+ * because DPCs run at IRQL = DISPATCH_LEVEL, allowing us to use functions such as
+ * RtlCaptureStackBackTrace whereas IPIs run at IRQL = IPI_LEVEL. DPCs are also harder
+ * to mask compared to APCs which can be masked with the flip of a bit in the KTHREAD
+ * structure.
  */
 NTSTATUS
-LaunchInterProcessInterrupt(_In_ PIRP Irp)
+DispatchStackwalkToEachCpuViaDpc()
 {
-        PAGED_CODE();
+        NTSTATUS       status  = STATUS_UNSUCCESSFUL;
+        PDPC_CONTEXT   context = NULL;
+        SYSTEM_MODULES modules = {0};
 
-        NTSTATUS       status          = STATUS_UNSUCCESSFUL;
-        SYSTEM_MODULES system_modules  = {0};
-        NMI_CONTEXT    ipi_context     = {0};
-        PVOID          callback_handle = NULL;
+        context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                  KeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT),
+                                  POOL_TAG_DPC);
 
-        DEBUG_VERBOSE("Launching Inter Process Interrupt");
-
-        ipi_context.core_count = KeQueryActiveProcessorCountEx(0);
-        ipi_context.nmi_core_context =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                            ipi_context.core_count * sizeof(NMI_CORE_CONTEXT),
-                            NMI_CONTEXT_POOL);
-
-        if (!ipi_context.nmi_core_context)
+        if (!context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
-        ipi_context.stack_frames = ExAllocatePool2(
-            POOL_FLAG_NON_PAGED, ipi_context.core_count * STACK_FRAME_POOL_SIZE, STACK_FRAMES_POOL);
-
-        if (!ipi_context.stack_frames)
-        {
-                status = STATUS_MEMORY_NOT_ALLOCATED;
-                goto end;
-        }
-
-        ipi_context.thread_data_pool =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                            ipi_context.core_count * sizeof(NMI_CALLBACK_DATA),
-                            THREAD_DATA_POOL);
-
-        if (!ipi_context.thread_data_pool)
-        {
-                status = STATUS_MEMORY_NOT_ALLOCATED;
-                goto end;
-        }
-
-        /*
-         * We query the system modules each time since they can potentially
-         * change at any time
-         */
-        status = GetSystemModuleInformation(&system_modules);
+        status = GetSystemModuleInformation(&modules);
 
         if (!NT_SUCCESS(status))
         {
@@ -1480,29 +1479,29 @@ LaunchInterProcessInterrupt(_In_ PIRP Irp)
                 goto end;
         }
 
-        KeIpiGenericCall(NmiCallback, &ipi_context);
+        /* KeGenericCallDpc will queue a DPC to each processor with importance =
+         * HighImportance. This means our DPC will be inserted into the front of the DPC
+         * queue and executed immediately.*/
+        KeGenericCallDpc(DpcStackwalkCallbackRoutine, context);
 
-        /*
-         * since the routines are run simultaneously, once we've reached here we can be sure
-         * all routines have run.
-         */
-        status = AnalyseNmiData(&ipi_context, &system_modules, Irp);
+        while (!CheckForDpcCompletion(context))
+                YieldProcessor();
+
+        status = ValidateDpcCapturedStack(&modules, context);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("AnalyseNmiData failed with status %x", status);
+        {
+                DEBUG_ERROR("ValidateDpcCapturedStack failed with status %x", status);
+                goto end;
+        }
+
+        DEBUG_VERBOSE("Finished validating cores via dpc");
 end:
 
-        if (system_modules.address)
-                ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-
-        if (ipi_context.nmi_core_context)
-                ExFreePoolWithTag(ipi_context.nmi_core_context, NMI_CONTEXT_POOL);
-
-        if (ipi_context.stack_frames)
-                ExFreePoolWithTag(ipi_context.stack_frames, STACK_FRAMES_POOL);
-
-        if (ipi_context.thread_data_pool)
-                ExFreePoolWithTag(ipi_context.thread_data_pool, THREAD_DATA_POOL);
+        if (modules.address)
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+        if (context)
+                ExFreePoolWithTag(context, POOL_TAG_DPC);
 
         return status;
 }

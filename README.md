@@ -6,8 +6,9 @@ open source anti cheat (lol) which I made for fun.
 
 - Attached thread detection
 - Process module .text section integrity checks
-- NMI and APC stackwalking
-- IPI stackwalking which is a relatively unknown method compared to NMIs and APCs
+- NMI stackwalking via isr iretq
+- APC stackwalking via RtlCaptureStackBackTrace
+- DPC stackwalking via RtlCaptureStackBackTrace (harder to disable)
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module verification
@@ -68,6 +69,9 @@ Before we continue, ensure you enable test signing mode as this driver is not si
 bcdedit -set TESTSIGNING on
 bcdedit /debug on
 ```
+
+3. Restart Windows
+
 ## building and running the project
 
 1. Clone the project i.e `git clone git@github.com:donnaskiez/ac.git`
@@ -77,16 +81,16 @@ bcdedit /debug on
 	- `Inf2Cat -> General -> Use Local Time` to `Yes`
 	- `C/C++ -> Treat Warnings As Errors` to `No`
 	- `C/C++ -> Spectre Mitigation` to `Disabled`
-5. Move the `driver.sys` file located in `ac\x64\Release` into the `Windows\System32\Drivers` directory
+5. Move the `driver.sys` file located in `ac\x64\Release - No Server\` into the `Windows\System32\Drivers` directory
 	- You can rename the driver if you would like
-6. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` (or whatever you named it) that you moved to the Windows drivers folder. DO NOT REGISTER THE SERVICE YET.
+6. Use the [OSR Loader](https://www.osronline.com/article.cfm%5Earticle=157.htm) and select `driver.sys` (or whatever you named it) that you moved to the Windows drivers folder. *DO NOT REGISTER THE SERVICE YET*.
 7. Under `Service Start` select `System`. This is VERY important!
 8. Click `Register Service`. *Do NOT click* `Start Service`!
 9. Restart Windows. 
 10. Once restarted, open the program you would like to protect. This could be anything i.e cs2, notepad etc.
 	- if you do use a game to test, ensure the games anti-cheat is turned off before testing
-11. Open your dll injector program of choice as administrator (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
-12. Inject the dll found in `ac\x64\Release` named `user.dll` into the target program
+11. Open your dll injector of choice (I simply use [Process Hacker](https://processhacker.sourceforge.io/))
+12. Inject the dll found in `ac\x64\Release - No Server\` named `user.dll` into the target program
 
 Logs will be printed to both the terminal output and the kernel debugger. See below for configuring kernel debugger output.
 

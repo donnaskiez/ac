@@ -100,9 +100,9 @@ kernelmode::KManager::CheckForEptHooks()
 }
 
 VOID
-kernelmode::KManager::LaunchIpiInterrupt()
+kernelmode::KManager::StackwalkThreadsViaDpc()
 {
-        this->thread_pool->QueueJob([this]() { this->driver_interface->LaunchIpiInterrupt(); });
+        this->thread_pool->QueueJob([this]() { this->driver_interface->StackwalkThreadsViaDpc(); });
 }
 
 VOID

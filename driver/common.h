@@ -44,6 +44,7 @@
 #define INVALID_DRIVER_LIST_HEAD_POOL  'rwar'
 #define INVALID_DRIVER_LIST_ENTRY_POOL 'gaah'
 #define POOL_TAG_APC                   'apcc'
+#define POOL_TAG_DPC                   'apcc'
 #define SYSTEM_MODULES_POOL            'halb'
 #define THREAD_DATA_POOL               'doof'
 #define PROC_AFFINITY_POOL             'eeee'
@@ -119,6 +120,7 @@
 #define REPORT_HIDDEN_SYSTEM_THREAD                90
 #define REPORT_ILLEGAL_ATTACH_PROCESS              100
 #define REPORT_APC_STACKWALK                       110
+#define REPORT_DPC_STACKWALK                       120
 
 /*
  * Generic macros that allow you to quickly determine whether
@@ -898,23 +900,6 @@ typedef struct _DUMP_HEADER
         struct _KDDEBUGGER_DATA64* KdDebuggerDataBlock;
 } DUMP_HEADER, *PDUMP_HEADER;
 
-typedef union _DIRECTORY_TABLE_BASE
-{
-        struct
-        {
-                UINT64 Ignored0 : 3;         /* 2:0   */
-                UINT64 PageWriteThrough : 1; /* 3     */
-                UINT64 PageCacheDisable : 1; /* 4     */
-                UINT64 _Ignored1 : 7;        /* 11:5  */
-                UINT64 PhysicalAddress : 36; /* 47:12 */
-                UINT64 _Reserved0 : 16;      /* 63:48 */
-
-        } Bits;
-
-        UINT64 BitAddress;
-
-} CR3, DIR_TABLE_BASE;
-
 typedef union _VIRTUAL_MEMORY_ADDRESS
 {
         struct
@@ -1410,5 +1395,33 @@ C_ASSERT(FIELD_OFFSET(DUMP_HEADER, KdDebuggerDataBlock) == 0x80);
 #else
 #        define DUMP_BLOCK_SIZE 0x40000
 #endif
+
+#define IA32_GS_BASE                 0xc0000101
+#define KPCR_TSS_BASE_OFFSET         0x008
+#define TSS_IST_OFFSET               0x01c
+#define WINDOWS_USERMODE_MAX_ADDRESS 0x00007FFFFFFFFFFF
+
+typedef struct _MACHINE_FRAME
+{
+        UINT64 rip;
+        UINT64 cs;
+        UINT64 eflags;
+        UINT64 rsp;
+        UINT64 ss;
+
+} MACHINE_FRAME, *PMACHINE_FRAME;
+
+NTKERNELAPI
+_IRQL_requires_max_(APC_LEVEL)
+_IRQL_requires_min_(PASSIVE_LEVEL)
+_IRQL_requires_same_
+VOID
+KeGenericCallDpc(_In_ PKDEFERRED_ROUTINE Routine, _In_opt_ PVOID Context);
+
+NTKERNELAPI
+_IRQL_requires_(DISPATCH_LEVEL)
+_IRQL_requires_same_
+VOID
+KeSignalCallDpcDone(_In_ PVOID SystemArgument1);
 
 #endif

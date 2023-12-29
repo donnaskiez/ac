@@ -94,7 +94,7 @@ Init(HINSTANCE hinstDLL)
                 case 7: kmanager.InitiateApcStackwalkOperation(); break;
                 case 8: kmanager.CheckForHiddenThreads(); break;
                 case 9: kmanager.CheckForEptHooks(); break;
-                case 10: kmanager.LaunchIpiInterrupt(); break;
+                case 10: kmanager.StackwalkThreadsViaDpc(); break;
                 case 11: kmanager.ValidateSystemModules(); break;
                 }
 

@@ -4,6 +4,7 @@
 
 #include "callbacks.h"
 #include "queue.h"
+#include "ia32.h"
 
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE  0x004
@@ -444,9 +445,9 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                 return;
         }
 
-        cr3.BitAddress = __readcr3();
+        cr3.AsUInt = __readcr3();
 
-        physical.QuadPart = cr3.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
+        physical.QuadPart = cr3.AddressOfPageDirectory << PAGE_4KB_SHIFT;
 
         pml4_base.BitAddress = MmGetVirtualForPhysical(physical);
 

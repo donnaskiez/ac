@@ -185,7 +185,4 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverSymbolicLink(_Out_ PUNICODE_STRING DeviceSymbolicLink);
 
-NTSTATUS
-SelfReferenceDriver();
-
 #endif

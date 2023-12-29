@@ -54,7 +54,7 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20017, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_CHECK_FOR_EPT_HOOK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20018, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_LAUNCH_IPI_INTERRUPT \
+#define IOCTL_LAUNCH_DPC_STACKWALK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_SYSTEM_MODULES \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -446,17 +446,6 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 break;
 
-        case IOCTL_LAUNCH_IPI_INTERRUPT:
-
-                DEBUG_INFO("IOCTL_LAUNCH_IPI_INTERRUPT Received");
-
-                status = LaunchInterProcessInterrupt(Irp);
-
-                if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("LaunchInterProcessInterrupt failed with status %x", status);
-
-                break;
-
         case IOCTL_VALIDATE_SYSTEM_MODULES:
 
                 DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
@@ -471,6 +460,19 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                         DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
 
                 break;
+
+        case IOCTL_LAUNCH_DPC_STACKWALK:
+
+                DEBUG_INFO("IOCTL_LAUNCH_DPC_STACKWALK Received");
+
+                status = DispatchStackwalkToEachCpuViaDpc();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("DispatchStackwalkToEachCpuViaDpc failed with status %x",
+                                    status);
+
+                break;
+
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

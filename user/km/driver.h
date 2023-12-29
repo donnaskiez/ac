@@ -40,7 +40,7 @@
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20017, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_CHECK_FOR_EPT_HOOK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20018, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_LAUNCH_IPI_INTERRUPT \
+#define IOCTL_LAUNCH_DPC_STACKWALK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_SYSTEM_MODULES \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -97,7 +97,7 @@ class Driver
         VOID    SendClientHardwareInformation();
         VOID    CheckForHiddenThreads();
         VOID    CheckForEptHooks();
-        VOID    LaunchIpiInterrupt();
+        VOID    StackwalkThreadsViaDpc();
         VOID    ValidateSystemModules();
         BOOLEAN InitiateApcOperation(INT OperationId);
 };

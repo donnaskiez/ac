@@ -1241,7 +1241,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                 RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
         }
 
-        DEBUG_INFO("Successfully retrieved hard disk serial number.");
+        DEBUG_VERBOSE("Successfully retrieved hard disk serial number.");
 end:
 
         if (handle)

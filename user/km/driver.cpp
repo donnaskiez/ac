@@ -240,6 +240,10 @@ kernelmode::Driver::QueryReportQueue()
                         ReportTypeFromReportQueue<HIDDEN_SYSTEM_THREAD_REPORT>(
                             buffer, &total_size, &hidden_report);
                         break;
+                case REPORT_DPC_STACKWALK:
+                        ReportTypeFromReportQueue<DPC_STACKWALK_REPORT>(
+                            buffer, &total_size, &hidden_report);
+                        break;
                 default: break;
                 }
         }
@@ -521,15 +525,15 @@ kernelmode::Driver::CheckForEptHooks()
 }
 
 VOID
-kernelmode::Driver::LaunchIpiInterrupt()
+kernelmode::Driver::StackwalkThreadsViaDpc()
 {
         BOOLEAN status = FALSE;
 
         status = DeviceIoControl(
-            this->driver_handle, IOCTL_LAUNCH_IPI_INTERRUPT, NULL, NULL, NULL, NULL, NULL, NULL);
+            this->driver_handle, IOCTL_LAUNCH_DPC_STACKWALK, NULL, NULL, NULL, NULL, NULL, NULL);
 
         if (status == NULL)
-                LOG_ERROR("failed to launch ipi interrupt %x", GetLastError());
+                LOG_ERROR("failed to stackwalk threads via dpc %x", GetLastError());
 }
 
 VOID

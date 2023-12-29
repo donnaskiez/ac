@@ -16,6 +16,17 @@ typedef struct NMI_CALLBACK_FAILURE
 
 } NMI_CALLBACK_FAILURE, *PNMI_CALLBACK_FAILURE;
 
+#define APC_STACKWALK_BUFFER_SIZE 4096
+
+typedef struct _DPC_STACKWALK_REPORT
+{
+        UINT32    report_code;
+        UINT64 kthread_address;
+        UINT64 invalid_rip;
+        CHAR      driver[APC_STACKWALK_BUFFER_SIZE];
+
+} DPC_STACKWALK_REPORT, *PDPC_STACKWALK_REPORT;
+
 typedef struct _MODULE_VALIDATION_FAILURE
 {
         INT    report_code;
@@ -25,8 +36,6 @@ typedef struct _MODULE_VALIDATION_FAILURE
         CHAR   driver_name[128];
 
 } MODULE_VALIDATION_FAILURE, *PMODULE_VALIDATION_FAILURE;
-
-#define APC_STACKWALK_BUFFER_SIZE 4096
 
 typedef struct _APC_STACKWALK_REPORT
 {
@@ -99,6 +108,6 @@ BOOLEAN
 FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread, _In_ ULONG FlagIndex, _In_ BOOLEAN NewValue);
 
 NTSTATUS
-LaunchInterProcessInterrupt(_In_ PIRP Irp);
+DispatchStackwalkToEachCpuViaDpc();
 
 #endif
