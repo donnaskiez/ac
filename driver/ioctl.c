@@ -40,8 +40,6 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20010, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_SCAN_FOR_UNLINKED_PROCESS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20011, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_VALIDATE_KPRCB_CURRENT_THREAD \
-        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20012, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_PERFORM_INTEGRITY_CHECK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20013, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_DETECT_ATTACHED_THREADS \
@@ -354,14 +352,6 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 break;
 
-        case IOCTL_VALIDATE_KPRCB_CURRENT_THREAD:
-
-                DEBUG_INFO("IOCTL_VALIDATE_KPRCB_CURRENT_THREAD Received");
-
-                //ValidateKPCRBThreads();
-
-                break;
-
         case IOCTL_PERFORM_INTEGRITY_CHECK:
 
                 DEBUG_INFO("IOCTL_PERFORM_INTEGRITY_CHECK Received");
@@ -518,8 +508,6 @@ _Dispatch_type_(IRP_MJ_CREATE) NTSTATUS
         PAGED_CODE();
 
         DEBUG_INFO("Handle to driver opened.");
-        DEBUG_VERBOSE("HELOO??");
-        HandleNmiIOCTL(Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;
 }

@@ -26,8 +26,6 @@
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20010, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_SCAN_FOR_UNLINKED_PROCESS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20011, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_VALIDATE_KPRCB_CURRENT_THREAD \
-        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20012, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_PERFORM_INTEGRITY_CHECK \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20013, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_DETECT_ATTACHED_THREADS \
@@ -87,7 +85,6 @@ class Driver
         VOID    RunCallbackReportQueue();
         VOID    DetectSystemVirtualization();
         VOID    QueryReportQueue();
-        VOID    ValidateKPRCBThreads();
         VOID    CheckHandleTableEntries();
         VOID    RequestModuleExecutableRegions();
         VOID    ScanForUnlinkedProcess();
@@ -95,7 +92,6 @@ class Driver
         VOID    CheckForAttachedThreads();
         VOID    VerifyProcessLoadedModuleExecutableRegions();
         VOID    SendClientHardwareInformation();
-        VOID    CheckForHiddenThreads();
         VOID    CheckForEptHooks();
         VOID    StackwalkThreadsViaDpc();
         VOID    ValidateSystemModules();

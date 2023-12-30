@@ -78,7 +78,7 @@ Init(HINSTANCE hinstDLL)
 
         while (!GetAsyncKeyState(VK_DELETE))
         {
-                int seed = (rand() % 12);
+                int seed = (rand() % 11);
 
                 std::cout << "Seed: " << seed << std::endl;
 
@@ -92,10 +92,9 @@ Init(HINSTANCE hinstDLL)
                 case 5: kmanager.RunNmiCallbacks(); break;
                 case 6: kmanager.CheckForAttachedThreads(); break;
                 case 7: kmanager.InitiateApcStackwalkOperation(); break;
-                case 8: kmanager.CheckForHiddenThreads(); break;
-                case 9: kmanager.CheckForEptHooks(); break;
-                case 10: kmanager.StackwalkThreadsViaDpc(); break;
-                case 11: kmanager.ValidateSystemModules(); break;
+                case 8: kmanager.CheckForEptHooks(); break;
+                case 9: kmanager.StackwalkThreadsViaDpc(); break;
+                case 10: kmanager.ValidateSystemModules(); break;
                 }
 
                 kmanager.MonitorCallbackReports();

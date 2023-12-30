@@ -31,7 +31,6 @@ class KManager
         VOID ValidateProcessModules();
         VOID SendClientHardwareInformation();
         VOID InitiateApcStackwalkOperation();
-        VOID CheckForHiddenThreads();
         VOID CheckForEptHooks();
         VOID StackwalkThreadsViaDpc();
         VOID ValidateSystemModules();

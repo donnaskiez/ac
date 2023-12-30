@@ -460,29 +460,6 @@ kernelmode::Driver::NotifyDriverOnProcessTermination()
 }
 
 VOID
-kernelmode::Driver::ValidateKPRCBThreads()
-{
-        BOOLEAN                     status         = FALSE;
-        DWORD                       bytes_returned = 0;
-        HIDDEN_SYSTEM_THREAD_REPORT report         = {0};
-
-        status = DeviceIoControl(this->driver_handle,
-                                 IOCTL_VALIDATE_KPRCB_CURRENT_THREAD,
-                                 NULL,
-                                 NULL,
-                                 &report,
-                                 sizeof(report),
-                                 &bytes_returned,
-                                 NULL);
-
-        if (status == NULL)
-        {
-                LOG_ERROR("failed to validate kpcrb threads with status %x", GetLastError());
-                return;
-        }
-}
-
-VOID
 kernelmode::Driver::CheckForAttachedThreads()
 {
         BOOLEAN status = FALSE;
@@ -492,24 +469,6 @@ kernelmode::Driver::CheckForAttachedThreads()
 
         if (status == NULL)
                 LOG_ERROR("failed to check for attached threads %x", GetLastError());
-}
-
-VOID
-kernelmode::Driver::CheckForHiddenThreads()
-{
-        BOOLEAN status = FALSE;
-
-        status = DeviceIoControl(this->driver_handle,
-                                 IOCTL_VALIDATE_KPRCB_CURRENT_THREAD,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 NULL);
-
-        if (status == NULL)
-                LOG_ERROR("failed to check for hidden threads %x", GetLastError());
 }
 
 VOID
