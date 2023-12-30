@@ -1424,4 +1424,12 @@ _IRQL_requires_same_
 VOID
 KeSignalCallDpcDone(_In_ PVOID SystemArgument1);
 
+PEPROCESS
+NTAPI
+PsGetNextProcess(IN PEPROCESS OldProcess OPTIONAL);
+
+PETHREAD
+NTAPI
+PsGetNextProcessThread(IN PEPROCESS Process, IN PETHREAD Thread OPTIONAL);
+
 #endif

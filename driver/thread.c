@@ -8,131 +8,53 @@
 #include "queue.h"
 
 #ifdef ALLOC_PRAGMA
-#        pragma alloc_text(PAGE, ValidateKPCRBThreads)
 #        pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
+#        pragma alloc_text(PAGE, ValidateThreadsPspCidTableEntry)
 #endif
 
-typedef struct _KPRCB_THREAD_VALIDATION_CTX
-{
-        UINT64  current_kpcrb_thread;
-        UINT8   thread_found_in_pspcidtable;
-        UINT8   thread_found_in_kthreadlist;
-        BOOLEAN finished;
-
-} KPRCB_THREAD_VALIDATION_CTX, *PKPRCB_THREAD_VALIDATION_CTX;
-
-_IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
-    KPRCBThreadValidationProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
-                                         _Inout_opt_ PVOID       Context)
-{
-        UINT32                       thread_id = 0;
-        PKPRCB_THREAD_VALIDATION_CTX context   = (PKPRCB_THREAD_VALIDATION_CTX)Context;
-
-        if (!Context || context->finished == TRUE)
-                return;
-
-        if (ThreadListEntry->thread == context->current_kpcrb_thread)
-        {
-                context->thread_found_in_kthreadlist = TRUE;
-
-                thread_id = PsGetThreadId(ThreadListEntry->thread);
-
-                if (thread_id != NULL)
-                {
-                        context->thread_found_in_pspcidtable = TRUE;
-                        context->finished                    = TRUE;
-                }
-        }
-}
-
-/*
- * How this will work:
- *
- * 1. The KPCRB (processor control block) contains 3 pointers to 3 threads:
- *
- *		+0x008 CurrentThread    : Ptr64 _KTHREAD
- *		+0x010 NextThread       : Ptr64 _KTHREAD
- *		+0x018 IdleThread       : Ptr64 _KTHREAD
- *
- * 2. These threads are stored in a list that is seperate to the KTHREADs linked list.
- *    We know this because if you unlink a process, the threads are still scheduled by
- *	 the OS, meaning the OS has a seperate list that it uses to schedule these threads.
- *
- * 3. From here we can firstly check if the KTHREAD is within the KTHREAD linked list,
- *    if it is we can then use this to check if its in the PspCidTable by passing it
- *    to PsGetThreadId which returns the thread id by enumerating the PspCidTable and
- *    finding the corresponding object pointer. If the thread id is not found, we know
- *    that it's been removed from the PspCidTable, and if the thread is not in any
- *    process' thread list , we know it's been removed from the KTHREAD linked list.
- *
- */
-VOID
-ValidateKPCRBThreads()
+BOOLEAN
+ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
 {
         PAGED_CODE();
 
-        UINT64                      kpcr         = 0;
-        UINT64                      kprcb        = 0;
-        KAFFINITY                   old_affinity = {0};
-        KPRCB_THREAD_VALIDATION_CTX context      = {0};
+        NTSTATUS status    = STATUS_UNSUCCESSFUL;
+        HANDLE   thread_id = NULL;
+        PETHREAD thread    = NULL;
 
-        for (LONG processor_index = 0; processor_index < KeQueryActiveProcessorCount(0);
-             processor_index++)
+        /*
+         * PsGetThreadId simply returns ETHREAD->Cid.UniqueThread
+         */
+        thread_id = PsGetThreadId(Thread);
+
+        /*
+         * For each core on the processor, the first x threads equal to x cores will be assigned a
+         * cid equal to its equivalent core. These threads are generally executing the HLT
+         * instruction or some other boring stuff while the processor is not busy. The reason this
+         * is important is because passing in a handle value of 0 which, even though is a valid cid,
+         * returns a non success status meaning we mark it an invalid cid entry even though it is.
+         * To combat this we simply add a little check here. The problem is this can be easily
+         * bypassed by simply modifying the ETHREAD->Cid.UniqueThread identifier.. So while it isnt a
+         * perfect detection method for now it's good enough.
+         */
+        if ((UINT64)thread_id < (UINT64)KeQueryActiveProcessorCount(NULL))
+                return TRUE;
+
+        /*
+         * PsLookupThreadByThreadId will use a threads id to find its cid entry, and return
+         * the pointer contained in the HANDLE_TABLE entry pointing to the thread object.
+         * Meaning if we pass a valid thread id which we retrieved above and dont receive a
+         * STATUS_SUCCESS the cid entry could potentially be removed or disrupted..
+         */
+        status = PsLookupThreadByThreadId(thread_id, &thread);
+
+        if (!NT_SUCCESS(status))
         {
-                old_affinity = KeSetSystemAffinityThreadEx((KAFFINITY)(1ull << processor_index));
-
-                while (KeGetCurrentProcessorNumber() != processor_index)
-                        YieldProcessor();
-
-                kpcr  = __readmsr(IA32_GS_BASE);
-                kprcb = kpcr + KPRCB_OFFSET_FROM_GS_BASE;
-
-                /* sanity check */
-                if (!MmIsAddressValid(kprcb + KPCRB_CURRENT_THREAD))
-                        continue;
-
-                context.current_kpcrb_thread = *(UINT64*)(kprcb + KPCRB_CURRENT_THREAD);
-
-                DEBUG_VERBOSE("Proc number: %lx, Current thread: %llx",
-                              processor_index,
-                              context.current_kpcrb_thread);
-
-                if (!context.current_kpcrb_thread)
-                        continue;
-
-                EnumerateThreadListWithCallbackRoutine(KPRCBThreadValidationProcessCallback,
-                                                       &context);
-
-                DEBUG_VERBOSE("Was thread found in kthread: %lx, Was thread found in cid table: %lx",
-                           (UINT32)context.thread_found_in_kthreadlist,
-                           (UINT32)context.thread_found_in_pspcidtable);
-
-                if (context.current_kpcrb_thread == FALSE ||
-                    context.thread_found_in_pspcidtable == FALSE)
-                {
-                        PHIDDEN_SYSTEM_THREAD_REPORT report =
-                            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                            sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                                            REPORT_POOL_TAG);
-
-                        if (!report)
-                                goto increment;
-
-                        report->report_code          = REPORT_HIDDEN_SYSTEM_THREAD;
-                        report->found_in_kthreadlist = context.thread_found_in_kthreadlist;
-                        report->found_in_pspcidtable = context.thread_found_in_pspcidtable;
-                        report->thread_id            = PsGetThreadId(context.current_kpcrb_thread);
-                        report->thread_address       = context.current_kpcrb_thread;
-
-                        RtlCopyMemory(
-                            report->thread, context.current_kpcrb_thread, sizeof(report->thread));
-
-                        InsertReportToQueue(report);
-                }
-
-        increment:
-                KeRevertToUserAffinityThreadEx(old_affinity);
+                DEBUG_WARNING(
+                    "Failed to lookup thread by id. PspCidTable entry potentially removed.");
+                return FALSE;
         }
+
+        return TRUE;
 }
 
 _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID

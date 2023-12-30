@@ -8,19 +8,17 @@ open source anti cheat (lol) which I made for fun.
 - Process module .text section integrity checks
 - NMI stackwalking via isr iretq
 - APC stackwalking via RtlCaptureStackBackTrace
-- DPC stackwalking via RtlCaptureStackBackTrace (harder to disable)
+- DPC stackwalking via RtlCaptureStackBackTrace
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module verification
 - System module .text integrity checks (see known issues)
 - Unlinked process detection
-- Hidden thread detection via KPRCB
-- Hidden thread detection via PspCid table
+- Removed thread PspCidTable entry detection
 - Dispatch routine validation
 - Extraction of hardware identifiers
 - EPT hook detection (currently detects hyperdbg and DdiMon)
 - Driver integrity checks both locally and over server
-- Test signing detection
 - Hypervisor detection
 
 # planned features

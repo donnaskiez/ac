@@ -5,6 +5,8 @@
 #include "ioctl.h"
 #include "ia32.h"
 
+#include "thread.h"
+
 #define WHITELISTED_MODULE_TAG 'whte'
 
 #define NMI_DELAY 200 * 10000
@@ -801,7 +803,8 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
 }
 
 /*
- * todo: rename this to analyse stackwalk or something
+ * todo: i think we should split this function up into each analysis i.e one for the interrupted
+ * rip, one for the cid etc.
  */
 STATIC
 NTSTATUS
@@ -847,6 +850,52 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                 DEBUG_VERBOSE("Analysing Nmi Data for: cpu number: %i callback count: %lx",
                               core,
                               NmiContext[core].callback_count);
+
+                /*
+                 * Our NMI callback allows us to interrupt every running thread on each core. Now it
+                 * is common practice for malicious programs to either unlink their thread from the
+                 * KTHREAD linked list or remove their threads entry from the PspCidTable or both.
+                 * Now the reason an unlinked thread can still be scheduled is because the scheduler
+                 * keeps a seperate list that it uses to schedule threads. It then places these
+                 * threads in the KPRCB in either the CurrentThread, IdleThread or NextThread.
+                 *
+                 * Since you can't just set a threads affinity to enumerate over all cores and read
+                 * the KPCRB->CurrentThread (since it will just show your thread) we have to
+                 * interrupt the thread. So below we are validating that the thread is indeed in our
+                 * own threads list using our callback routine and then using PsGetThreadId
+                 *
+                 * I also want to integrate a way to SAFELY determine whether a thread has been
+                 * removed from the KTHREADs linked list, maybe PsGetNextProcess ?
+                 */
+
+                if (!ValidateThreadsPspCidTableEntry(NmiContext[core].kthread))
+                {
+                        DEBUG_WARNING("Thread: %llx was not found in the pspcid table.",
+                                      NmiContext[core].kthread);
+
+                        PHIDDEN_SYSTEM_THREAD_REPORT report =
+                            ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                            sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
+                                            REPORT_POOL_TAG);
+
+                        if (!report)
+                                continue;
+
+                        report->report_code          = REPORT_HIDDEN_SYSTEM_THREAD;
+                        report->found_in_kthreadlist = FALSE; // wip
+                        report->found_in_pspcidtable = FALSE;
+                        report->thread_id            = PsGetThreadId(NmiContext[core].kthread);
+                        report->thread_address       = NmiContext[core].kthread;
+
+                        RtlCopyMemory(
+                            report->thread, NmiContext[core].kthread, sizeof(report->thread));
+
+                        InsertReportToQueue(report);
+                }
+                else
+                {
+                        DEBUG_VERBOSE("Thread: %llx was found in PspCidTable", NmiContext[core].kthread);
+                }
 
                 if (NmiContext[core].user_thread)
                         continue;
@@ -992,16 +1041,13 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         SYSTEM_MODULES system_modules  = {0};
         PNMI_CONTEXT   nmi_context     = NULL;
 
-
-
-
         nmi_context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
                                       KeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
                                       NMI_CONTEXT_POOL);
 
         if (!nmi_context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
-        
+
         /*
          * We want to register and unregister our callback each time so it becomes harder
          * for people to hook our callback and get up to some funny business
@@ -1373,9 +1419,9 @@ _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
 VOID
 DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
-    _In_opt_ PVOID DeferredContext,
-    _In_opt_ PVOID SystemArgument1,
-    _In_opt_ PVOID SystemArgument2)
+                            _In_opt_ PVOID DeferredContext,
+                            _In_opt_ PVOID SystemArgument1,
+                            _In_opt_ PVOID SystemArgument2)
 {
         PDPC_CONTEXT context = &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
 

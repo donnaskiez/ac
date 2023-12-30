@@ -358,7 +358,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_VALIDATE_KPRCB_CURRENT_THREAD Received");
 
-                ValidateKPCRBThreads();
+                //ValidateKPCRBThreads();
 
                 break;
 
@@ -518,7 +518,8 @@ _Dispatch_type_(IRP_MJ_CREATE) NTSTATUS
         PAGED_CODE();
 
         DEBUG_INFO("Handle to driver opened.");
-
+        DEBUG_VERBOSE("HELOO??");
+        HandleNmiIOCTL(Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;
 }
