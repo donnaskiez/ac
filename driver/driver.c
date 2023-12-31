@@ -105,18 +105,19 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
 typedef struct _DRIVER_CONFIG
 {
-        UNICODE_STRING     unicode_driver_name;
-        ANSI_STRING        ansi_driver_name;
-        UNICODE_STRING     device_name;
-        UNICODE_STRING     device_symbolic_link;
-        UNICODE_STRING     driver_path;
-        UNICODE_STRING     registry_path;
-        SYSTEM_INFORMATION system_information;
-        PVOID              apc_contexts[MAXIMUM_APC_CONTEXTS];
-        PDRIVER_OBJECT     driver_object;
-        PDEVICE_OBJECT     device_object;
-        volatile BOOLEAN   unload_in_progress;
-        KGUARDED_MUTEX     lock;
+        UNICODE_STRING         unicode_driver_name;
+        ANSI_STRING            ansi_driver_name;
+        UNICODE_STRING         device_name;
+        UNICODE_STRING         device_symbolic_link;
+        UNICODE_STRING         driver_path;
+        UNICODE_STRING         registry_path;
+        SYSTEM_INFORMATION     system_information;
+        PVOID                  apc_contexts[MAXIMUM_APC_CONTEXTS];
+        PDRIVER_OBJECT         driver_object;
+        PDEVICE_OBJECT         device_object;
+        volatile BOOLEAN       unload_in_progress;
+        KGUARDED_MUTEX         lock;
+        SYS_MODULE_VAL_CONTEXT sys_val_context;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -431,6 +432,11 @@ end:
         return status;
 }
 
+GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
+{
+        *Context = &driver_config.sys_val_context;
+}
+
 _IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
@@ -507,6 +513,12 @@ GetDriverName(_Out_ LPCSTR* DriverName)
         KeAcquireGuardedMutex(&driver_config.lock);
         *DriverName = driver_config.ansi_driver_name.Buffer;
         KeReleaseGuardedMutex(&driver_config.lock);
+}
+
+PDEVICE_OBJECT
+GetDriverDeviceObject()
+{
+        return driver_config.device_object;
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -1303,6 +1315,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
         driver_config.unload_in_progress                         = FALSE;
         driver_config.system_information.virtualised_environment = FALSE;
+        driver_config.sys_val_context.active                     = FALSE;
 
         RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
         RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");

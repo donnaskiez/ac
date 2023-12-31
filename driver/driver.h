@@ -8,6 +8,7 @@
 #include "common.h"
 #include "queue.h"
 #include "modules.h"
+#include "integrity.h"
 
 #define DRIVER_PATH_MAX_LENGTH            512
 #define MOTHERBOARD_SERIAL_CODE_LENGTH    64
@@ -184,5 +185,10 @@ _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetDriverSymbolicLink(_Out_ PUNICODE_STRING DeviceSymbolicLink);
+
+PDEVICE_OBJECT
+GetDriverDeviceObject();
+
+GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context);
 
 #endif

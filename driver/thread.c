@@ -33,8 +33,8 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
          * is important is because passing in a handle value of 0 which, even though is a valid cid,
          * returns a non success status meaning we mark it an invalid cid entry even though it is.
          * To combat this we simply add a little check here. The problem is this can be easily
-         * bypassed by simply modifying the ETHREAD->Cid.UniqueThread identifier.. So while it isnt a
-         * perfect detection method for now it's good enough.
+         * bypassed by simply modifying the ETHREAD->Cid.UniqueThread identifier.. So while it isnt
+         * a perfect detection method for now it's good enough.
          */
         if ((UINT64)thread_id < (UINT64)KeQueryActiveProcessorCount(NULL))
                 return TRUE;
@@ -57,6 +57,19 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
         return TRUE;
 }
 
+/*
+ * I did not reverse this myself and previously had no idea how you would go about
+ * detecting KiAttachProcess so credits to KANKOSHEV for the explanation:
+ *
+ * https://github.com/KANKOSHEV/Detect-KeAttachProcess/tree/main
+ * https://doxygen.reactos.org/d0/dc9/procobj_8c.html#adec6dc539d4a5c0ee7d0f48e24ef0933
+ *
+ * To expand on his writeup a little, the offset that he provides is equivalent to
+ * PKAPC_STATE->Process. This is where KiAttachProcess writes the process that thread is attaching
+ * to when it's called. The APC_STATE structure holds relevant information about the thread's APC
+ * state and is quite important during context switch scenarios as it's how the thread determines if
+ * it has any APC's queued.
+ */
 _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
     DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                                          _Inout_opt_ PVOID       Context)
@@ -68,12 +81,17 @@ _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
 
         GetProtectedProcessEProcess(&protected_process);
 
-        if (protected_process == NULL)
+        if (!protected_process)
                 return;
 
         apc_state = (PKAPC_STATE)((UINT64)ThreadListEntry->thread + KTHREAD_APC_STATE_OFFSET);
 
-        if (apc_state->Process == protected_process)
+        /*
+         * Just a sanity check even though it doesnt really make sense for internal threads of our
+         * protected process to attach..
+         */
+        if (apc_state->Process == protected_process &&
+            ThreadListEntry->owning_process != protected_process)
         {
                 DEBUG_WARNING("Thread is attached to our protected process: %llx",
                               (UINT64)ThreadListEntry->thread);
@@ -92,19 +110,6 @@ _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
         }
 }
 
-/*
- * I did not reverse this myself and previously had no idea how you would go about
- * detecting KiAttachProcess so credits to KANKOSHEV for the explanation:
- *
- * https://github.com/KANKOSHEV/Detect-KeAttachProcess/tree/main
- * https://doxygen.reactos.org/d0/dc9/procobj_8c.html#adec6dc539d4a5c0ee7d0f48e24ef0933
- *
- * To expand on his writeup a little, the offset that he provides is equivalent to
- * PKAPC_STATE->Process. This is where KiAttachProcess writes the process that thread is attaching
- * to when it's called. The APC_STATE structure holds relevant information about the thread's APC
- * state and is quite important during context switch scenarios as it's how the thread determines if
- * it has any APC's queued.
- */
 VOID
 DetectThreadsAttachedToProtectedProcess()
 {

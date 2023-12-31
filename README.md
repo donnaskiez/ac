@@ -24,6 +24,7 @@ open source anti cheat (lol) which I made for fun.
 # planned features
 
 - Heartbeat
+- optimise stuff 
 - ntoskrnl integrity checks, or atleast a small subset of the kernel encompasing critical functions
 - spoofed stack identifier
 - process module inline hook detection (this would include checking whether the hook is valid, as many legimate programs hook user mode modules such as discord, nvidia overlay etc.)

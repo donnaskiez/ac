@@ -444,7 +444,8 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                  * Currently the validation is buggy, once the validation is better will
                  * probably bugcheck the system.
                  */
-                status = ValidateSystemModules();
+                //status = ValidateSystemModules();
+                status = SystemModuleVerificationDispatcher();
 
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("ValidateSystemModules failed with status %x", status);

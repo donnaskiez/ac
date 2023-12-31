@@ -76,9 +76,9 @@ Init(HINSTANCE hinstDLL)
 
         srand(time(NULL));
 
-        while (!GetAsyncKeyState(VK_DELETE))
+         while (!GetAsyncKeyState(VK_DELETE))
         {
-                int seed = (rand() % 11);
+                 int seed = (rand() % 11);
 
                 std::cout << "Seed: " << seed << std::endl;
 
