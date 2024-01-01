@@ -2077,6 +2077,7 @@ SystemModuleVerificationDispatcher()
         {
                 DEBUG_VERBOSE("System modules integrity check complete. Freeing items.");
                 context->active = FALSE;
+                context->complete = FALSE;
                 FreeModuleVerificationItems(context);
                 FreeWorkItems(context);
                 return STATUS_SUCCESS;
@@ -2093,6 +2094,7 @@ SystemModuleVerificationDispatcher()
                         DEBUG_ERROR(
                             "InitialiseSystemModuleVerificationContext failed with status %x",
                             status);
+
                         return status;
                 }
         }
