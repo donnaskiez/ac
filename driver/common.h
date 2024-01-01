@@ -121,6 +121,7 @@
 #define REPORT_ILLEGAL_ATTACH_PROCESS              100
 #define REPORT_APC_STACKWALK                       110
 #define REPORT_DPC_STACKWALK                       120
+#define REPORT_DATA_TABLE_ROUTINE                  130
 
 /*
  * Generic macros that allow you to quickly determine whether

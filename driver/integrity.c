@@ -405,21 +405,11 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
 
         if (!NT_SUCCESS(status))
         {
-                /*
-                 * It is of utmost importants to mark SectionHandle as null after closing the
-                 * handle from inside this function since an error has occured. The reason this is
-                 * so important is because we are not responsible for freeing the function if it
-                 * succeeds and even if it fails, we still allocate a value to the handle via
-                 * ZwCreateSection. Meaning when the caller goes to check if the handle is null, it
-                 * will not be null and will cause a double free.
-                 */
+                /* caller is responsible for closing handle on success, therefore null it */
                 DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
-
                 ZwClose(file_handle);
                 ZwClose(*SectionHandle);
-
                 *SectionHandle = NULL;
-
                 return status;
         }
 
@@ -436,22 +426,7 @@ ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
 {
         PAGED_CODE();
 
-        /*
-         * Since the windows documentation for the BCrypt functions contain the worst variable
-         * naming scheme in existence, I will try to explain what they do. (for my sake and any
-         * readers who also aren't smart enough to understand their otherworldy naming convention)
-         *
-         * algo_handle: handle to our BCrypt algorithm
-         * hash_handle: handle to our BCrypt hash
-         * bytes_copied: number of bytes that were copied to the output buffer when using
-         * BCryptGetProperty resulting_hash_size: this is the size of the final buffer hash, it
-         * should be equal to 32 (sizeof SHA256 hash) hash_object_size: the size of the buffer that
-         * will temporarily store our hash object hash_object: pointer to the buffer storing our
-         * hash object which is used to hash our buffer resulting_hash: pointer to the buffer that
-         * stores the resulting hash of our buffer, this is what we care about
-         */
-
-        NTSTATUS           status              = STATUS_ABANDONED;
+        NTSTATUS           status              = STATUS_UNSUCCESSFUL;
         BCRYPT_ALG_HANDLE  algo_handle         = NULL;
         BCRYPT_HASH_HANDLE hash_handle         = NULL;
         ULONG              bytes_copied        = 0;
@@ -1350,7 +1325,7 @@ UINT64
 MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
 {
         UINT64 read_average = 0;
-        UINT64 old_irql;
+        UINT64 old_irql     = 0;
 
         MeasureInstructionRead(Address);
 
@@ -1562,242 +1537,250 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
         }
 }
 
-//NTSTATUS
-//ValidateSystemModules()
+// NTSTATUS
+// ValidateSystemModules()
 //{
-//        NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
-//        BOOLEAN                   bstatus            = FALSE;
-//        ANSI_STRING               ansi_string        = {0};
-//        UNICODE_STRING            path               = {0};
-//        ULONG                     section_size       = 0;
-//        HANDLE                    section_handle     = NULL;
-//        PVOID                     section            = NULL;
-//        PVOID                     disk_buffer        = NULL;
-//        ULONG                     disk_buffer_size   = 0;
-//        PVOID                     disk_hash          = NULL;
-//        ULONG                     disk_hash_size     = 0;
-//        UINT64                    disk_text_base     = 0;
-//        UINT64                    memory_text_base   = 0;
-//        ULONG                     memory_text_size   = 0;
-//        PVOID                     memory_hash        = NULL;
-//        ULONG                     memory_hash_size   = 0;
-//        PVOID                     memory_buffer      = NULL;
-//        ULONG                     memory_buffer_size = 0;
-//        ULONG                     result             = 0;
-//        PEPROCESS                 process            = NULL;
-//        KAPC_STATE                apc_state          = {0};
-//        SYSTEM_MODULES            modules            = {0};
-//        PRTL_MODULE_EXTENDED_INFO module_info        = NULL;
-//        PIMAGE_SECTION_HEADER     disk_text_header   = NULL;
-//        PIMAGE_SECTION_HEADER     memory_text_header = NULL;
+//         NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
+//         BOOLEAN                   bstatus            = FALSE;
+//         ANSI_STRING               ansi_string        = {0};
+//         UNICODE_STRING            path               = {0};
+//         ULONG                     section_size       = 0;
+//         HANDLE                    section_handle     = NULL;
+//         PVOID                     section            = NULL;
+//         PVOID                     disk_buffer        = NULL;
+//         ULONG                     disk_buffer_size   = 0;
+//         PVOID                     disk_hash          = NULL;
+//         ULONG                     disk_hash_size     = 0;
+//         UINT64                    disk_text_base     = 0;
+//         UINT64                    memory_text_base   = 0;
+//         ULONG                     memory_text_size   = 0;
+//         PVOID                     memory_hash        = NULL;
+//         ULONG                     memory_hash_size   = 0;
+//         PVOID                     memory_buffer      = NULL;
+//         ULONG                     memory_buffer_size = 0;
+//         ULONG                     result             = 0;
+//         PEPROCESS                 process            = NULL;
+//         KAPC_STATE                apc_state          = {0};
+//         SYSTEM_MODULES            modules            = {0};
+//         PRTL_MODULE_EXTENDED_INFO module_info        = NULL;
+//         PIMAGE_SECTION_HEADER     disk_text_header   = NULL;
+//         PIMAGE_SECTION_HEADER     memory_text_header = NULL;
 //
-//        DEBUG_VERBOSE("Beginning to validate system modules.");
+//         DEBUG_VERBOSE("Beginning to validate system modules.");
 //
-//        status = GetSystemModuleInformation(&modules);
+//         status = GetSystemModuleInformation(&modules);
 //
-//        if (!NT_SUCCESS(status))
-//        {
-//                DEBUG_ERROR("GetSystemModuleInformation failed with status %s", status);
-//                return status;
-//        }
+//         if (!NT_SUCCESS(status))
+//         {
+//                 DEBUG_ERROR("GetSystemModuleInformation failed with status %s", status);
+//                 return status;
+//         }
 //
-//        /*
-//         * Since ntoskrnl itself is a process, we skip it here - we will validate it elsewhere.
-//         */
-//        for (INT index = 1; index < modules.module_count; index++)
-//        {
-//                module_info = (PRTL_MODULE_EXTENDED_INFO)((UINT64)modules.address +
-//                                                          index * sizeof(RTL_MODULE_EXTENDED_INFO));
+//         /*
+//          * Since ntoskrnl itself is a process, we skip it here - we will validate it elsewhere.
+//          */
+//         for (INT index = 1; index < modules.module_count; index++)
+//         {
+//                 module_info = (PRTL_MODULE_EXTENDED_INFO)((UINT64)modules.address +
+//                                                           index *
+//                                                           sizeof(RTL_MODULE_EXTENDED_INFO));
 //
-//                RtlInitAnsiString(&ansi_string, module_info->FullPathName);
+//                 RtlInitAnsiString(&ansi_string, module_info->FullPathName);
 //
-//                if (!ansi_string.Buffer)
-//                {
-//                        DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
-//                        ansi_string.Buffer        = NULL;
-//                        ansi_string.Length        = 0;
-//                        ansi_string.MaximumLength = 0;
-//                        continue;
-//                }
+//                 if (!ansi_string.Buffer)
+//                 {
+//                         DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
+//                         ansi_string.Buffer        = NULL;
+//                         ansi_string.Length        = 0;
+//                         ansi_string.MaximumLength = 0;
+//                         continue;
+//                 }
 //
-//                status = RtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
+//                 status = RtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x", status);
-//                        path.Buffer = NULL;
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x",
+//                         status); path.Buffer = NULL; goto free_iteration;
+//                 }
 //
-//                status = MapDiskImageIntoVirtualAddressSpace(
-//                    &section_handle, &section, &path, &section_size);
+//                 status = MapDiskImageIntoVirtualAddressSpace(
+//                     &section_handle, &section, &path, &section_size);
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
-//                                    status);
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
+//                                     status);
+//                         goto free_iteration;
+//                 }
 //
-//                status = StoreModuleExecutableRegionsInBuffer(
-//                    &disk_buffer, section, section_size, &disk_buffer_size);
+//                 status = StoreModuleExecutableRegionsInBuffer(
+//                     &disk_buffer, section, section_size, &disk_buffer_size);
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x",
-//                                    status);
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x",
+//                                     status);
+//                         goto free_iteration;
+//                 }
 //
-//                /*
-//                 * For win32k and related modules, because they are 32bit for us to read the memory
-//                 * we need to attach to a 32 bit process. A simple check is that the 32 bit image
-//                 * base wont be a valid address, while this is hacky it works. Then we simply attach
-//                 * to a 32 bit address space, in our case winlogon, which will allow us to perform
-//                 * the copy.
-//                 */
-//                if (!MmIsAddressValid(module_info->ImageBase))
-//                {
-//                        DEBUG_VERBOSE(
-//                            "Win32k related module found, acquiring 32 bit address space...");
+//                 /*
+//                  * For win32k and related modules, because they are 32bit for us to read the
+//                  memory
+//                  * we need to attach to a 32 bit process. A simple check is that the 32 bit image
+//                  * base wont be a valid address, while this is hacky it works. Then we simply
+//                  attach
+//                  * to a 32 bit address space, in our case winlogon, which will allow us to
+//                  perform
+//                  * the copy.
+//                  */
+//                 if (!MmIsAddressValid(module_info->ImageBase))
+//                 {
+//                         DEBUG_VERBOSE(
+//                             "Win32k related module found, acquiring 32 bit address space...");
 //
-//                        EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
+//                         EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
 //
-//                        if (!process)
-//                                goto free_iteration;
+//                         if (!process)
+//                                 goto free_iteration;
 //
-//                        KeStackAttachProcess(process, &apc_state);
+//                         KeStackAttachProcess(process, &apc_state);
 //
-//                        status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-//                                                                      module_info->ImageBase,
-//                                                                      module_info->ImageSize,
-//                                                                      &memory_buffer_size);
+//                         status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
+//                                                                       module_info->ImageBase,
+//                                                                       module_info->ImageSize,
+//                                                                       &memory_buffer_size);
 //
-//                        KeUnstackDetachProcess(&apc_state);
-//                }
-//                else
-//                {
-//                        status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-//                                                                      module_info->ImageBase,
-//                                                                      module_info->ImageSize,
-//                                                                      &memory_buffer_size);
-//                }
+//                         KeUnstackDetachProcess(&apc_state);
+//                 }
+//                 else
+//                 {
+//                         status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
+//                                                                       module_info->ImageBase,
+//                                                                       module_info->ImageSize,
+//                                                                       &memory_buffer_size);
+//                 }
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x",
-//                                    status);
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status
+//                         %x",
+//                                     status);
+//                         goto free_iteration;
+//                 }
 //
-//                disk_text_base = (UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-//                                 sizeof(IMAGE_SECTION_HEADER);
+//                 disk_text_base = (UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
+//                                  sizeof(IMAGE_SECTION_HEADER);
 //
-//                memory_text_base = (UINT64)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-//                                            sizeof(IMAGE_SECTION_HEADER));
+//                 memory_text_base = (UINT64)((UINT64)memory_buffer +
+//                 sizeof(INTEGRITY_CHECK_HEADER) +
+//                                             sizeof(IMAGE_SECTION_HEADER));
 //
-//                disk_text_header =
-//                    (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+//                 disk_text_header =
+//                     (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer +
+//                     sizeof(INTEGRITY_CHECK_HEADER));
 //
-//                memory_text_header =
-//                    (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
+//                 memory_text_header =
+//                     (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer +
+//                     sizeof(INTEGRITY_CHECK_HEADER));
 //
-//                if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer ||
-//                    !MmIsAddressValid(disk_buffer) || !MmIsAddressValid(memory_buffer))
-//                {
-//                        DEBUG_ERROR("Buffer(s) are null. An error has occured.");
-//                        goto free_iteration;
-//                }
+//                 if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer ||
+//                     !MmIsAddressValid(disk_buffer) || !MmIsAddressValid(memory_buffer))
+//                 {
+//                         DEBUG_ERROR("Buffer(s) are null. An error has occured.");
+//                         goto free_iteration;
+//                 }
 //
-//                if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
-//                {
-//                        DEBUG_WARNING("Executable section sizes differ between images.");
-//                        goto free_iteration;
-//                }
+//                 if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
+//                 {
+//                         DEBUG_WARNING("Executable section sizes differ between images.");
+//                         goto free_iteration;
+//                 }
 //
-//                status = ComputeHashOfBuffer(
-//                    disk_text_base, disk_text_header->SizeOfRawData, &disk_hash, &disk_hash_size);
+//                 status = ComputeHashOfBuffer(
+//                     disk_text_base, disk_text_header->SizeOfRawData, &disk_hash,
+//                     &disk_hash_size);
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("ComputeHashOfBuffer failed with status %s", status);
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("ComputeHashOfBuffer failed with status %s", status);
+//                         goto free_iteration;
+//                 }
 //
-//                status = ComputeHashOfBuffer(memory_text_base,
-//                                             memory_text_header->SizeOfRawData,
-//                                             &memory_hash,
-//                                             &memory_hash_size);
+//                 status = ComputeHashOfBuffer(memory_text_base,
+//                                              memory_text_header->SizeOfRawData,
+//                                              &memory_hash,
+//                                              &memory_hash_size);
 //
-//                if (!NT_SUCCESS(status))
-//                {
-//                        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-//                        goto free_iteration;
-//                }
+//                 if (!NT_SUCCESS(status))
+//                 {
+//                         DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+//                         goto free_iteration;
+//                 }
 //
-//                if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
-//                        goto free_iteration;
+//                 if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
+//                         goto free_iteration;
 //
-//                result = RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
+//                 result = RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
 //
-//                if (result = memory_text_header->SizeOfRawData)
-//                        DEBUG_VERBOSE("Module executable sections are valid for the module: %s",
-//                                      module_info->FullPathName);
-//                else
-//                        DEBUG_WARNING("Module regions are not valid for module: %s",
-//                                      module_info->FullPathName);
+//                 if (result = memory_text_header->SizeOfRawData)
+//                         DEBUG_VERBOSE("Module executable sections are valid for the module: %s",
+//                                       module_info->FullPathName);
+//                 else
+//                         DEBUG_WARNING("Module regions are not valid for module: %s",
+//                                       module_info->FullPathName);
 //
-//        free_iteration:
+//         free_iteration:
 //
-//                if (memory_buffer)
-//                        ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
+//                 if (memory_buffer)
+//                         ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
 //
-//                if (memory_hash)
-//                        ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
+//                 if (memory_hash)
+//                         ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
 //
-//                if (disk_buffer)
-//                        ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
+//                 if (disk_buffer)
+//                         ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
 //
-//                if (disk_hash)
-//                        ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
+//                 if (disk_hash)
+//                         ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
 //
-//        free_section:
+//         free_section:
 //
-//                if (section_handle)
-//                        ZwClose(section_handle);
+//                 if (section_handle)
+//                         ZwClose(section_handle);
 //
-//                if (section)
-//                        ZwUnmapViewOfSection(ZwCurrentProcess(), section);
+//                 if (section)
+//                         ZwUnmapViewOfSection(ZwCurrentProcess(), section);
 //
-//                /*
-//                 * Its times like this where you see why allocating all local variables at the
-//                 * beginning of the function may not be so ideal...
-//                 */
-//                if (path.Buffer)
-//                {
-//                        RtlFreeUnicodeString(&path);
-//                        path.Buffer        = NULL;
-//                        path.Length        = 0;
-//                        path.MaximumLength = 0;
-//                }
+//                 /*
+//                  * Its times like this where you see why allocating all local variables at the
+//                  * beginning of the function may not be so ideal...
+//                  */
+//                 if (path.Buffer)
+//                 {
+//                         RtlFreeUnicodeString(&path);
+//                         path.Buffer        = NULL;
+//                         path.Length        = 0;
+//                         path.MaximumLength = 0;
+//                 }
 //
-//                ansi_string.Buffer        = NULL;
-//                ansi_string.Length        = 0;
-//                ansi_string.MaximumLength = 0;
+//                 ansi_string.Buffer        = NULL;
+//                 ansi_string.Length        = 0;
+//                 ansi_string.MaximumLength = 0;
 //
-//                section_handle = NULL;
-//                section        = NULL;
-//                memory_buffer  = NULL;
-//                memory_hash    = NULL;
-//                disk_buffer    = NULL;
-//                disk_hash      = NULL;
-//        }
+//                 section_handle = NULL;
+//                 section        = NULL;
+//                 memory_buffer  = NULL;
+//                 memory_hash    = NULL;
+//                 disk_buffer    = NULL;
+//                 disk_hash      = NULL;
+//         }
 //
-//        if (modules.address)
-//                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+//         if (modules.address)
+//                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 //
-//        return status;
-//}
+//         return status;
+// }
 
 STATIC
 VOID
@@ -2010,8 +1993,8 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT          DeviceObje
  * Multithreaded delayed priority work items improve 1% lows by 25% and reduces average PC latency
  * by 10% compared to traditional multithreading. This is important as having high average fps but
  * low 1% lows just leads to stuttery gameplay which in competitive multiplayer games is simply not
- * alright. Overall still room for improvement but from a statistical and feel which the gameplay is
- * much smoother (tested in cs2).
+ * alright. Overall still room for improvement but from a statistical and feel standpoint which the
+ * gameplay is much smoother (tested in cs2).
  *
  * A potential idea for further improvement is finding the cores with the least cpu usages and
  * setting the worker threads affinity accordingly.
@@ -2046,9 +2029,11 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
         Context->complete            = FALSE;
         Context->dispatcher_info     = dispatcher_array;
         Context->module_info         = modules.address;
-        Context->current_count       = 0;
         Context->total_count         = modules.module_count;
         Context->block_size          = VALIDATION_BLOCK_SIZE;
+
+        /* skip hal.dll and ntosrnl.exe  */
+        Context->current_count = 2;
 
         return status;
 }
@@ -2129,7 +2114,7 @@ SystemModuleVerificationDispatcher()
                 context->work_items[index] = work_item;
         }
 
-        DEBUG_VERBOSE("Finished validating modules via dispatcher threads");
+        DEBUG_VERBOSE("All worker threads dispatched for system module validation.");
 
         return STATUS_SUCCESS;
 }

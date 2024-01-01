@@ -277,6 +277,16 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 
                         total_size += sizeof(DPC_STACKWALK_REPORT);
                         break;
+
+                case REPORT_DATA_TABLE_ROUTINE:
+
+                        RtlCopyMemory((UINT64)report_buffer + sizeof(GLOBAL_REPORT_QUEUE_HEADER) +
+                                          total_size,
+                                      report,
+                                      sizeof(DATA_TABLE_ROUTINE_REPORT));
+
+                        total_size += sizeof(DATA_TABLE_ROUTINE_REPORT);
+                        break;
                 }
 
                 /* QueuePop frees the node, but we still need to free the returned data */

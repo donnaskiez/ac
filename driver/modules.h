@@ -7,7 +7,24 @@
 #include "common.h"
 #include "queue.h"
 
-typedef struct NMI_CALLBACK_FAILURE
+typedef enum _TABLE_ID
+{
+        HalDispatch = 0,
+        HalPrivateDispatch
+} TABLE_ID;
+
+#define DATA_TABLE_ROUTINE_BUF_SIZE 256
+
+typedef struct _DATA_TABLE_ROUTINE_REPORT
+{
+        UINT32   report_code;
+        TABLE_ID id;
+        UINT64   address;
+        CHAR     routine[DATA_TABLE_ROUTINE_BUF_SIZE];
+
+} DATA_TABLE_ROUTINE_REPORT, *PDATA_TABLE_ROUTINE_REPORT;
+
+typedef struct _NMI_CALLBACK_FAILURE
 {
         INT    report_code;
         INT    were_nmis_disabled;
@@ -20,10 +37,10 @@ typedef struct NMI_CALLBACK_FAILURE
 
 typedef struct _DPC_STACKWALK_REPORT
 {
-        UINT32    report_code;
+        UINT32 report_code;
         UINT64 kthread_address;
         UINT64 invalid_rip;
-        CHAR      driver[APC_STACKWALK_BUFFER_SIZE];
+        CHAR   driver[APC_STACKWALK_BUFFER_SIZE];
 
 } DPC_STACKWALK_REPORT, *PDPC_STACKWALK_REPORT;
 
@@ -109,5 +126,8 @@ FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread, _In_ ULONG FlagIndex, _In_ BOOLEA
 
 NTSTATUS
 DispatchStackwalkToEachCpuViaDpc();
+
+NTSTATUS
+ValidateHalDispatchTables();
 
 #endif

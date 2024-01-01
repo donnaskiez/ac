@@ -11,7 +11,7 @@ open source anti cheat (lol) which I made for fun.
 - DPC stackwalking via RtlCaptureStackBackTrace
 - Handle stripping via obj callbacks
 - Process handle table enumeration
-- System module verification
+- System module device object verification
 - System module .text integrity checks (see known issues)
 - Unlinked process detection
 - Removed thread PspCidTable entry detection
@@ -20,6 +20,7 @@ open source anti cheat (lol) which I made for fun.
 - EPT hook detection (currently detects hyperdbg and DdiMon)
 - Driver integrity checks both locally and over server
 - Hypervisor detection
+- HalDispatch and HalPrivateDispatch routine validation
 
 # planned features
 
@@ -35,7 +36,7 @@ open source anti cheat (lol) which I made for fun.
 - pcileech firmware detection 
 - testing program to test the features
 - simple user mode logger + usermode logging overhaul
-- some more which i cant think of
+- data ptr detction (+ chained data ptr walking)
 
 # example
 

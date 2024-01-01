@@ -489,11 +489,6 @@ _Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
 
         DEBUG_INFO("Handle to driver closed.");
 
-        /*
-         * For now its fine, but this will need to be moved to our process load callbacks
-         * since right now anyone can open a handle to our driver and then close it lol
-         */
-
         /* we also lose reports here, so sohuld pass em into the irp before freeing */
         FreeGlobalReportQueueObjects();
         ProcCloseClearProcessConfiguration();

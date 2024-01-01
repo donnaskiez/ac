@@ -27,6 +27,7 @@
 #define REPORT_ILLEGAL_ATTACH_PROCESS           100
 #define REPORT_APC_STACKWALK                    110
 #define REPORT_DPC_STACKWALK                    120
+#define REPORT_DATA_TABLE_ROUTINE               130
 
 #define TEST_STEAM_64_ID 123456789;
 
@@ -213,6 +214,22 @@ struct DPC_STACKWALK_REPORT
         UINT64 kthread_address;
         UINT64 invalid_rip;
         CHAR   driver[4096];
+};
+
+enum TABLE_ID
+{
+        HalDispatch = 0,
+        HalPrivateDispatch
+};
+
+#define DATA_TABLE_ROUTINE_BUF_SIZE 256
+
+struct DATA_TABLE_ROUTINE_REPORT
+{
+        UINT32   report_code;
+        TABLE_ID id;
+        UINT64   address;
+        CHAR     routine[DATA_TABLE_ROUTINE_BUF_SIZE];
 };
 }
 }

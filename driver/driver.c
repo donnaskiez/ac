@@ -432,11 +432,6 @@ end:
         return status;
 }
 
-GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
-{
-        *Context = &driver_config.sys_val_context;
-}
-
 _IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
@@ -519,6 +514,11 @@ PDEVICE_OBJECT
 GetDriverDeviceObject()
 {
         return driver_config.device_object;
+}
+
+GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
+{
+        *Context = &driver_config.sys_val_context;
 }
 
 _IRQL_requires_max_(APC_LEVEL)

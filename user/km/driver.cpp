@@ -244,6 +244,10 @@ kernelmode::Driver::QueryReportQueue()
                         ReportTypeFromReportQueue<DPC_STACKWALK_REPORT>(
                             buffer, &total_size, &hidden_report);
                         break;
+                case REPORT_DATA_TABLE_ROUTINE:
+                        ReportTypeFromReportQueue<DATA_TABLE_ROUTINE_REPORT>(
+                            buffer, &total_size, &hidden_report);
+                        break;
                 default: break;
                 }
         }

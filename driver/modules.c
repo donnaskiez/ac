@@ -195,8 +195,9 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 #endif
 
 /*
- * TODO: this needs to be refactored to just return the entry not the whole fukin thing
- * TODO: return ntstatus and pass result in an out parameter
+ * This returns a reference to an entry in the system modules array retrieved via
+ * GetSystemModuleInformation. It's important to remember we don't free the modules once we retrieve
+ * this reference, and instead only free them when we are done using it.
  */
 PRTL_MODULE_EXTENDED_INFO
 FindSystemModuleByName(_In_ LPCSTR ModuleName, _In_ PSYSTEM_MODULES SystemModules)
@@ -802,6 +803,29 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
         return STATUS_SUCCESS;
 }
 
+NTSTATUS
+IsInstructionPointerInsideModule(_In_ UINT64                    Rip,
+                                 _In_ PRTL_MODULE_EXTENDED_INFO Module,
+                                 _Out_ PBOOLEAN                 Result)
+{
+        PAGED_CODE();
+
+        if (!Rip || !Module || !Result)
+                return STATUS_INVALID_PARAMETER;
+
+        UINT64 base = (UINT64)Module->ImageBase;
+        UINT64 end  = base + Module->ImageSize;
+
+        if (Rip >= base && Rip <= end)
+        {
+                *Result = TRUE;
+                return STATUS_SUCCESS;
+        }
+
+        *Result = FALSE;
+        return STATUS_SUCCESS;
+}
+
 /*
  * todo: i think we should split this function up into each analysis i.e one for the interrupted
  * rip, one for the cid etc.
@@ -894,7 +918,8 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                 }
                 else
                 {
-                        DEBUG_VERBOSE("Thread: %llx was found in PspCidTable", NmiContext[core].kthread);
+                        DEBUG_VERBOSE("Thread: %llx was found in PspCidTable",
+                                      NmiContext[core].kthread);
                 }
 
                 if (NmiContext[core].user_thread)
@@ -1040,6 +1065,12 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         PVOID          callback_handle = NULL;
         SYSTEM_MODULES system_modules  = {0};
         PNMI_CONTEXT   nmi_context     = NULL;
+
+        status = ValidateHalDispatchTables();
+
+        /* do we continue ? probably. */
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("ValidateHalDispatchTables failed with status %x", status);
 
         nmi_context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
                                       KeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
@@ -1548,6 +1579,314 @@ end:
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
         if (context)
                 ExFreePoolWithTag(context, POOL_TAG_DPC);
+
+        return status;
+}
+
+/* todo: walk the chain of pointers to prevent jmp chaining */
+STATIC
+NTSTATUS
+ValidateTableDispatchRoutines(_In_ PVOID*          Base,
+                              _In_ UINT32          Entries,
+                              _In_ PSYSTEM_MODULES Modules,
+                              _Out_ PVOID*         Routine)
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+        BOOLEAN  flag   = FALSE;
+
+        for (UINT32 index = 0; index < Entries; index++)
+        {
+                if (!Base[index])
+                        continue;
+
+                status = IsInstructionPointerInInvalidRegion(Base[index], Modules, &flag);
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("IsInstructionPointerInInvalidRegion failed with status %x",
+                                    status);
+                        continue;
+                }
+
+                if (!flag)
+                        *Routine = Base[index];
+        }
+
+        return status;
+}
+
+/*
+ * windows version info: https://www.techthoughts.info/windows-version-numbers/
+ *
+ * sizes:
+ * https://www.vergiliusproject.com/kernels/x64/Windows%2011/22H2%20(2022%20Update)/HAL_PRIVATE_DISPATCH
+ */
+#define HAL_PRIVATE_DISPATCH_W11_22H2_SIZE 0x4f0
+#define HAL_PRIVATE_DISPATCH_W10_22H2_SIZE 0x4b0
+
+#define WINDOWS_10_MAX_BUILD_NUMBER 19045
+
+STATIC
+UINT32
+GetHalPrivateDispatchTableRoutineCount(_In_ PRTL_OSVERSIONINFOW VersionInfo)
+{
+        if (VersionInfo->dwBuildNumber <= WINDOWS_10_MAX_BUILD_NUMBER)
+                return (HAL_PRIVATE_DISPATCH_W10_22H2_SIZE / sizeof(UINT64)) - 1;
+        else
+                return (HAL_PRIVATE_DISPATCH_W11_22H2_SIZE / sizeof(UINT64)) - 1;
+}
+
+STATIC
+NTSTATUS
+ValidateHalPrivateDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
+{
+        NTSTATUS           status  = STATUS_UNSUCCESSFUL;
+        PVOID              table   = NULL;
+        UNICODE_STRING     string  = RTL_CONSTANT_STRING(L"HalPrivateDispatchTable");
+        PVOID*             base    = NULL;
+        RTL_OSVERSIONINFOW os_info = {0};
+        UINT32             count   = 0;
+
+        DEBUG_VERBOSE("Validating HalPrivateDispatchTable.");
+
+        table = MmGetSystemRoutineAddress(&string);
+
+        if (!table)
+                return status;
+
+        status = GetOsVersionInformation(&os_info);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetOsVersionInformation failed with status %x", status);
+                return status;
+        }
+
+        base  = (UINT64)table + sizeof(UINT64);
+        count = GetHalPrivateDispatchTableRoutineCount(&os_info);
+
+        status = ValidateTableDispatchRoutines(base, count, Modules, Routine);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ValidateTableDispatchRoutines failed with status %x", status);
+                return status;
+        }
+
+        return status;
+}
+
+STATIC
+NTSTATUS
+ValidateHalDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+        BOOLEAN  flag   = FALSE;
+
+        *Routine = NULL;
+
+        DEBUG_VERBOSE("Validating HalDispatchTable.");
+
+        /*
+         * Since windows exports all the function pointers inside the HalDispatchTable, we may
+         * aswell make use of them and validate it this way. While it definitely is ugly, it is the
+         * safest way to do it.
+         *
+         * What if there are 2 invalid routines? hmm.. tink.
+         */
+        status = IsInstructionPointerInInvalidRegion(HalQuerySystemInformation, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalQuerySystemInformation;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalSetSystemInformation, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalSetSystemInformation;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalQueryBusSlots, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalQueryBusSlots;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalReferenceHandlerForBus, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalReferenceHandlerForBus;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalReferenceBusHandler, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalReferenceBusHandler;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalDereferenceBusHandler, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalDereferenceBusHandler;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalInitPnpDriver, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalInitPnpDriver;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalInitPowerManagement, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalInitPowerManagement;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalGetDmaAdapter, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalGetDmaAdapter;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalGetInterruptTranslator, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalGetInterruptTranslator;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalStartMirroring, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalStartMirroring;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalEndMirroring, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalEndMirroring;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalMirrorPhysicalMemory, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalMirrorPhysicalMemory;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalEndOfBoot, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalEndOfBoot;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalMirrorVerify, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalMirrorVerify;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalGetCachedAcpiTable, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalGetCachedAcpiTable;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalSetPciErrorHandlerCallback, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalSetPciErrorHandlerCallback;
+        else
+                return status;
+
+        status = IsInstructionPointerInInvalidRegion(HalGetPrmCache, Modules, &flag);
+
+        if (!flag && NT_SUCCESS(status))
+                *Routine = HalGetPrmCache;
+
+        return status;
+}
+
+STATIC
+VOID
+ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
+{
+        PDATA_TABLE_ROUTINE_REPORT report = ExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(DATA_TABLE_ROUTINE_REPORT), POOL_TAG_INTEGRITY);
+
+        if (!report)
+                return;
+
+        DEBUG_WARNING(
+            "Invalid data table routine found. Table: %lx, Address: %llx", TableId, Address);
+
+        report->address = Address;
+        report->id      = TableId;
+        report->id      = REPORT_DATA_TABLE_ROUTINE;
+        RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
+
+        InsertReportToQueue(report);
+}
+
+NTSTATUS
+ValidateHalDispatchTables()
+{
+        NTSTATUS       status   = STATUS_UNSUCCESSFUL;
+        SYSTEM_MODULES modules  = {0};
+        PVOID          routine1 = NULL;
+        PVOID          routine2 = NULL;
+
+        status = GetSystemModuleInformation(&modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+                return status;
+        }
+
+        status = ValidateHalDispatchTable(&routine1, &modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ValidateHalDispatchTable failed with status %x", status);
+                goto end;
+        }
+
+        if (routine1)
+                ReportDataTableInvalidRoutine(HalDispatch, routine1);
+        else
+                DEBUG_VERBOSE("HalDispatch dispatch routines are valid.");
+
+        status = ValidateHalPrivateDispatchTable(&routine2, &modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ValidateHalPrivateDispatchTable failed with status %x", status);
+                goto end;
+        }
+
+        if (routine2)
+                ReportDataTableInvalidRoutine(HalPrivateDispatch, routine2);
+        else
+                DEBUG_VERBOSE("HalPrivateDispatch dispatch routines are valid.");
+
+end:
+        if (modules.address)
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 
         return status;
 }

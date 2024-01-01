@@ -317,7 +317,7 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
                                         }
                                 }
 
-                                if (process == NULL)
+                                if (!process)
                                         break;
 
                                 DEBUG_VERBOSE("Found process via pt walk: %llx", (UINT64)process);
