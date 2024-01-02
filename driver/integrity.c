@@ -92,7 +92,7 @@ RegistryPathQueryTestSigningCallback(IN PWSTR ValueName,
 #        pragma alloc_text(PAGE, StoreModuleExecutableRegionsInBuffer)
 #        pragma alloc_text(PAGE, MapDiskImageIntoVirtualAddressSpace)
 #        pragma alloc_text(PAGE, ComputeHashOfBuffer)
-#        pragma alloc_text(PAGE, VerifyInMemoryImageVsDiskImage)
+// #        pragma alloc_text(PAGE, VerifyInMemoryImageVsDiskImage)
 #        pragma alloc_text(PAGE, RetrieveInMemoryModuleExecutableSections)
 #        pragma alloc_text(PAGE, GetNextSMBIOSStructureInTable)
 #        pragma alloc_text(PAGE, GetStringAtIndexFromSMBIOSTable)
@@ -224,7 +224,7 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
 {
         PAGED_CODE();
 
-        NTSTATUS              status                  = STATUS_ABANDONED;
+        NTSTATUS              status                  = STATUS_UNSUCCESSFUL;
         PIMAGE_DOS_HEADER     dos_header              = NULL;
         PLOCAL_NT_HEADER      nt_header               = NULL;
         PIMAGE_SECTION_HEADER section                 = NULL;
@@ -275,8 +275,9 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
         section     = IMAGE_FIRST_SECTION(nt_header);
         buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
 
-        for (ULONG index = 0; index < num_sections; index++)
+        for (ULONG index = 0; index < num_sections - 1; index++)
         {
+                /* create a function for this instead, check for writeable sections use !*/
                 if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
                 {
                         /*
@@ -325,11 +326,9 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
         INTEGRITY_CHECK_HEADER header   = {0};
         header.executable_section_count = num_executable_sections;
         header.total_packet_size        = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
-
         RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
 
         *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
-
         return status;
 }
 
@@ -547,171 +546,6 @@ end:
 
         if (hash_object)
                 ExFreePoolWithTag(hash_object, POOL_TAG_INTEGRITY);
-
-        return status;
-}
-
-/*
- * 1. map driver to memory
- * 2. store executable sections in buffer
- * 3. do the same with the in-memory module
- * 4. hash both buffers
- * 5. compare
- */
-NTSTATUS
-VerifyInMemoryImageVsDiskImage(
-    //_In_ PIRP Irp
-)
-{
-        PAGED_CODE();
-
-        NTSTATUS                 status                = STATUS_UNSUCCESSFUL;
-        UNICODE_STRING           path                  = {0};
-        HANDLE                   section_handle        = NULL;
-        PVOID                    section               = NULL;
-        SIZE_T                   section_size          = 0;
-        SIZE_T                   bytes_written         = 0;
-        PVOID                    disk_buffer           = NULL;
-        PVOID                    in_memory_buffer      = NULL;
-        RTL_MODULE_EXTENDED_INFO module_info           = {0};
-        UINT64                   disk_base             = 0;
-        UINT64                   memory_base           = 0;
-        PIMAGE_SECTION_HEADER    disk_text_header      = NULL;
-        PIMAGE_SECTION_HEADER    memory_text_header    = NULL;
-        PVOID                    disk_text_hash        = NULL;
-        PVOID                    memory_text_hash      = NULL;
-        ULONG                    disk_text_hash_size   = 0;
-        ULONG                    memory_text_hash_size = 0;
-        SIZE_T                   result                = 0;
-        LPCSTR                   driver_name           = NULL;
-
-        GetDriverPath(&path);
-        GetDriverName(&driver_name);
-
-        if (!driver_name)
-        {
-                DEBUG_ERROR("GetDriverName failed with no status");
-                return status;
-        }
-
-        status =
-            MapDiskImageIntoVirtualAddressSpace(&section_handle, &section, &path, &section_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x", status);
-                return status;
-        }
-
-        status = StoreModuleExecutableRegionsInBuffer(
-            &disk_buffer, section, section_size, &bytes_written);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
-                goto end;
-        }
-
-        /*
-         * Parse the in-memory module
-         */
-        status = GetModuleInformationByName(&module_info, driver_name);
-
-        if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
-        {
-                DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
-                goto end;
-        }
-
-        status = StoreModuleExecutableRegionsInBuffer(
-            &in_memory_buffer, module_info.ImageBase, module_info.ImageSize, &bytes_written);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
-                goto end;
-        }
-
-        disk_base   = (UINT64)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-                             sizeof(IMAGE_SECTION_HEADER));
-        memory_base = (UINT64)((UINT64)in_memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-                               sizeof(IMAGE_SECTION_HEADER));
-
-        disk_text_header =
-            (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-        memory_text_header =
-            (PIMAGE_SECTION_HEADER)((UINT64)in_memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-
-        if (!disk_base || !memory_base || !disk_buffer || !in_memory_buffer)
-        {
-                DEBUG_ERROR("Buffer(s) are null. An error has occured.");
-                goto end;
-        }
-
-        if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
-        {
-                /* report or bug check etc. */
-                DEBUG_WARNING("Executable section sizes differ between images.");
-                goto end;
-        }
-
-        status = ComputeHashOfBuffer(
-            disk_base, disk_text_header->SizeOfRawData, &disk_text_hash, &disk_text_hash_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                goto end;
-        }
-
-        status = ComputeHashOfBuffer(memory_base,
-                                     memory_text_header->SizeOfRawData,
-                                     &memory_text_hash,
-                                     &memory_text_hash_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                goto end;
-        }
-
-        if (memory_text_hash_size != disk_text_hash_size)
-        {
-                DEBUG_WARNING(
-                    "Error with the hash algorithm, hash sizes are different. An error has occured.");
-                goto end;
-        }
-
-        result = RtlCompareMemory(memory_text_hash, disk_text_hash, memory_text_hash_size);
-
-        if (result != memory_text_hash_size)
-        {
-                /* report etc. bug check etc. */
-                DEBUG_WARNING("Text section hashes are different, the section has been modified.");
-                goto end;
-        }
-
-        DEBUG_INFO("Text sections are valid. Integrity check has been complete.");
-
-end:
-
-        if (section_handle)
-                ZwClose(section_handle);
-
-        if (section)
-                ZwUnmapViewOfSection(ZwCurrentProcess(), section);
-
-        if (disk_buffer)
-                ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
-
-        if (in_memory_buffer)
-                ExFreePoolWithTag(in_memory_buffer, POOL_TAG_INTEGRITY);
-
-        if (memory_text_hash)
-                ExFreePoolWithTag(memory_text_hash, POOL_TAG_INTEGRITY);
-
-        if (disk_text_hash)
-                ExFreePoolWithTag(disk_text_hash, POOL_TAG_INTEGRITY);
 
         return status;
 }
@@ -957,6 +791,66 @@ end:
         return status;
 }
 
+STATIC
+NTSTATUS
+ComputeHashOfSections(_In_ PIMAGE_SECTION_HEADER DiskSection,
+                      _In_ PIMAGE_SECTION_HEADER MemorySection,
+                      _Out_ PVOID*               DiskHash,
+                      _Out_ PULONG               DiskHashSize,
+                      _Out_ PVOID*               MemoryHash,
+                      _Out_ PULONG               MemoryHashSize)
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        if (DiskSection->SizeOfRawData != MemorySection->SizeOfRawData)
+        {
+                DEBUG_WARNING("Executable section sizes differ between images.");
+                return STATUS_INVALID_BUFFER_SIZE;
+        }
+
+        status = ComputeHashOfBuffer((UINT64)DiskSection + sizeof(IMAGE_SECTION_HEADER),
+                                     DiskSection->SizeOfRawData,
+                                     DiskHash,
+                                     DiskHashSize);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+                return status;
+        }
+
+        status = ComputeHashOfBuffer((UINT64)MemorySection + sizeof(IMAGE_SECTION_HEADER),
+                                     MemorySection->SizeOfRawData,
+                                     MemoryHash,
+                                     MemoryHashSize);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ComputeHashOfBuffer 2 failed with status %x", status);
+                return status;
+        }
+
+        return status;
+}
+
+STATIC
+BOOLEAN
+CompareHashes(_In_ PVOID Hash1, _In_ PVOID Hash2, _In_ UINT32 Length)
+{
+        if (RtlCompareMemory(Hash1, Hash2, Length) == Length)
+                return TRUE;
+        else
+                return FALSE;
+}
+
+typedef struct _VAL_INTEGRITY_HEADER
+{
+        INTEGRITY_CHECK_HEADER integrity_check_header;
+        IMAGE_SECTION_HEADER   section_header;
+        CHAR                   section_base[];
+
+} VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
+
 /*
  * Because the infrastructure has already been setup to validate modules in the driver, that
  * is how I will validate the usermode modules as well. Another reason is that the win32 api
@@ -980,23 +874,22 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                         status              = STATUS_UNSUCCESSFUL;
-        BOOLEAN                          bstatus             = FALSE;
-        PROCESS_MODULE_VALIDATION_RESULT validation_result   = {0};
-        PPROCESS_MODULE_INFORMATION      module_info         = NULL;
-        PKPROCESS                        process             = NULL;
-        KAPC_STATE                       apc_state           = {0};
-        PVOID                            in_memory_buffer    = NULL;
-        PVOID                            disk_buffer         = NULL;
-        PVOID                            in_memory_hash      = NULL;
-        PVOID                            disk_hash           = NULL;
-        ULONG                            in_memory_hash_size = 0;
-        ULONG                            disk_hash_size      = 0;
-        SIZE_T                           bytes_written       = 0;
-        UNICODE_STRING                   module_path         = {0};
-        HANDLE                           section_handle      = NULL;
-        PVOID                            section             = NULL;
-        ULONG                            section_size        = 0;
+        NTSTATUS                         status            = STATUS_UNSUCCESSFUL;
+        PROCESS_MODULE_VALIDATION_RESULT validation_result = {0};
+        PPROCESS_MODULE_INFORMATION      module_info       = NULL;
+        PKPROCESS                        process           = NULL;
+        KAPC_STATE                       apc_state         = {0};
+        PVAL_INTEGRITY_HEADER            memory_buffer     = NULL;
+        PVAL_INTEGRITY_HEADER            disk_buffer       = NULL;
+        PVOID                            memory_hash       = NULL;
+        PVOID                            disk_hash         = NULL;
+        ULONG                            memory_hash_size  = 0;
+        ULONG                            disk_hash_size    = 0;
+        SIZE_T                           bytes_written     = 0;
+        UNICODE_STRING                   module_path       = {0};
+        HANDLE                           section_handle    = NULL;
+        PVOID                            section           = NULL;
+        ULONG                            section_size      = 0;
 
         status = ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
 
@@ -1009,6 +902,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         module_info = (PPROCESS_MODULE_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
         GetProtectedProcessEProcess(&process);
+        RtlInitUnicodeString(&module_path, &module_info->module_path);
 
         /*
          * Attach because the offsets given are from the process' context.
@@ -1016,7 +910,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         KeStackAttachProcess(process, &apc_state);
 
         status = StoreModuleExecutableRegionsInBuffer(
-            &in_memory_buffer, module_info->module_base, module_info->module_size, &bytes_written);
+            &memory_buffer, module_info->module_base, module_info->module_size, &bytes_written);
 
         KeUnstackDetachProcess(&apc_state);
 
@@ -1025,17 +919,6 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                 DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
                 goto end;
         }
-
-        status = ComputeHashOfBuffer(
-            in_memory_buffer, bytes_written, &in_memory_hash, &in_memory_hash_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                goto end;
-        }
-
-        RtlInitUnicodeString(&module_path, &module_info->module_path);
 
         status = MapDiskImageIntoVirtualAddressSpace(
             &section_handle, &section, &module_path, &section_size);
@@ -1055,24 +938,16 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                 goto end;
         }
 
-        status = ComputeHashOfBuffer(disk_buffer, bytes_written, &disk_hash, &disk_hash_size);
+        status = ComputeHashOfSections(&memory_buffer->section_header,
+                                       &disk_buffer->section_header,
+                                       &disk_hash,
+                                       &disk_hash_size,
+                                       &memory_hash,
+                                       &memory_hash_size);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ComputeHashOfBuffer 2 failed with status %x", status);
-                goto end;
-        }
-
-        if (!in_memory_hash || !disk_hash)
-                goto end;
-
-        bstatus = RtlEqualMemory(in_memory_hash, disk_hash, in_memory_hash_size);
-
-        status = ValidateIrpOutputBuffer(Irp, sizeof(PROCESS_MODULE_VALIDATION_RESULT));
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("Failed to validate IRP output buffer");
+                DEBUG_ERROR("ComputeHashOfSections failed with status %x", status);
                 goto end;
         }
 
@@ -1082,7 +957,18 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
          * We also don't need to send any module information since usermode has everything
          * needed to file the report.
          */
-        validation_result.is_module_valid = bstatus;
+        if (CompareHashes(disk_hash, memory_hash, memory_hash_size))
+                validation_result.is_module_valid = TRUE;
+        else
+                validation_result.is_module_valid = FALSE;
+
+        status = ValidateIrpOutputBuffer(Irp, sizeof(PROCESS_MODULE_VALIDATION_RESULT));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Failed to validate IRP output buffer");
+                goto end;
+        }
 
         Irp->IoStatus.Information = sizeof(PROCESS_MODULE_VALIDATION_RESULT);
 
@@ -1098,11 +984,11 @@ end:
         if (section)
                 ZwUnmapViewOfSection(ZwCurrentProcess(), section);
 
-        if (in_memory_buffer)
-                ExFreePoolWithTag(in_memory_buffer, POOL_TAG_INTEGRITY);
+        if (memory_buffer)
+                ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
 
-        if (in_memory_hash)
-                ExFreePoolWithTag(in_memory_hash, POOL_TAG_INTEGRITY);
+        if (memory_hash)
+                ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
 
         if (disk_buffer)
                 ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
@@ -1214,9 +1100,9 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                 }
 
                 RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
-        }
 
-        DEBUG_VERBOSE("Successfully retrieved hard disk serial number.");
+                DEBUG_VERBOSE("Successfully retrieved hard disk serial number.");
+        }
 end:
 
         if (handle)
@@ -1537,278 +1423,30 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
         }
 }
 
-// NTSTATUS
-// ValidateSystemModules()
-//{
-//         NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
-//         BOOLEAN                   bstatus            = FALSE;
-//         ANSI_STRING               ansi_string        = {0};
-//         UNICODE_STRING            path               = {0};
-//         ULONG                     section_size       = 0;
-//         HANDLE                    section_handle     = NULL;
-//         PVOID                     section            = NULL;
-//         PVOID                     disk_buffer        = NULL;
-//         ULONG                     disk_buffer_size   = 0;
-//         PVOID                     disk_hash          = NULL;
-//         ULONG                     disk_hash_size     = 0;
-//         UINT64                    disk_text_base     = 0;
-//         UINT64                    memory_text_base   = 0;
-//         ULONG                     memory_text_size   = 0;
-//         PVOID                     memory_hash        = NULL;
-//         ULONG                     memory_hash_size   = 0;
-//         PVOID                     memory_buffer      = NULL;
-//         ULONG                     memory_buffer_size = 0;
-//         ULONG                     result             = 0;
-//         PEPROCESS                 process            = NULL;
-//         KAPC_STATE                apc_state          = {0};
-//         SYSTEM_MODULES            modules            = {0};
-//         PRTL_MODULE_EXTENDED_INFO module_info        = NULL;
-//         PIMAGE_SECTION_HEADER     disk_text_header   = NULL;
-//         PIMAGE_SECTION_HEADER     memory_text_header = NULL;
-//
-//         DEBUG_VERBOSE("Beginning to validate system modules.");
-//
-//         status = GetSystemModuleInformation(&modules);
-//
-//         if (!NT_SUCCESS(status))
-//         {
-//                 DEBUG_ERROR("GetSystemModuleInformation failed with status %s", status);
-//                 return status;
-//         }
-//
-//         /*
-//          * Since ntoskrnl itself is a process, we skip it here - we will validate it elsewhere.
-//          */
-//         for (INT index = 1; index < modules.module_count; index++)
-//         {
-//                 module_info = (PRTL_MODULE_EXTENDED_INFO)((UINT64)modules.address +
-//                                                           index *
-//                                                           sizeof(RTL_MODULE_EXTENDED_INFO));
-//
-//                 RtlInitAnsiString(&ansi_string, module_info->FullPathName);
-//
-//                 if (!ansi_string.Buffer)
-//                 {
-//                         DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
-//                         ansi_string.Buffer        = NULL;
-//                         ansi_string.Length        = 0;
-//                         ansi_string.MaximumLength = 0;
-//                         continue;
-//                 }
-//
-//                 status = RtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x",
-//                         status); path.Buffer = NULL; goto free_iteration;
-//                 }
-//
-//                 status = MapDiskImageIntoVirtualAddressSpace(
-//                     &section_handle, &section, &path, &section_size);
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
-//                                     status);
-//                         goto free_iteration;
-//                 }
-//
-//                 status = StoreModuleExecutableRegionsInBuffer(
-//                     &disk_buffer, section, section_size, &disk_buffer_size);
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x",
-//                                     status);
-//                         goto free_iteration;
-//                 }
-//
-//                 /*
-//                  * For win32k and related modules, because they are 32bit for us to read the
-//                  memory
-//                  * we need to attach to a 32 bit process. A simple check is that the 32 bit image
-//                  * base wont be a valid address, while this is hacky it works. Then we simply
-//                  attach
-//                  * to a 32 bit address space, in our case winlogon, which will allow us to
-//                  perform
-//                  * the copy.
-//                  */
-//                 if (!MmIsAddressValid(module_info->ImageBase))
-//                 {
-//                         DEBUG_VERBOSE(
-//                             "Win32k related module found, acquiring 32 bit address space...");
-//
-//                         EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
-//
-//                         if (!process)
-//                                 goto free_iteration;
-//
-//                         KeStackAttachProcess(process, &apc_state);
-//
-//                         status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-//                                                                       module_info->ImageBase,
-//                                                                       module_info->ImageSize,
-//                                                                       &memory_buffer_size);
-//
-//                         KeUnstackDetachProcess(&apc_state);
-//                 }
-//                 else
-//                 {
-//                         status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-//                                                                       module_info->ImageBase,
-//                                                                       module_info->ImageSize,
-//                                                                       &memory_buffer_size);
-//                 }
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status
-//                         %x",
-//                                     status);
-//                         goto free_iteration;
-//                 }
-//
-//                 disk_text_base = (UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-//                                  sizeof(IMAGE_SECTION_HEADER);
-//
-//                 memory_text_base = (UINT64)((UINT64)memory_buffer +
-//                 sizeof(INTEGRITY_CHECK_HEADER) +
-//                                             sizeof(IMAGE_SECTION_HEADER));
-//
-//                 disk_text_header =
-//                     (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer +
-//                     sizeof(INTEGRITY_CHECK_HEADER));
-//
-//                 memory_text_header =
-//                     (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer +
-//                     sizeof(INTEGRITY_CHECK_HEADER));
-//
-//                 if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer ||
-//                     !MmIsAddressValid(disk_buffer) || !MmIsAddressValid(memory_buffer))
-//                 {
-//                         DEBUG_ERROR("Buffer(s) are null. An error has occured.");
-//                         goto free_iteration;
-//                 }
-//
-//                 if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
-//                 {
-//                         DEBUG_WARNING("Executable section sizes differ between images.");
-//                         goto free_iteration;
-//                 }
-//
-//                 status = ComputeHashOfBuffer(
-//                     disk_text_base, disk_text_header->SizeOfRawData, &disk_hash,
-//                     &disk_hash_size);
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("ComputeHashOfBuffer failed with status %s", status);
-//                         goto free_iteration;
-//                 }
-//
-//                 status = ComputeHashOfBuffer(memory_text_base,
-//                                              memory_text_header->SizeOfRawData,
-//                                              &memory_hash,
-//                                              &memory_hash_size);
-//
-//                 if (!NT_SUCCESS(status))
-//                 {
-//                         DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-//                         goto free_iteration;
-//                 }
-//
-//                 if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
-//                         goto free_iteration;
-//
-//                 result = RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
-//
-//                 if (result = memory_text_header->SizeOfRawData)
-//                         DEBUG_VERBOSE("Module executable sections are valid for the module: %s",
-//                                       module_info->FullPathName);
-//                 else
-//                         DEBUG_WARNING("Module regions are not valid for module: %s",
-//                                       module_info->FullPathName);
-//
-//         free_iteration:
-//
-//                 if (memory_buffer)
-//                         ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
-//
-//                 if (memory_hash)
-//                         ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
-//
-//                 if (disk_buffer)
-//                         ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
-//
-//                 if (disk_hash)
-//                         ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
-//
-//         free_section:
-//
-//                 if (section_handle)
-//                         ZwClose(section_handle);
-//
-//                 if (section)
-//                         ZwUnmapViewOfSection(ZwCurrentProcess(), section);
-//
-//                 /*
-//                  * Its times like this where you see why allocating all local variables at the
-//                  * beginning of the function may not be so ideal...
-//                  */
-//                 if (path.Buffer)
-//                 {
-//                         RtlFreeUnicodeString(&path);
-//                         path.Buffer        = NULL;
-//                         path.Length        = 0;
-//                         path.MaximumLength = 0;
-//                 }
-//
-//                 ansi_string.Buffer        = NULL;
-//                 ansi_string.Length        = 0;
-//                 ansi_string.MaximumLength = 0;
-//
-//                 section_handle = NULL;
-//                 section        = NULL;
-//                 memory_buffer  = NULL;
-//                 memory_hash    = NULL;
-//                 disk_buffer    = NULL;
-//                 disk_hash      = NULL;
-//         }
-//
-//         if (modules.address)
-//                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
-//
-//         return status;
-// }
-
+/*
+ * Validate .rdata and other read only/executable sections etc.
+ */
 STATIC
 VOID
 ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
         NTSTATUS              status             = STATUS_UNSUCCESSFUL;
-        BOOLEAN               bstatus            = FALSE;
         ANSI_STRING           ansi_string        = {0};
         UNICODE_STRING        path               = {0};
         ULONG                 section_size       = 0;
         HANDLE                section_handle     = NULL;
         PVOID                 section            = NULL;
-        PVOID                 disk_buffer        = NULL;
+        PVAL_INTEGRITY_HEADER disk_buffer        = NULL;
         ULONG                 disk_buffer_size   = 0;
         PVOID                 disk_hash          = NULL;
         ULONG                 disk_hash_size     = 0;
-        UINT64                disk_text_base     = 0;
-        UINT64                memory_text_base   = 0;
         ULONG                 memory_text_size   = 0;
         PVOID                 memory_hash        = NULL;
         ULONG                 memory_hash_size   = 0;
-        PVOID                 memory_buffer      = NULL;
+        PVAL_INTEGRITY_HEADER memory_buffer      = NULL;
         ULONG                 memory_buffer_size = 0;
-        ULONG                 result             = 0;
         PEPROCESS             process            = NULL;
         KAPC_STATE            apc_state          = {0};
-        PIMAGE_SECTION_HEADER disk_text_header   = NULL;
-        PIMAGE_SECTION_HEADER memory_text_header = NULL;
 
         RtlInitAnsiString(&ansi_string, Module->FullPathName);
 
@@ -1836,7 +1474,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         }
 
         status = StoreModuleExecutableRegionsInBuffer(
-            &disk_buffer, section, section_size, &disk_buffer_size);
+            (PVOID)&disk_buffer, section, section_size, &disk_buffer_size);
 
         if (!NT_SUCCESS(status))
         {
@@ -1862,15 +1500,19 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 
                 KeStackAttachProcess(process, &apc_state);
 
-                status = StoreModuleExecutableRegionsInBuffer(
-                    &memory_buffer, Module->ImageBase, Module->ImageSize, &memory_buffer_size);
+                status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
+                                                              Module->ImageBase,
+                                                              Module->ImageSize,
+                                                              &memory_buffer_size);
 
                 KeUnstackDetachProcess(&apc_state);
         }
         else
         {
-                status = StoreModuleExecutableRegionsInBuffer(
-                    &memory_buffer, Module->ImageBase, Module->ImageSize, &memory_buffer_size);
+                status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
+                                                              Module->ImageBase,
+                                                              Module->ImageSize,
+                                                              &memory_buffer_size);
         }
 
         if (!NT_SUCCESS(status))
@@ -1879,62 +1521,32 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
                 goto end;
         }
 
-        disk_text_base =
-            (UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER) + sizeof(IMAGE_SECTION_HEADER);
-
-        memory_text_base = (UINT64)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER) +
-                                    sizeof(IMAGE_SECTION_HEADER));
-
-        disk_text_header =
-            (PIMAGE_SECTION_HEADER)((UINT64)disk_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-
-        memory_text_header =
-            (PIMAGE_SECTION_HEADER)((UINT64)memory_buffer + sizeof(INTEGRITY_CHECK_HEADER));
-
-        if (!disk_text_base || !memory_text_base || !disk_buffer || !memory_buffer ||
-            !MmIsAddressValid(disk_buffer) || !MmIsAddressValid(memory_buffer))
-        {
-                DEBUG_ERROR("Buffer(s) are null. An error has occured.");
-                goto end;
-        }
-
-        if (disk_text_header->SizeOfRawData != memory_text_header->SizeOfRawData)
-        {
-                DEBUG_WARNING("Executable section sizes differ between images.");
-                goto end;
-        }
-
-        status = ComputeHashOfBuffer(
-            disk_text_base, disk_text_header->SizeOfRawData, &disk_hash, &disk_hash_size);
+        status = ComputeHashOfSections(&memory_buffer->section_header,
+                                       &disk_buffer->section_header,
+                                       &disk_hash,
+                                       &disk_hash_size,
+                                       &memory_hash,
+                                       &memory_hash_size);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %s", status);
+                DEBUG_VERBOSE("ComputeHashOfSections failed with status %x", status);
                 goto end;
         }
 
-        status = ComputeHashOfBuffer(
-            memory_text_base, memory_text_header->SizeOfRawData, &memory_hash, &memory_hash_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
-                goto end;
-        }
-
-        if (!MmIsAddressValid(memory_hash) || !MmIsAddressValid(disk_hash))
-                goto end;
-
-        result = RtlCompareMemory(memory_hash, disk_hash, memory_hash_size);
-
-        if (result = memory_text_header->SizeOfRawData)
-                DEBUG_VERBOSE(
-                    "Thread: %lx: Module executable sections are valid for the module: %s",
-                    PsGetCurrentThreadId(),
-                    Module->FullPathName);
-        else
-                DEBUG_WARNING("Thread: %lx: Module regions are not valid for module: %s",
+        /*
+         * Since we don't pass a return value, I think we would raise an invalid module error and
+         * stop the users game session ? since module .text section error would be a large red flag
+         */
+        if (CompareHashes(disk_hash, memory_hash, memory_hash_size))
+                DEBUG_VERBOSE("thread: %lx, section: %s is valid for module: %s",
                               PsGetCurrentThreadId(),
+                              memory_buffer->section_header.Name,
+                              Module->FullPathName);
+        else
+                DEBUG_WARNING("thread: %lx, section: %s is not valid for module: %s",
+                              PsGetCurrentThreadId(),
+                              memory_buffer->section_header.Name,
                               Module->FullPathName);
 
 end:
@@ -1942,11 +1554,11 @@ end:
         if (memory_buffer)
                 ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
 
-        if (memory_hash)
-                ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
-
         if (disk_buffer)
                 ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
+
+        if (memory_hash)
+                ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
 
         if (disk_hash)
                 ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
@@ -1959,6 +1571,49 @@ end:
 
         if (path.Buffer)
                 RtlFreeUnicodeString(&path);
+}
+
+NTSTATUS
+ValidateOurDriverImage()
+{
+        NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
+        LPCSTR                    driver_name = NULL;
+        UNICODE_STRING            path        = {0};
+        SYSTEM_MODULES            modules     = {0};
+        PRTL_MODULE_EXTENDED_INFO module_info = NULL;
+
+        GetDriverPath(&path);
+        GetDriverName(&driver_name);
+
+        if (!driver_name)
+        {
+                DEBUG_ERROR("GetDriverName failed with no status");
+                return status;
+        }
+
+        status = GetSystemModuleInformation(&modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+                return status;
+        }
+
+        module_info = FindSystemModuleByName(driver_name, &modules);
+
+        if (!module_info)
+        {
+                DEBUG_ERROR("FindSystemModuleByName failed with no status.");
+                goto end;
+        }
+
+        ValidateSystemModule(module_info);
+
+end:
+        if (modules.address)
+                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
+        return status;
 }
 
 STATIC
@@ -2055,13 +1710,28 @@ STATIC
 VOID
 FreeModuleVerificationItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-        if (!Context->active_thread_count)
-        {
-                if (Context->module_info)
-                        ExFreePoolWithTag(Context->module_info, SYSTEM_MODULES_POOL);
-                if (Context->dispatcher_info)
-                        ExFreePoolWithTag(Context->dispatcher_info, POOL_TAG_INTEGRITY);
-        }
+        /* if a thread hasnt completed by this point, something catastrophic has gone wrong and
+         * maybe its better not to yield..*/
+        while (Context->active_thread_count)
+                YieldProcessor();
+
+        if (Context->module_info)
+                ExFreePoolWithTag(Context->module_info, SYSTEM_MODULES_POOL);
+        if (Context->dispatcher_info)
+                ExFreePoolWithTag(Context->dispatcher_info, POOL_TAG_INTEGRITY);
+}
+
+VOID
+CleanupValidationContextOnUnload(_In_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+        /* again.. maybe not the best idea? todo: think */
+        while (Context->active_thread_count)
+                YieldProcessor();
+
+        Context->active = FALSE;
+        Context->complete = TRUE;
+        FreeWorkItems(Context);
+        FreeModuleVerificationItems(Context);
 }
 
 NTSTATUS
@@ -2076,7 +1746,7 @@ SystemModuleVerificationDispatcher()
         if (context->complete)
         {
                 DEBUG_VERBOSE("System modules integrity check complete. Freeing items.");
-                context->active = FALSE;
+                context->active   = FALSE;
                 context->complete = FALSE;
                 FreeModuleVerificationItems(context);
                 FreeWorkItems(context);
@@ -2094,7 +1764,6 @@ SystemModuleVerificationDispatcher()
                         DEBUG_ERROR(
                             "InitialiseSystemModuleVerificationContext failed with status %x",
                             status);
-
                         return status;
                 }
         }
@@ -2119,81 +1788,6 @@ SystemModuleVerificationDispatcher()
         DEBUG_VERBOSE("All worker threads dispatched for system module validation.");
 
         return STATUS_SUCCESS;
-}
-
-/*
- * After some further research it appears that performing integrity checks the same way as
- * validating other modules is not as straight forward as there are many (thousands) of hooks that
- * take place in a legitmate ntoskrnl.exe image.
- *
- * Initial ideas are to maybe only validate the text sections of key functions such as MmCopyMemory,
- * though this is quite manual and the potential to miss functions could be common.
- *
- * Need to do some more research & testing in this department.
- */
-NTSTATUS
-ValidateNtoskrnl()
-{
-        NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
-        SIZE_T                    bytes_written      = 0;
-        KAPC_STATE                apc_state          = {0};
-        PVOID                     memory_buffer      = NULL;
-        ULONG                     memory_buffer_size = 0;
-        PRTL_MODULE_EXTENDED_INFO module_info        = NULL;
-        SYSTEM_MODULES            modules            = {0};
-
-        status = GetSystemModuleInformation(&modules);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
-                return status;
-        }
-
-        module_info = (PRTL_MODULE_EXTENDED_INFO)modules.address;
-
-        DEBUG_VERBOSE("Module base: %llx", module_info->ImageBase);
-
-        PVOID buffer =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, module_info->ImageSize, POOL_TAG_INTEGRITY);
-
-        if (!buffer)
-                goto end;
-
-        status = MmCopyVirtualMemory(PsInitialSystemProcess,
-                                     module_info->ImageBase,
-                                     PsGetCurrentProcess(),
-                                     buffer,
-                                     module_info->ImageSize,
-                                     KernelMode,
-                                     &bytes_written);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("MmCopyVirtualMemory failed with status %x", status);
-                goto end;
-        }
-
-        status = StoreModuleExecutableRegionsInBuffer(
-            &memory_buffer, buffer, module_info->ImageSize, &memory_buffer_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
-                goto end;
-        }
-
-        DEBUG_VERBOSE("buf size: %lx", memory_buffer_size);
-
-end:
-
-        if (buffer)
-                ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
-
-        if (modules.address)
-                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
-
-        return status;
 }
 
 NTSTATUS

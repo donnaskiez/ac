@@ -356,7 +356,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_PERFORM_INTEGRITY_CHECK Received");
 
-                status = VerifyInMemoryImageVsDiskImage();
+                status = ValidateOurDriverImage();
 
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("VerifyInMemoryImageVsDiskImage failed with status %x", status);

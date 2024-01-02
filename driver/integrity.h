@@ -78,11 +78,6 @@ NTSTATUS
 GetDriverImageSize(_Inout_ PIRP Irp);
 
 NTSTATUS
-VerifyInMemoryImageVsDiskImage(
-    //_In_ PIRP Irp
-);
-
-NTSTATUS
 RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp);
 
 NTSTATUS
@@ -122,5 +117,11 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo);
 
 NTSTATUS
 SystemModuleVerificationDispatcher();
+
+NTSTATUS
+ValidateOurDriverImage();
+
+VOID
+CleanupValidationContextOnUnload(_In_ PSYS_MODULE_VAL_CONTEXT Context);
 
 #endif

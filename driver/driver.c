@@ -952,6 +952,15 @@ DrvUnloadFreeProcessList()
 
 STATIC
 VOID
+DrvUnloadFreeModuleValidationContext()
+{
+        PAGED_CODE();
+
+        CleanupValidationContextOnUnload(&driver_config.sys_val_context);
+}
+
+STATIC
+VOID
 DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
         DEBUG_VERBOSE("Unloading...");
@@ -966,6 +975,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         while (DrvUnloadFreeAllApcContextStructures() == FALSE)
                 YieldProcessor();
 
+        DrvUnloadFreeModuleValidationContext();
         DrvUnloadUnregisterObCallbacks();
         DrvUnloadFreeThreadList();
         DrvUnloadFreeProcessList();

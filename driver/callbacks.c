@@ -458,52 +458,6 @@ end:
         return OB_PREOP_SUCCESS;
 }
 
-// VOID ProcessCreateNotifyRoutine(
-//	_In_ HANDLE ParentId,
-//	_In_ HANDLE ProcessId,
-//	_In_ BOOLEAN Create
-//)
-//{
-//	NTSTATUS status;
-//	PEPROCESS parent_process;
-//	PEPROCESS target_process;
-//	LONG parent_process_id;
-//	LONG target_process_id;
-//	LPCSTR target_process_name = NULL;
-//	LPCSTR parent_process_name = NULL;
-//
-//	status = PsLookupProcessByProcessId( ParentId, &parent_process );
-//
-//	if ( !NT_SUCCESS( status ) )
-//		return;
-//
-//	status = PsLookupProcessByProcessId( ProcessId, &target_process );
-//
-//	if ( !NT_SUCCESS( status ) )
-//		return;
-//
-//	parent_process_name = PsGetProcessImageFileName( parent_process );
-//
-//	if ( !parent_process_name )
-//		return;
-//
-//	target_process_name = PsGetProcessImageFileName( target_process );
-//
-//	if ( !target_process_name )
-//		return;
-//
-//	if ( !strcmp( target_process_name, "notepad.exe") )
-//	{
-//		parent_process_id = PsGetProcessId( parent_process );
-//		UpdateProtectedProcessParentId( parent_process_id );
-//
-//		target_process_id = PsGetProcessId( target_process );
-//		UpdateProtectedProcessId( target_process_id );
-//
-//		DEBUG_LOG( "Protected process parent proc id: %lx", parent_process_id );
-//	}
-// }
-
 /* stolen from ReactOS xD */
 VOID NTAPI
 ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable, IN PHANDLE_TABLE_ENTRY HandleTableEntry)
@@ -557,7 +511,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                         goto end;
 
                 DEBUG_VERBOSE("Handle references our protected process with access mask: %lx",
-                          (ACCESS_MASK)Entry->GrantedAccessBits);
+                              (ACCESS_MASK)Entry->GrantedAccessBits);
 
                 handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
 
@@ -705,47 +659,3 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 
         return STATUS_SUCCESS;
 }
-
-/*
- * I dont think this way of enumerating processes is valid for something like an anti
- * cheat which is mass deployed and needs to ensure that it won't crash the system.
- * Since we have no access to the process structure locks it is definitely not
- * mass deployment safe lol.
- *
- * The Context argument is simply a pointer to a user designed context structure
- * which is passed to the callback function.
- */
-// VOID
-// EnumerateProcessListWithCallbackFunction(
-//	_In_ PVOID Function,
-//	_In_opt_ PVOID Context
-//)
-//{
-//	PAGED_CODE();
-//
-//	UINT64 current_process = 0;
-//	PLIST_ENTRY process_list_head = NULL;
-//	PLIST_ENTRY process_list_entry = NULL;
-//	PEPROCESS base_process = PsInitialSystemProcess;
-//
-//	if (!base_process)
-//		return;
-//
-//	process_list_head = (UINT64)((UINT64)base_process + EPROCESS_PLIST_ENTRY_OFFSET);
-//	process_list_entry = process_list_head;
-//
-//	do
-//	{
-//		current_process = (PEPROCESS)((UINT64)process_list_entry -
-// EPROCESS_PLIST_ENTRY_OFFSET);
-//
-//		if (!current_process)
-//			return;
-//
-//		VOID(*callback_function_ptr)(PEPROCESS, PVOID) = Function;
-//		(*callback_function_ptr)(current_process, Context);
-//
-//		process_list_entry = process_list_entry->Flink;
-//
-//	} while (process_list_entry != process_list_head->Blink);
-// }
