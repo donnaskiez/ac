@@ -20,7 +20,7 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
 #        pragma alloc_text(PAGE, DeviceCreate)
 #endif
 
-#define IOCCTL_RUN_NMI_CALLBACKS \
+#define IOCTL_RUN_NMI_CALLBACKS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20001, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_DRIVER_OBJECTS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20002, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -174,7 +174,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
         switch (stack_location->Parameters.DeviceIoControl.IoControlCode)
         {
-        case IOCCTL_RUN_NMI_CALLBACKS:
+        case IOCTL_RUN_NMI_CALLBACKS:
 
                 DEBUG_INFO("IOCTL_RUN_NMI_CALLBACKS Received.");
 
