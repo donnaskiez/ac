@@ -46,7 +46,7 @@ kernelmode::Driver::RunNmiCallbacks()
         NMI_CALLBACK_FAILURE report         = {0};
 
         status = DeviceIoControl(this->driver_handle,
-                                 IOCCTL_RUN_NMI_CALLBACKS,
+                                 IOCTL_RUN_NMI_CALLBACKS,
                                  NULL,
                                  NULL,
                                  &report,
