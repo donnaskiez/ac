@@ -130,4 +130,7 @@ DispatchStackwalkToEachCpuViaDpc();
 NTSTATUS
 ValidateHalDispatchTables();
 
+PVOID
+FindDriverBaseNoApi(_In_ PWCH Name);
+
 #endif

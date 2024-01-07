@@ -9,6 +9,7 @@
 #include "thread.h"
 #include "ioctl.h"
 #include "common.h"
+#include "imports.h"
 
 /*
  * This mutex is to prevent a new item being pushed to the queue
@@ -36,8 +37,8 @@ InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status)
         report_queue_config.head.entries        = 0;
         report_queue_config.is_driver_unloading = FALSE;
 
-        KeInitializeGuardedMutex(&report_queue_config.head.lock);
-        KeInitializeGuardedMutex(&report_queue_config.lock);
+        ImpKeInitializeGuardedMutex(&report_queue_config.head.lock);
+        ImpKeInitializeGuardedMutex(&report_queue_config.lock);
 
         *Status = TRUE;
 }
@@ -65,7 +66,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
 {
-        KeAcquireGuardedMutex(&Head->lock);
+        ImpKeAcquireGuardedMutex(&Head->lock);
 
         PQUEUE_NODE temp = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
 
@@ -85,7 +86,7 @@ QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
                 Head->start = temp;
 
 end:
-        KeReleaseGuardedMutex(&Head->lock);
+        ImpKeReleaseGuardedMutex(&Head->lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -94,7 +95,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head)
 {
-        KeAcquireGuardedMutex(&Head->lock);
+        ImpKeAcquireGuardedMutex(&Head->lock);
 
         PVOID       data = NULL;
         PQUEUE_NODE temp = Head->start;
@@ -110,10 +111,10 @@ QueuePop(_Inout_ PQUEUE_HEAD Head)
         if (Head->end == temp)
                 Head->end = NULL;
 
-        ExFreePoolWithTag(temp, QUEUE_POOL_TAG);
+        ImpExFreePoolWithTag(temp, QUEUE_POOL_TAG);
 
 end:
-        KeReleaseGuardedMutex(&Head->lock);
+        ImpKeReleaseGuardedMutex(&Head->lock);
         return data;
 }
 
@@ -127,9 +128,9 @@ InsertReportToQueue(_In_ PVOID Report)
                                 report_queue_config.is_driver_unloading))
                 return;
 
-        KeAcquireGuardedMutex(&report_queue_config.lock);
+        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
         QueuePush(&report_queue_config.head, Report);
-        KeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -139,20 +140,20 @@ VOID
 FreeGlobalReportQueueObjects()
 {
         InterlockedExchange(&report_queue_config.is_driver_unloading, TRUE);
-        KeAcquireGuardedMutex(&report_queue_config.lock);
+        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
 
         PVOID report = QueuePop(&report_queue_config.head);
 
         while (report != NULL)
         {
-                ExFreePoolWithTag(report, REPORT_POOL_TAG);
+                ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
                 report = QueuePop(&report_queue_config.head);
                 DEBUG_VERBOSE("Unloading report queue. Entries remaining: %i",
                               report_queue_config.head.entries);
         }
 
 end:
-        KeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
 /*
@@ -178,7 +179,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
         PREPORT_HEADER             report_header      = NULL;
         GLOBAL_REPORT_QUEUE_HEADER header             = {0};
 
-        KeAcquireGuardedMutex(&report_queue_config.lock);
+        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
 
         report_buffer_size = sizeof(INVALID_PROCESS_ALLOCATION_REPORT) * MAX_REPORTS_PER_IRP +
                              sizeof(GLOBAL_REPORT_QUEUE_HEADER);
@@ -188,16 +189,16 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
-                KeReleaseGuardedMutex(&report_queue_config.lock);
+                ImpKeReleaseGuardedMutex(&report_queue_config.lock);
                 return status;
         }
 
-        report_buffer =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, report_buffer_size, REPORT_QUEUE_TEMP_BUFFER_TAG);
+        report_buffer = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, report_buffer_size, REPORT_QUEUE_TEMP_BUFFER_TAG);
 
         if (!report_buffer)
         {
-                KeReleaseGuardedMutex(&report_queue_config.lock);
+                ImpKeReleaseGuardedMutex(&report_queue_config.lock);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
@@ -290,7 +291,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
                 }
 
                 /* QueuePop frees the node, but we still need to free the returned data */
-                ExFreePoolWithTag(report, REPORT_POOL_TAG);
+                ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
 
                 report = QueuePop(&report_queue_config.head);
                 count += 1;
@@ -298,7 +299,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 
 end:
 
-        KeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
 
         Irp->IoStatus.Information = sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size;
 
@@ -311,7 +312,7 @@ end:
                       sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size);
 
         if (report_buffer)
-                ExFreePoolWithTag(report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG);
+                ImpExFreePoolWithTag(report_buffer, REPORT_QUEUE_TEMP_BUFFER_TAG);
 
         DEBUG_VERBOSE("All reports moved into the IRP, sending to usermode.");
         return STATUS_SUCCESS;
@@ -340,7 +341,7 @@ end:
 VOID
 ListInit(_Inout_ PSINGLE_LIST_ENTRY Head, _Inout_ PKGUARDED_MUTEX Lock)
 {
-        KeInitializeGuardedMutex(Lock);
+        ImpKeInitializeGuardedMutex(Lock);
         Head->Next = NULL;
 }
 
@@ -351,14 +352,14 @@ ListInsert(_Inout_ PSINGLE_LIST_ENTRY Head,
            _Inout_ PSINGLE_LIST_ENTRY NewEntry,
            _In_ PKGUARDED_MUTEX       Lock)
 {
-        KeAcquireGuardedMutex(Lock);
+        ImpKeAcquireGuardedMutex(Lock);
 
         PSINGLE_LIST_ENTRY old_entry = Head->Next;
 
         Head->Next     = NewEntry;
         NewEntry->Next = old_entry;
 
-        KeReleaseGuardedMutex(Lock);
+        ImpKeReleaseGuardedMutex(Lock);
 }
 
 /*
@@ -375,21 +376,24 @@ ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                    _In_opt_ PVOID             CallbackRoutine)
 {
         BOOLEAN result = FALSE;
-        KeAcquireGuardedMutex(Lock);
+        ImpKeAcquireGuardedMutex(Lock);
 
         if (Head->Next)
         {
                 PSINGLE_LIST_ENTRY entry = Head->Next;
 
-                VOID (*callback_function_ptr)(PVOID) = CallbackRoutine;
-                (*callback_function_ptr)(entry);
+                if (CallbackRoutine)
+                {
+                        VOID (*callback_function_ptr)(PVOID) = CallbackRoutine;
+                        (*callback_function_ptr)(entry);
+                }
 
                 Head->Next = Head->Next->Next;
-                ExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
+                ImpExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
                 result = TRUE;
         }
 
-        KeReleaseGuardedMutex(Lock);
+        ImpKeReleaseGuardedMutex(Lock);
         return result;
 }
 
@@ -404,7 +408,7 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 _Inout_ PSINGLE_LIST_ENTRY Entry,
                 _In_ PKGUARDED_MUTEX       Lock)
 {
-        KeAcquireGuardedMutex(Lock);
+        ImpKeAcquireGuardedMutex(Lock);
 
         PSINGLE_LIST_ENTRY entry = Head->Next;
 
@@ -414,7 +418,7 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
         if (entry == Entry)
         {
                 Head->Next = entry->Next;
-                ExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
+                ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
                 goto unlock;
         }
 
@@ -423,7 +427,7 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 if (entry->Next == Entry)
                 {
                         entry->Next = Entry->Next;
-                        ExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
+                        ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
                         goto unlock;
                 }
 
@@ -431,5 +435,5 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
         }
 
 unlock:
-        KeReleaseGuardedMutex(Lock);
+        ImpKeReleaseGuardedMutex(Lock);
 }

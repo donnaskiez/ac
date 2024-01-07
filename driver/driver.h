@@ -191,4 +191,7 @@ GetDriverDeviceObject();
 
 GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context);
 
+PDRIVER_OBJECT
+GetDriverObject();
+
 #endif

@@ -62,6 +62,20 @@ typedef struct _PROCESS_LIST_ENTRY
 
 } PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
+typedef struct _DRIVER_LIST_ENTRY
+{
+        SINGLE_LIST_ENTRY list;
+        PVOID             ImageBase;
+        ULONG             ImageSize;
+        BOOLEAN           hashed;
+        CHAR              path[0x100];
+        CHAR              text_hash[32];
+
+} DRIVER_LIST_ENTRY, *PDRIVER_LIST_ENTRY;
+
+NTSTATUS
+InitialiseDriverList();
+
 VOID NTAPI
 ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable, IN PHANDLE_TABLE_ENTRY HandleTableEntry);
 
@@ -130,7 +144,21 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context);
 
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID
+FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry);
+
 VOID
 CleanupProcessListOnDriverUnload();
+
+VOID
+CleanupDriverListOnDriverUnload();
+
+VOID
+ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
+                               _In_ HANDLE              ProcessId,
+                               _In_ PIMAGE_INFO         ImageInfo);
 
 #endif

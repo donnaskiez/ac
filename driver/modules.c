@@ -4,6 +4,7 @@
 #include "driver.h"
 #include "ioctl.h"
 #include "ia32.h"
+#include "imports.h"
 
 #include "thread.h"
 
@@ -344,7 +345,7 @@ AddDriverToList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
 {
         PAGED_CODE();
 
-        PINVALID_DRIVER new_entry = ExAllocatePool2(
+        PINVALID_DRIVER new_entry = ImpExAllocatePool2(
             POOL_FLAG_NON_PAGED, sizeof(INVALID_DRIVER), INVALID_DRIVER_LIST_ENTRY_POOL);
 
         if (!new_entry)
@@ -368,7 +369,7 @@ RemoveInvalidDriverFromList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead)
         {
                 PINVALID_DRIVER entry           = InvalidDriversHead->first_entry;
                 InvalidDriversHead->first_entry = InvalidDriversHead->first_entry->next;
-                ExFreePoolWithTag(entry, INVALID_DRIVER_LIST_ENTRY_POOL);
+                ImpExFreePoolWithTag(entry, INVALID_DRIVER_LIST_ENTRY_POOL);
         }
 }
 
@@ -456,8 +457,8 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         }
 
         /* Query the modules again this time passing a pointer to the allocated buffer */
-        status =
-            RtlQueryModuleInformation(&size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
+        status = RtlQueryModuleInformation(
+            &size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
 
         if (!NT_SUCCESS(status))
         {
@@ -493,11 +494,11 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
         NTSTATUS          status                     = STATUS_UNSUCCESSFUL;
         POBJECT_DIRECTORY directory_object           = NULL;
 
-        RtlInitUnicodeString(&directory_name, L"\\Driver");
+        ImpRtlInitUnicodeString(&directory_name, L"\\Driver");
 
         InitializeObjectAttributes(&attributes, &directory_name, OBJ_CASE_INSENSITIVE, NULL, NULL);
 
-        status = ZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &attributes);
+        status = ImpZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &attributes);
 
         if (!NT_SUCCESS(status))
         {
@@ -505,13 +506,13 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
                 return status;
         }
 
-        status = ObReferenceObjectByHandle(
+        status = ImpObReferenceObjectByHandle(
             handle, DIRECTORY_ALL_ACCESS, NULL, KernelMode, &directory, NULL);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x", status);
-                ZwClose(handle);
+                ImpZwClose(handle);
                 return status;
         }
 
@@ -530,10 +531,10 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
 
         directory_object = (POBJECT_DIRECTORY)directory;
 
-        ExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
+        ImpExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
 
         whitelisted_regions_buffer =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED,
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                             WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
                             WHITELISTED_MODULE_TAG);
 
@@ -620,11 +621,11 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
 
 end:
         if (whitelisted_regions_buffer)
-                ExFreePoolWithTag(whitelisted_regions_buffer, WHITELISTED_MODULE_TAG);
+                ImpExFreePoolWithTag(whitelisted_regions_buffer, WHITELISTED_MODULE_TAG);
 
-        ExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
-        ObDereferenceObject(directory);
-        ZwClose(handle);
+        ImpExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
+        ImpObDereferenceObject(directory);
+        ImpZwClose(handle);
 
         return STATUS_SUCCESS;
 }
@@ -652,12 +653,12 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                 return status;
         }
 
-        head = ExAllocatePool2(
+        head = ImpExAllocatePool2(
             POOL_FLAG_NON_PAGED, sizeof(INVALID_DRIVERS_HEAD), INVALID_DRIVER_LIST_HEAD_POOL);
 
         if (!head)
         {
-                ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+                ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
@@ -697,12 +698,12 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                         goto end;
                 }
 
-                buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
+                buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
 
                 if (!buffer)
                 {
-                        ExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
-                        ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+                        ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
+                        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
                         return STATUS_MEMORY_NOT_ALLOCATED;
                 }
 
@@ -732,7 +733,7 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                         string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
                         string.Buffer        = &report.driver_name;
 
-                        status = RtlUnicodeStringToAnsiString(
+                        status = ImpRtlUnicodeStringToAnsiString(
                             &string, &head->first_entry->driver->DriverName, FALSE);
 
                         /* still continue if we fail to get the driver name */
@@ -754,7 +755,7 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                                   MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT *
                                       sizeof(MODULE_VALIDATION_FAILURE));
 
-                ExFreePoolWithTag(buffer, MODULES_REPORT_POOL_TAG);
+                ImpExFreePoolWithTag(buffer, MODULES_REPORT_POOL_TAG);
         }
         else
         {
@@ -762,8 +763,8 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
         }
 
 end:
-        ExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
-        ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+        ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
+        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
 
         return status;
 }
@@ -841,8 +842,8 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
 
         if (!NmiContext || !SystemModules)
                 return STATUS_INVALID_PARAMETER;
-
-        for (INT core = 0; core < KeQueryActiveProcessorCount(0); core++)
+        
+        for (INT core = 0; core < ImpKeQueryActiveProcessorCount(0); core++)
         {
                 /* Make sure our NMIs were run  */
                 if (!NmiContext[core].callback_count)
@@ -898,7 +899,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                                       NmiContext[core].kthread);
 
                         PHIDDEN_SYSTEM_THREAD_REPORT report =
-                            ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                                             sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
                                             REPORT_POOL_TAG);
 
@@ -908,7 +909,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                         report->report_code          = REPORT_HIDDEN_SYSTEM_THREAD;
                         report->found_in_kthreadlist = FALSE; // wip
                         report->found_in_pspcidtable = FALSE;
-                        report->thread_id            = PsGetThreadId(NmiContext[core].kthread);
+                        report->thread_id            = ImpPsGetThreadId(NmiContext[core].kthread);
                         report->thread_address       = NmiContext[core].kthread;
 
                         RtlCopyMemory(
@@ -1028,7 +1029,7 @@ LaunchNonMaskableInterrupt()
         PAGED_CODE();
 
         PKAFFINITY_EX ProcAffinityPool =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAFFINITY_EX), PROC_AFFINITY_POOL);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAFFINITY_EX), PROC_AFFINITY_POOL);
 
         if (!ProcAffinityPool)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -1036,10 +1037,10 @@ LaunchNonMaskableInterrupt()
         LARGE_INTEGER delay = {0};
         delay.QuadPart -= NMI_DELAY_TIME;
 
-        for (ULONG core = 0; core < KeQueryActiveProcessorCount(0); core++)
+        for (ULONG core = 0; core < ImpKeQueryActiveProcessorCount(0); core++)
         {
-                KeInitializeAffinityEx(ProcAffinityPool);
-                KeAddProcessorAffinityEx(ProcAffinityPool, core);
+                ImpKeInitializeAffinityEx(ProcAffinityPool);
+                ImpKeAddProcessorAffinityEx(ProcAffinityPool, core);
 
                 DEBUG_VERBOSE("Sending NMI");
                 HalSendNMI(ProcAffinityPool);
@@ -1048,10 +1049,10 @@ LaunchNonMaskableInterrupt()
                  * Only a single NMI can be active at any given time, so arbitrarily
                  * delay execution  to allow time for the NMI to be processed
                  */
-                KeDelayExecutionThread(KernelMode, FALSE, &delay);
+                ImpKeDelayExecutionThread(KernelMode, FALSE, &delay);
         }
 
-        ExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
+        ImpExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
 
         return STATUS_SUCCESS;
 }
@@ -1072,8 +1073,8 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("ValidateHalDispatchTables failed with status %x", status);
 
-        nmi_context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                      KeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
+        nmi_context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                      ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
                                       NMI_CONTEXT_POOL);
 
         if (!nmi_context)
@@ -1083,12 +1084,12 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
          * We want to register and unregister our callback each time so it becomes harder
          * for people to hook our callback and get up to some funny business
          */
-        callback_handle = KeRegisterNmiCallback(NmiCallback, nmi_context);
+        callback_handle = ImpKeRegisterNmiCallback(NmiCallback, nmi_context);
 
         if (!callback_handle)
         {
                 DEBUG_ERROR("KeRegisterNmiCallback failed with no status.");
-                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 return STATUS_UNSUCCESSFUL;
         }
 
@@ -1100,8 +1101,8 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
         {
-                KeDeregisterNmiCallback(callback_handle);
-                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                ImpKeDeregisterNmiCallback(callback_handle);
+                ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 DEBUG_ERROR("Error retriving system module information");
                 return status;
         }
@@ -1111,9 +1112,9 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("Error running NMI callbacks");
-                KeDeregisterNmiCallback(callback_handle);
-                ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-                ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                ImpKeDeregisterNmiCallback(callback_handle);
+                ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+                ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 return status;
         }
 
@@ -1122,9 +1123,9 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("Error analysing nmi data");
 
-        ExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-        ExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
-        KeDeregisterNmiCallback(callback_handle);
+        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+        ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+        ImpKeDeregisterNmiCallback(callback_handle);
 
         return status;
 }
@@ -1173,13 +1174,13 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
         if (!thread_list_entry)
                 return;
 
-        buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, STACK_FRAME_POOL_SIZE, POOL_TAG_APC);
+        buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, STACK_FRAME_POOL_SIZE, POOL_TAG_APC);
 
         if (!buffer)
                 goto free;
 
         frames_captured =
-            RtlCaptureStackBackTrace(NULL, STACK_FRAME_POOL_SIZE / sizeof(UINT64), buffer, NULL);
+            ImpRtlCaptureStackBackTrace(NULL, STACK_FRAME_POOL_SIZE / sizeof(UINT64), buffer, NULL);
 
         if (!frames_captured)
                 goto free;
@@ -1203,7 +1204,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
 
                 if (flag == FALSE)
                 {
-                        PAPC_STACKWALK_REPORT report = ExAllocatePool2(
+                        PAPC_STACKWALK_REPORT report = ImpExAllocatePool2(
                             POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), POOL_TAG_APC);
 
                         if (!report)
@@ -1224,7 +1225,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
 free:
 
         if (buffer)
-                ExFreePoolWithTag(buffer, POOL_TAG_APC);
+                ImpExFreePoolWithTag(buffer, POOL_TAG_APC);
 
         FreeApcAndDecrementApcCount(Apc, APC_CONTEXT_ID_STACKWALK);
 
@@ -1278,7 +1279,7 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         PUCHAR                 state         = NULL;
         BOOLEAN                apc_queueable = FALSE;
         PAPC_STACKWALK_CONTEXT context       = (PAPC_STACKWALK_CONTEXT)Context;
-        LPCSTR process_name = PsGetProcessImageFileName(ThreadListEntry->owning_process);
+        LPCSTR process_name = ImpPsGetProcessImageFileName(ThreadListEntry->owning_process);
 
         /*
          * we dont want to schedule an apc to threads owned by the kernel
@@ -1329,12 +1330,12 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                 FlipKThreadMiscFlagsFlag(
                     ThreadListEntry->thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
 
-        apc = (PKAPC)ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
+        apc = (PKAPC)ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
 
         if (!apc)
                 return;
 
-        KeInitializeApc(apc,
+        ImpKeInitializeApc(apc,
                         ThreadListEntry->thread,
                         OriginalApcEnvironment,
                         ApcKernelRoutine,
@@ -1343,12 +1344,12 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                         KernelMode,
                         Context);
 
-        apc_status = KeInsertQueueApc(apc, NULL, NULL, IO_NO_INCREMENT);
+        apc_status = ImpKeInsertQueueApc(apc, NULL, NULL, IO_NO_INCREMENT);
 
         if (!apc_status)
         {
                 DEBUG_ERROR("KeInsertQueueApc failed with no status.");
-                ExFreePoolWithTag(apc, POOL_TAG_APC);
+                ImpExFreePoolWithTag(apc, POOL_TAG_APC);
                 return;
         }
 
@@ -1381,18 +1382,18 @@ ValidateThreadsViaKernelApc()
                 return STATUS_SUCCESS;
         }
 
-        context = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
+        context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
 
         if (!context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
         context->header.context_id = APC_CONTEXT_ID_STACKWALK;
         context->modules =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SYSTEM_MODULES), POOL_TAG_APC);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SYSTEM_MODULES), POOL_TAG_APC);
 
         if (!context->modules)
         {
-                ExFreePoolWithTag(context, POOL_TAG_APC);
+                ImpExFreePoolWithTag(context, POOL_TAG_APC);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
@@ -1401,18 +1402,18 @@ ValidateThreadsViaKernelApc()
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
-                ExFreePoolWithTag(context->modules, POOL_TAG_APC);
-                ExFreePoolWithTag(context, POOL_TAG_APC);
+                ImpExFreePoolWithTag(context->modules, POOL_TAG_APC);
+                ImpExFreePoolWithTag(context, POOL_TAG_APC);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
-        status = InsertApcContext(context);
+        status =InsertApcContext(context);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("InsertApcContext failed with status %x", status);
-                ExFreePoolWithTag(context->modules, POOL_TAG_APC);
-                ExFreePoolWithTag(context, POOL_TAG_APC);
+                ImpExFreePoolWithTag(context->modules, POOL_TAG_APC);
+                ImpExFreePoolWithTag(context, POOL_TAG_APC);
                 return status;
         }
 
@@ -1427,14 +1428,16 @@ VOID
 FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context)
 {
         if (Context->modules->address)
-                ExFreePoolWithTag(Context->modules->address, SYSTEM_MODULES_POOL);
+                ImpExFreePoolWithTag(Context->modules->address, SYSTEM_MODULES_POOL);
 
         if (Context->modules)
-                ExFreePoolWithTag(Context->modules, POOL_TAG_APC);
+                ImpExFreePoolWithTag(Context->modules, POOL_TAG_APC);
 }
 
 #define DPC_STACKWALK_STACKFRAME_COUNT 10
-#define DPC_STACKWALK_FRAMES_TO_SKIP   3
+
+/* the first 3 frames are isr handlers which we dont care about */
+#define DPC_STACKWALK_FRAMES_TO_SKIP 3
 
 typedef struct _DPC_CONTEXT
 {
@@ -1456,12 +1459,12 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
 {
         PDPC_CONTEXT context = &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
 
-        context->frames_captured = RtlCaptureStackBackTrace(DPC_STACKWALK_FRAMES_TO_SKIP,
+        context->frames_captured = ImpRtlCaptureStackBackTrace(DPC_STACKWALK_FRAMES_TO_SKIP,
                                                             DPC_STACKWALK_STACKFRAME_COUNT,
                                                             &context->stack_frame,
                                                             NULL);
         InterlockedExchange(&context->executed, TRUE);
-        KeSignalCallDpcDone(SystemArgument1);
+        ImpKeSignalCallDpcDone(SystemArgument1);
 
         DEBUG_VERBOSE("Executed DPC on core: %lx, with %lx frames captured.",
                       KeGetCurrentProcessorNumber(),
@@ -1472,7 +1475,7 @@ STATIC
 BOOLEAN
 CheckForDpcCompletion(_In_ PDPC_CONTEXT Context)
 {
-        for (UINT32 index = 0; index < KeQueryActiveProcessorCount(0); index++)
+        for (UINT32 index = 0; index < ImpKeQueryActiveProcessorCount(0); index++)
         {
                 if (!InterlockedExchange(&Context[index].executed, Context[index].executed))
                         return FALSE;
@@ -1489,7 +1492,7 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
         BOOLEAN               flag   = FALSE;
         PDPC_STACKWALK_REPORT report = NULL;
 
-        for (UINT32 core = 0; core < KeQueryActiveProcessorCount(0); core++)
+        for (UINT32 core = 0; core < ImpKeQueryActiveProcessorCount(0); core++)
         {
                 for (UINT32 frame = 0; frame < Context[core].frames_captured; frame++)
                 {
@@ -1506,7 +1509,7 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
 
                         if (!flag)
                         {
-                                report = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                                                          sizeof(DPC_STACKWALK_REPORT),
                                                          POOL_TAG_DPC);
 
@@ -1541,8 +1544,8 @@ DispatchStackwalkToEachCpuViaDpc()
         PDPC_CONTEXT   context = NULL;
         SYSTEM_MODULES modules = {0};
 
-        context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                  KeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT),
+        context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                     ImpKeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT),
                                   POOL_TAG_DPC);
 
         if (!context)
@@ -1559,7 +1562,7 @@ DispatchStackwalkToEachCpuViaDpc()
         /* KeGenericCallDpc will queue a DPC to each processor with importance =
          * HighImportance. This means our DPC will be inserted into the front of the DPC
          * queue and executed immediately.*/
-        KeGenericCallDpc(DpcStackwalkCallbackRoutine, context);
+        ImpKeGenericCallDpc(DpcStackwalkCallbackRoutine, context);
 
         while (!CheckForDpcCompletion(context))
                 YieldProcessor();
@@ -1576,9 +1579,9 @@ DispatchStackwalkToEachCpuViaDpc()
 end:
 
         if (modules.address)
-                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+                ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
         if (context)
-                ExFreePoolWithTag(context, POOL_TAG_DPC);
+                ImpExFreePoolWithTag(context, POOL_TAG_DPC);
 
         return status;
 }
@@ -1649,7 +1652,7 @@ ValidateHalPrivateDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modul
 
         DEBUG_VERBOSE("Validating HalPrivateDispatchTable.");
 
-        table = MmGetSystemRoutineAddress(&string);
+        table = ImpMmGetSystemRoutineAddress(&string);
 
         if (!table)
                 return status;
@@ -1825,7 +1828,7 @@ STATIC
 VOID
 ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
 {
-        PDATA_TABLE_ROUTINE_REPORT report = ExAllocatePool2(
+        PDATA_TABLE_ROUTINE_REPORT report = ImpExAllocatePool2(
             POOL_FLAG_NON_PAGED, sizeof(DATA_TABLE_ROUTINE_REPORT), POOL_TAG_INTEGRITY);
 
         if (!report)
@@ -1886,7 +1889,7 @@ ValidateHalDispatchTables()
 
 end:
         if (modules.address)
-                ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+                ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 
         return status;
 }

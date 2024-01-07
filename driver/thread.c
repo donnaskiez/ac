@@ -6,6 +6,7 @@
 #include "callbacks.h"
 #include "driver.h"
 #include "queue.h"
+#include "imports.h"
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
@@ -24,7 +25,7 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
         /*
          * PsGetThreadId simply returns ETHREAD->Cid.UniqueThread
          */
-        thread_id = PsGetThreadId(Thread);
+        thread_id = ImpPsGetThreadId(Thread);
 
         /*
          * For each core on the processor, the first x threads equal to x cores will be assigned a
@@ -36,7 +37,7 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
          * bypassed by simply modifying the ETHREAD->Cid.UniqueThread identifier.. So while it isnt
          * a perfect detection method for now it's good enough.
          */
-        if ((UINT64)thread_id < (UINT64)KeQueryActiveProcessorCount(NULL))
+        if ((UINT64)thread_id < (UINT64)ImpKeQueryActiveProcessorCount(NULL))
                 return TRUE;
 
         /*
@@ -45,7 +46,7 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
          * Meaning if we pass a valid thread id which we retrieved above and dont receive a
          * STATUS_SUCCESS the cid entry could potentially be removed or disrupted..
          */
-        status = PsLookupThreadByThreadId(thread_id, &thread);
+        status = ImpPsLookupThreadByThreadId(thread_id, &thread);
 
         if (!NT_SUCCESS(status))
         {
@@ -59,7 +60,7 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
 
 /*
  * I did not reverse this myself and previously had no idea how you would go about
- * detecting KiAttachProcess so credits to KANKOSHEV for the explanation:
+ * detecting KiAttachProcess so credits to KANKOSHEV for the find:
  *
  * https://github.com/KANKOSHEV/Detect-KeAttachProcess/tree/main
  * https://doxygen.reactos.org/d0/dc9/procobj_8c.html#adec6dc539d4a5c0ee7d0f48e24ef0933
@@ -89,21 +90,23 @@ _IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
         /*
          * Just a sanity check even though it doesnt really make sense for internal threads of our
          * protected process to attach..
+         *
+         * todo: this is filterless and will just report anything, need to have a look into what
+         * processes actually attach to real games
          */
-        if (apc_state->Process == protected_process &&
-            ThreadListEntry->owning_process != protected_process)
+        if (apc_state->Process == protected_process)
         {
                 DEBUG_WARNING("Thread is attached to our protected process: %llx",
                               (UINT64)ThreadListEntry->thread);
 
-                PATTACH_PROCESS_REPORT report = ExAllocatePool2(
+                PATTACH_PROCESS_REPORT report = ImpExAllocatePool2(
                     POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);
 
                 if (!report)
                         return;
 
                 report->report_code    = REPORT_ILLEGAL_ATTACH_PROCESS;
-                report->thread_id      = PsGetThreadId(ThreadListEntry->thread);
+                report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
                 report->thread_address = ThreadListEntry->thread;
 
                 InsertReportToQueue(report);

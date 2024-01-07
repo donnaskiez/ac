@@ -9,6 +9,7 @@
 #include "thread.h"
 #include "modules.h"
 #include "integrity.h"
+#include "imports.h"
 
 STATIC
 VOID
@@ -214,11 +215,11 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
         UNICODE_STRING value        = {0};
         PVOID          temp_buffer  = NULL;
 
-        RtlInitUnicodeString(&value_name, ValueName);
+        ImpRtlInitUnicodeString(&value_name, ValueName);
 
-        if (RtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE)
+        if (ImpRtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE)
         {
-                temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
+                temp_buffer = ImpExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
 
                 if (!temp_buffer)
                         return STATUS_MEMORY_NOT_ALLOCATED;
@@ -230,9 +231,10 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
                 driver_config.driver_path.MaximumLength = ValueLength;
         }
 
-        if (RtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
+        if (ImpRtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
         {
-                temp_buffer = ExAllocatePool2(POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
+                temp_buffer =
+                    ImpExAllocatePool2(POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
 
                 if (!temp_buffer)
                         return STATUS_MEMORY_NOT_ALLOCATED;
@@ -284,7 +286,7 @@ FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
                         if (Context->count != 0)
                                 goto unlock;
 
-                        ExFreePoolWithTag(Context, POOL_TAG_APC);
+                        ImpExFreePoolWithTag(Context, POOL_TAG_APC);
                         entry[index] = NULL;
                         result       = TRUE;
                         goto unlock;
@@ -307,9 +309,9 @@ IncrementApcCount(_In_ LONG ContextId)
         if (!header)
                 return;
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         header->count += 1;
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -320,16 +322,16 @@ FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
 {
         PAPC_CONTEXT_HEADER context = NULL;
 
-        ExFreePoolWithTag(Apc, POOL_TAG_APC);
+        ImpExFreePoolWithTag(Apc, POOL_TAG_APC);
         GetApcContext(&context, ContextId);
 
         if (!context)
                 goto end;
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         context->count -= 1;
 end:
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -367,11 +369,11 @@ QueryActiveApcContextsForCompletion()
                 GetApcContextByIndex(&entry, index);
 
                 /* acquire mutex after we get the context to prevent thread deadlock */
-                KeAcquireGuardedMutex(&driver_config.lock);
+                ImpKeAcquireGuardedMutex(&driver_config.lock);
 
                 if (entry == NULL)
                 {
-                        KeReleaseGuardedMutex(&driver_config.lock);
+                        ImpKeReleaseGuardedMutex(&driver_config.lock);
                         continue;
                 }
 
@@ -380,7 +382,7 @@ QueryActiveApcContextsForCompletion()
 
                 if (entry->count > 0 || entry->allocation_in_progress == TRUE)
                 {
-                        KeReleaseGuardedMutex(&driver_config.lock);
+                        ImpKeReleaseGuardedMutex(&driver_config.lock);
                         continue;
                 }
 
@@ -392,7 +394,7 @@ QueryActiveApcContextsForCompletion()
                         break;
                 }
 
-                KeReleaseGuardedMutex(&driver_config.lock);
+                ImpKeReleaseGuardedMutex(&driver_config.lock);
         }
         return STATUS_SUCCESS;
 }
@@ -413,7 +415,7 @@ InsertApcContext(_In_ PVOID Context)
                                 driver_config.unload_in_progress) == TRUE)
                 return STATUS_UNSUCCESSFUL;
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
 
         PAPC_CONTEXT_HEADER header = Context;
 
@@ -428,7 +430,7 @@ InsertApcContext(_In_ PVOID Context)
                 }
         }
 end:
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
         return status;
 }
 
@@ -438,7 +440,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier)
 {
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
 
         for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
         {
@@ -455,7 +457,7 @@ GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier)
         }
 
 unlock:
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -468,9 +470,9 @@ GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
                 return;
 
         *Context = NULL;
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         *Context = driver_config.apc_contexts[Index];
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 /*
@@ -488,9 +490,9 @@ GetCallbackConfigStructure(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
                 return;
 
         *CallbackConfiguration = NULL;
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         *CallbackConfiguration = &process_config.ob_cb_config;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -505,15 +507,21 @@ GetDriverName(_Out_ LPCSTR* DriverName)
                 return;
 
         *DriverName = NULL;
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         *DriverName = driver_config.ansi_driver_name.Buffer;
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 PDEVICE_OBJECT
 GetDriverDeviceObject()
 {
         return driver_config.device_object;
+}
+
+PDRIVER_OBJECT
+GetDriverObject()
+{
+        return driver_config.driver_object;
 }
 
 GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
@@ -529,10 +537,10 @@ GetDriverPath(_Out_ PUNICODE_STRING DriverPath)
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         RtlZeroMemory(DriverPath, sizeof(UNICODE_STRING));
-        RtlInitUnicodeString(DriverPath, driver_config.driver_path.Buffer);
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpRtlInitUnicodeString(DriverPath, driver_config.driver_path.Buffer);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -543,10 +551,10 @@ GetDriverRegistryPath(_Out_ PUNICODE_STRING RegistryPath)
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         RtlZeroMemory(RegistryPath, sizeof(UNICODE_STRING));
-        RtlCopyUnicodeString(RegistryPath, &driver_config.registry_path);
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpRtlCopyUnicodeString(RegistryPath, &driver_config.registry_path);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -557,10 +565,10 @@ GetDriverDeviceName(_Out_ PUNICODE_STRING DeviceName)
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         RtlZeroMemory(DeviceName, sizeof(UNICODE_STRING));
-        RtlCopyUnicodeString(DeviceName, &driver_config.device_name);
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpRtlCopyUnicodeString(DeviceName, &driver_config.device_name);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -571,10 +579,10 @@ GetDriverSymbolicLink(_Out_ PUNICODE_STRING DeviceSymbolicLink)
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         RtlZeroMemory(DeviceSymbolicLink, sizeof(UNICODE_STRING));
-        RtlCopyUnicodeString(DeviceSymbolicLink, &driver_config.device_symbolic_link);
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpRtlCopyUnicodeString(DeviceSymbolicLink, &driver_config.device_symbolic_link);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -589,9 +597,9 @@ GetDriverConfigSystemInformation(_Out_ PSYSTEM_INFORMATION* SystemInformation)
                 return;
 
         *SystemInformation = NULL;
-        KeAcquireGuardedMutex(&driver_config.lock);
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
         *SystemInformation = &driver_config.system_information;
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -605,9 +613,9 @@ ReadProcessInitialisedConfigFlag(_Out_ PBOOLEAN Flag)
         if (Flag == NULL)
                 return;
 
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         *Flag = process_config.initialised;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -622,9 +630,9 @@ GetProtectedProcessEProcess(_Out_ PEPROCESS* Process)
                 return;
 
         *Process = NULL;
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         *Process = process_config.process;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -635,10 +643,10 @@ GetProtectedProcessId(_Out_ PLONG ProcessId)
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         RtlZeroMemory(ProcessId, sizeof(LONG));
         *ProcessId = process_config.km_handle;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 /*
@@ -655,15 +663,15 @@ ProcCloseDisableObCallbacks()
 {
         PAGED_CODE();
 
-        KeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
 
         if (process_config.ob_cb_config.registration_handle)
         {
-                ObUnRegisterCallbacks(process_config.ob_cb_config.registration_handle);
+                ImpObUnRegisterCallbacks(process_config.ob_cb_config.registration_handle);
                 process_config.ob_cb_config.registration_handle = NULL;
         }
 
-        KeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -676,12 +684,12 @@ ProcCloseClearProcessConfiguration()
 
         DEBUG_INFO("Protected process closed. Clearing process configuration.");
 
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         process_config.km_handle   = NULL;
         process_config.um_handle   = NULL;
         process_config.process     = NULL;
         process_config.initialised = FALSE;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 /*
@@ -711,7 +719,7 @@ ProcLoadEnableObCallbacks()
 
         DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
 
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
 
         OB_CALLBACK_REGISTRATION          callback_registration  = {0};
         OB_OPERATION_REGISTRATION         operation_registration = {0};
@@ -728,7 +736,7 @@ ProcLoadEnableObCallbacks()
         callback_registration.OperationRegistrationCount = 1;
         callback_registration.RegistrationContext        = NULL;
 
-        status = ObRegisterCallbacks(&callback_registration,
+        status = ImpObRegisterCallbacks(&callback_registration,
                                      &process_config.ob_cb_config.registration_handle);
 
         if (!NT_SUCCESS(status))
@@ -746,7 +754,7 @@ ProcLoadEnableObCallbacks()
         //	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
 
 end:
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
         return status;
 }
 
@@ -756,9 +764,9 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 ImageLoadSetProcessId(_In_ HANDLE ProcessId)
 {
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
         process_config.km_handle = (ULONG)ProcessId;
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -783,14 +791,14 @@ ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
 
         information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
-        KeAcquireGuardedMutex(&process_config.lock);
+        ImpKeAcquireGuardedMutex(&process_config.lock);
 
         process_config.um_handle = information->protected_process_id;
 
         /*
          * What if we pass an invalid handle here? not good.
          */
-        status = PsLookupProcessByProcessId(process_config.um_handle, &process);
+        status = ImpPsLookupProcessByProcessId(process_config.um_handle, &process);
 
         if (!NT_SUCCESS(status))
         {
@@ -798,7 +806,7 @@ ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
                 goto end;
         }
 
-        process_config.km_handle = PsGetProcessId(process);
+        process_config.km_handle = ImpPsGetProcessId(process);
 
         if (!process_config.km_handle)
         {
@@ -811,7 +819,7 @@ ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
         process_config.initialised = TRUE;
 
 end:
-        KeReleaseGuardedMutex(&process_config.lock);
+        ImpKeReleaseGuardedMutex(&process_config.lock);
 
         return status;
 }
@@ -872,8 +880,8 @@ BOOLEAN
 DrvUnloadFreeAllApcContextStructures()
 {
         BOOLEAN flag = TRUE;
-
-        KeAcquireGuardedMutex(&driver_config.lock);
+        
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
 
         for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
         {
@@ -889,12 +897,12 @@ DrvUnloadFreeAllApcContextStructures()
                                 goto unlock;
                         }
 
-                        ExFreePoolWithTag(entry, POOL_TAG_APC);
+                        ImpExFreePoolWithTag(entry, POOL_TAG_APC);
                 }
         }
 
 unlock:
-        KeReleaseGuardedMutex(&driver_config.lock);
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
         return flag;
 }
 
@@ -905,13 +913,13 @@ DrvUnloadFreeConfigStrings()
         PAGED_CODE();
 
         if (driver_config.unicode_driver_name.Buffer)
-                ExFreePoolWithTag(driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS);
+                ImpExFreePoolWithTag(driver_config.unicode_driver_name.Buffer, POOL_TAG_STRINGS);
 
         if (driver_config.driver_path.Buffer)
-                ExFreePoolWithTag(driver_config.driver_path.Buffer, POOL_TAG_STRINGS);
+                ImpExFreePoolWithTag(driver_config.driver_path.Buffer, POOL_TAG_STRINGS);
 
         if (driver_config.ansi_driver_name.Buffer)
-                RtlFreeAnsiString(&driver_config.ansi_driver_name);
+                ImpRtlFreeAnsiString(&driver_config.ansi_driver_name);
 }
 
 STATIC
@@ -920,7 +928,7 @@ DrvUnloadFreeSymbolicLink()
 {
         PAGED_CODE();
 
-        IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
+        ImpIoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 }
 
 STATIC
@@ -943,6 +951,15 @@ DrvUnloadFreeThreadList()
 
 STATIC
 VOID
+DrvUnloadFreeDriverList()
+{
+        PAGED_CODE();
+
+        CleanupDriverListOnDriverUnload();
+}
+
+STATIC
+VOID
 DrvUnloadFreeProcessList()
 {
         PAGED_CODE();
@@ -957,6 +974,15 @@ DrvUnloadFreeModuleValidationContext()
         PAGED_CODE();
 
         CleanupValidationContextOnUnload(&driver_config.sys_val_context);
+}
+
+STATIC
+VOID
+DrvUnloadFreeImportsStructure()
+{
+        PAGED_CODE();
+
+        FreeDriverImportsStructure();
 }
 
 STATIC
@@ -979,11 +1005,12 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         DrvUnloadUnregisterObCallbacks();
         DrvUnloadFreeThreadList();
         DrvUnloadFreeProcessList();
+        DrvUnloadFreeDriverList();
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeGlobalReportQueue();
         DrvUnloadFreeSymbolicLink();
-
-        IoDeleteDevice(DriverObject->DeviceObject);
+        ImpIoDeleteDevice(DriverObject->DeviceObject);
+        DrvUnloadFreeImportsStructure();
 
         DEBUG_INFO("Driver successfully unloaded.");
 }
@@ -1004,10 +1031,20 @@ DrvLoadEnableNotifyRoutines()
 
         DEBUG_VERBOSE("Enabling driver wide notify routines.");
 
+        status = InitialiseDriverList();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitialiseDriverList failed with status %x", status);
+                return status;
+                
+        }
+
         status = InitialiseThreadList();
 
         if (!NT_SUCCESS(status))
         {
+                DrvUnloadFreeDriverList();
                 DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
                 return status;
         }
@@ -1017,42 +1054,46 @@ DrvLoadEnableNotifyRoutines()
         if (!NT_SUCCESS(status))
         {
                 DrvUnloadFreeThreadList();
+                DrvUnloadFreeDriverList();
                 DEBUG_ERROR("InitialiseProcessList failed with status %x", status);
                 return status;
         }
 
-        status = PsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+        status = PsSetLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("PsSetLoadImageNotifyRoutine failed with status %x", status);
+                DrvUnloadFreeThreadList();
+                DrvUnloadFreeProcessList();
+                DrvUnloadFreeDriverList();
+                return status;
+        }
+
+        status = ImpPsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("PsSetCreateThreadNotifyRoutine failed with status %x", status);
+                PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
                 DrvUnloadFreeThreadList();
                 DrvUnloadFreeProcessList();
+                DrvUnloadFreeDriverList();
                 return status;
         }
 
-        status = PsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, FALSE);
+        status = ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, FALSE);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
-                PsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+                ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+                PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
                 DrvUnloadFreeThreadList();
                 DrvUnloadFreeProcessList();
+                DrvUnloadFreeDriverList();
                 return status;
         }
-
-        // status = PsSetLoadImageNotifyRoutine(ImageLoadNotifyRoutine);
-
-        // if (!NT_SUCCESS(status))
-        //{
-        //	DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
-        //	PsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
-        //	PsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
-        //	DrvUnloadFreeThreadList();
-        //	DrvUnloadFreeProcessList();
-        //	return status;
-        // }
 
         DEBUG_VERBOSE("Successfully enabled driver wide notify routines.");
 
@@ -1069,7 +1110,7 @@ DrvLoadInitialiseObCbConfig()
          * the callback function is running since this might cause some funny stuff
          * to happen. Better to be safe then sorry :)
          */
-        KeInitializeGuardedMutex(&process_config.ob_cb_config.lock);
+        ImpKeInitializeGuardedMutex(&process_config.ob_cb_config.lock);
 }
 
 STATIC
@@ -1087,7 +1128,7 @@ DrvLoadInitialiseProcessConfig()
 {
         PAGED_CODE();
 
-        KeInitializeGuardedMutex(&process_config.lock);
+        ImpKeInitializeGuardedMutex(&process_config.lock);
 }
 
 /*
@@ -1213,7 +1254,7 @@ DrvLoadGatherSystemEnvironmentSettings()
          */
         if (APERFMsrTimingCheck())
                 driver_config.system_information.virtualised_environment = TRUE;
-
+        
         status = GetOsVersionInformation(&driver_config.system_information.os_information);
 
         if (!NT_SUCCESS(status))
@@ -1221,7 +1262,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DEBUG_ERROR("GetOsVersionInformation failed with status %x", status);
                 return status;
         }
-
+        
         status = GetSystemProcessorType();
 
         if (!NT_SUCCESS(status))
@@ -1229,7 +1270,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DEBUG_ERROR("GetSystemProcessorType failed with status %x", status);
                 return status;
         }
-
+        
         status = ParseSmbiosForGivenSystemEnvironment();
 
         if (!NT_SUCCESS(status))
@@ -1238,7 +1279,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
-
+        
         status =
             GetHardDiskDriveSerialNumber(&driver_config.system_information.drive_0_serial,
                                          sizeof(driver_config.system_information.drive_0_serial));
@@ -1249,7 +1290,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
-
+        
         DEBUG_VERBOSE("OS Major Version: %lx, Minor Version: %lx, Build Number: %lx",
                       driver_config.system_information.os_information.dwMajorVersion,
                       driver_config.system_information.os_information.dwMinorVersion,
@@ -1259,7 +1300,7 @@ DrvLoadGatherSystemEnvironmentSettings()
         DEBUG_VERBOSE("Motherboard serial: %s",
                       driver_config.system_information.motherboard_serial);
         DEBUG_VERBOSE("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
-
+        
         return status;
 }
 
@@ -1301,7 +1342,7 @@ DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
          * when querying the system modules for our driver.
          */
 
-        status = RtlUnicodeStringToAnsiString(
+        status = ImpRtlUnicodeStringToAnsiString(
             &driver_config.ansi_driver_name, &driver_config.unicode_driver_name, TRUE);
 
         if (!NT_SUCCESS(status))
@@ -1321,15 +1362,15 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
         DEBUG_VERBOSE("Initialising driver configuration");
 
-        KeInitializeGuardedMutex(&driver_config.lock);
+        ImpKeInitializeGuardedMutex(&driver_config.lock);
 
         driver_config.unload_in_progress                         = FALSE;
         driver_config.system_information.virtualised_environment = FALSE;
         driver_config.sys_val_context.active                     = FALSE;
 
-        RtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
-        RtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
-        RtlCopyUnicodeString(&driver_config.registry_path, RegistryPath);
+        ImpRtlInitUnicodeString(&driver_config.device_name, L"\\Device\\DonnaAC");
+        ImpRtlInitUnicodeString(&driver_config.device_symbolic_link, L"\\??\\DonnaAC");
+        ImpRtlCopyUnicodeString(&driver_config.registry_path, RegistryPath);
 
         status = DrvLoadRetrieveDriverNameFromRegistry(RegistryPath);
 
@@ -1369,6 +1410,11 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
         BOOLEAN  flag   = FALSE;
         NTSTATUS status = STATUS_UNSUCCESSFUL;
+        
+        /* store the driver object here as we need to access it in ResolveNtImports */
+        driver_config.driver_object = DriverObject;
+
+        ResolveNtImports();
 
         DEBUG_VERBOSE("Beginning driver entry routine...");
 
@@ -1382,7 +1428,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         DrvLoadInitialiseProcessConfig();
 
-        status = IoCreateDevice(DriverObject,
+        status = ImpIoCreateDevice(DriverObject,
                                 NULL,
                                 &driver_config.device_name,
                                 FILE_DEVICE_UNKNOWN,
@@ -1401,13 +1447,13 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         driver_config.device_object = DriverObject->DeviceObject;
 
         status =
-            IoCreateSymbolicLink(&driver_config.device_symbolic_link, &driver_config.device_name);
+            ImpIoCreateSymbolicLink(&driver_config.device_symbolic_link, &driver_config.device_name);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
-                IoDeleteDevice(DriverObject->DeviceObject);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
@@ -1422,8 +1468,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         {
                 DEBUG_ERROR("InitialiseReportQueue failed with no status.");
                 DrvUnloadFreeConfigStrings();
-                IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
-                IoDeleteDevice(DriverObject->DeviceObject);
+                ImpIoDeleteSymbolicLink(&driver_config.device_symbolic_link);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
@@ -1434,8 +1480,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 DEBUG_ERROR("EnablenotifyRoutines failed with status %x", status);
                 DrvUnloadFreeGlobalReportQueue();
                 DrvUnloadFreeConfigStrings();
-                IoDeleteSymbolicLink(&driver_config.device_symbolic_link);
-                IoDeleteDevice(DriverObject->DeviceObject);
+                ImpIoDeleteSymbolicLink(&driver_config.device_symbolic_link);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 

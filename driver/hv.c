@@ -1,7 +1,7 @@
 #include "hv.h"
 
 #include <intrin.h>
-
+#include "imports.h"
 #include "common.h"
 #include "ioctl.h"
 
@@ -34,7 +34,7 @@ _IRQL_always_function_max_(HIGH_LEVEL) INT APERFMsrTimingCheck()
          * its executing on.
          */
         new_affinity = (KAFFINITY)(1ull << KeGetCurrentProcessorNumber());
-        old_affinity = KeSetSystemAffinityThreadEx(new_affinity);
+        old_affinity = ImpKeSetSystemAffinityThreadEx(new_affinity);
 
         /*
          * Once we've locked our thread to the current core, we save the old irql
@@ -69,7 +69,7 @@ _IRQL_always_function_max_(HIGH_LEVEL) INT APERFMsrTimingCheck()
          */
         _enable();
         __writecr8(old_irql);
-        KeRevertToUserAffinityThreadEx(old_affinity);
+        ImpKeRevertToUserAffinityThreadEx(old_affinity);
 
         /*
          * Now the only thing left to do is calculate the change. Now, on some VMs

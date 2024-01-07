@@ -73,36 +73,34 @@ Init(HINSTANCE hinstDLL)
          * have, such as the process module validation. At the end of the day an anti cheat that
          * imposes a significant performance pentalty on the game its protecting is useless.
          */
-
+        
         srand(time(NULL));
 
         while (!GetAsyncKeyState(VK_DELETE))
         {
-                // int seed = (rand() % 11);
+                int seed = (rand() % 11);
 
-                // std::cout << "Seed: " << seed << std::endl;
+                std::cout << "Seed: " << seed << std::endl;
 
-                // switch (seed)
+                //switch (seed)
                 //{
-                // case 0: kmanager.EnumerateHandleTables(); break;
-                // case 1: kmanager.PerformIntegrityCheck(); break;
-                // case 2: kmanager.ScanPoolsForUnlinkedProcesses(); break;
-                // case 3: kmanager.VerifySystemModuleDriverObjects(); break;
-                // case 4: kmanager.ValidateProcessModules(); break;
-                // case 5: kmanager.RunNmiCallbacks(); break;
-                // case 6: kmanager.CheckForAttachedThreads(); break;
-                // case 7: kmanager.InitiateApcStackwalkOperation(); break;
-                // case 8: kmanager.CheckForEptHooks(); break;
-                // case 9: kmanager.StackwalkThreadsViaDpc(); break;
-                // case 10: kmanager.ValidateSystemModules(); break;
-                // }
+                //case 0: kmanager.EnumerateHandleTables(); break;
+                //case 1: kmanager.PerformIntegrityCheck(); break;
+                //case 2: kmanager.ScanPoolsForUnlinkedProcesses(); break;
+                //case 3: kmanager.VerifySystemModuleDriverObjects(); break;
+                //case 4: kmanager.ValidateProcessModules(); break;
+                //case 5: kmanager.RunNmiCallbacks(); break;
+                //case 6: kmanager.CheckForAttachedThreads(); break;
+                //case 7: kmanager.InitiateApcStackwalkOperation(); break;
+                //case 8: kmanager.CheckForEptHooks(); break;
+                //case 9: kmanager.StackwalkThreadsViaDpc(); break;
+                //case 10: kmanager.ValidateSystemModules(); break;
+                //}
 
                 kmanager.ValidateSystemModules();
                 std::this_thread::sleep_for(std::chrono::seconds(2));
                 kmanager.PerformIntegrityCheck();
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                kmanager.ValidateProcessModules();
-                // kmanager.MonitorCallbackReports();
+                kmanager.MonitorCallbackReports();
                 std::this_thread::sleep_for(std::chrono::seconds(10));
         }
 

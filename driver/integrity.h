@@ -107,9 +107,6 @@ ScanForSignature(_In_ PVOID  BaseAddress,
 //);
 
 NTSTATUS
-ValidateSystemModules();
-
-NTSTATUS
 ValidateNtoskrnl();
 
 NTSTATUS
@@ -123,5 +120,14 @@ ValidateOurDriverImage();
 
 VOID
 CleanupValidationContextOnUnload(_In_ PSYS_MODULE_VAL_CONTEXT Context);
+
+UINT32
+CalculateCpuCoreUsage(_In_ UINT32 Core);
+
+NTSTATUS
+HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash);
+
+VOID
+ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module);
 
 #endif

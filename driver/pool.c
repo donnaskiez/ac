@@ -5,6 +5,7 @@
 #include "callbacks.h"
 #include "queue.h"
 #include "ia32.h"
+#include "imports.h"
 
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE  0x004
@@ -109,7 +110,7 @@ GetGlobalDebuggerData()
 
         RtlCaptureContext(&context);
 
-        dump_header = ExAllocatePool2(POOL_FLAG_NON_PAGED, DUMP_BLOCK_SIZE, POOL_DUMP_BLOCK_TAG);
+        dump_header = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, DUMP_BLOCK_SIZE, POOL_DUMP_BLOCK_TAG);
 
         if (!dump_header)
                 goto end;
@@ -127,7 +128,7 @@ GetGlobalDebuggerData()
 end:
 
         if (dump_header)
-                ExFreePoolWithTag(dump_header, POOL_DUMP_BLOCK_TAG);
+                ImpExFreePoolWithTag(dump_header, POOL_DUMP_BLOCK_TAG);
 
         return debugger_data;
 }
@@ -145,7 +146,7 @@ GetPsActiveProcessHead(_Out_ PUINT64 Address)
                 return;
 
         *Address = *(UINT64*)(debugger_data->PsActiveProcessHead);
-        ExFreePoolWithTag(debugger_data, POOL_DEBUGGER_DATA_TAG);
+        ImpExFreePoolWithTag(debugger_data, POOL_DEBUGGER_DATA_TAG);
 }
 
 /*
@@ -196,19 +197,19 @@ ValidateIfAddressIsProcessStructure(_In_ PVOID Address, _In_ PPOOL_HEADER PoolHe
         BOOLEAN object_table_test    = FALSE;
         UINT64  allocation_size_test = 0;
 
-        if (MmIsAddressValid((UINT64)Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET))
+        if (ImpMmIsAddressValid((UINT64)Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET))
                 dir_table_base = *(UINT64*)((UINT64)Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET);
 
-        if (MmIsAddressValid((UINT64)Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET))
+        if (ImpMmIsAddressValid((UINT64)Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET))
                 peak_virtual_size = *(UINT64*)((UINT64)Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET);
 
-        if (MmIsAddressValid((UINT64)PoolHeader + POOL_HEADER_BLOCK_SIZE_OFFSET))
+        if (ImpMmIsAddressValid((UINT64)PoolHeader + POOL_HEADER_BLOCK_SIZE_OFFSET))
                 allocation_size = PoolHeader->BlockSize * CHUNK_SIZE - sizeof(POOL_HEADER);
 
-        if (MmIsAddressValid((UINT64)Address + EPROCESS_PEB_OFFSET))
+        if (ImpMmIsAddressValid((UINT64)Address + EPROCESS_PEB_OFFSET))
                 peb = *(UINT64*)((UINT64)Address + EPROCESS_PEB_OFFSET);
 
-        if (MmIsAddressValid((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET))
+        if (ImpMmIsAddressValid((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET))
                 object_table = *(UINT64*)((UINT64)Address + EPROCESS_OBJECT_TABLE_OFFSET);
 
         peb_test          = peb == NULL || (peb & 0x7ffd0000 == 0x7ffd0000 && peb % 0x1000 == NULL);
@@ -279,7 +280,7 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
         {
                 for (INT sig_index = 0; sig_index < POOL_TAG_LENGTH + 1; sig_index++)
                 {
-                        if (!MmIsAddressValid(PageBase + offset + sig_index))
+                        if (!ImpMmIsAddressValid(PageBase + offset + sig_index))
                                 break;
 
                         current_char     = *(PCHAR)(PageBase + offset + sig_index);
@@ -289,7 +290,7 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
                         {
                                 pool_header = (UINT64)PageBase + offset - POOL_HEADER_TAG_OFFSET;
 
-                                if (!MmIsAddressValid((PVOID)pool_header))
+                                if (!ImpMmIsAddressValid((PVOID)pool_header))
                                         break;
 
                                 /*
@@ -437,7 +438,7 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
         PPHYSICAL_MEMORY_RANGE physical_memory_ranges = NULL;
         KIRQL                  irql                   = {0};
 
-        physical_memory_ranges = MmGetPhysicalMemoryRangesEx2(NULL, NULL);
+        physical_memory_ranges = ImpMmGetPhysicalMemoryRangesEx2(NULL, NULL);
 
         if (!physical_memory_ranges)
         {
@@ -449,14 +450,14 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
         physical.QuadPart = cr3.AddressOfPageDirectory << PAGE_4KB_SHIFT;
 
-        pml4_base.BitAddress = MmGetVirtualForPhysical(physical);
+        pml4_base.BitAddress = ImpMmGetVirtualForPhysical(physical);
 
-        if (!MmIsAddressValid(pml4_base.BitAddress) || !pml4_base.BitAddress)
+        if (!ImpMmIsAddressValid(pml4_base.BitAddress) || !pml4_base.BitAddress)
                 return;
 
         for (INT pml4_index = 0; pml4_index < PML4_ENTRY_COUNT; pml4_index++)
         {
-                if (!MmIsAddressValid(pml4_base.BitAddress + pml4_index * sizeof(UINT64)))
+                if (!ImpMmIsAddressValid(pml4_base.BitAddress + pml4_index * sizeof(UINT64)))
                         continue;
 
                 pml4_entry.BitAddress =
@@ -467,14 +468,14 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
                 physical.QuadPart = pml4_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-                pdpt_base = MmGetVirtualForPhysical(physical);
+                pdpt_base = ImpMmGetVirtualForPhysical(physical);
 
-                if (!pdpt_base || !MmIsAddressValid(pdpt_base))
+                if (!pdpt_base || !ImpMmIsAddressValid(pdpt_base))
                         continue;
 
                 for (INT pdpt_index = 0; pdpt_index < PDPT_ENTRY_COUNT; pdpt_index++)
                 {
-                        if (!MmIsAddressValid(pdpt_base + pdpt_index * sizeof(UINT64)))
+                        if (!ImpMmIsAddressValid(pdpt_base + pdpt_index * sizeof(UINT64)))
                                 continue;
 
                         pdpt_entry.BitAddress = *(UINT64*)(pdpt_base + pdpt_index * sizeof(UINT64));
@@ -494,10 +495,10 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                                         physical.QuadPart, physical_memory_ranges) == FALSE)
                                         continue;
 
-                                base_1gb_virtual_page = MmGetVirtualForPhysical(physical);
+                                base_1gb_virtual_page = ImpMmGetVirtualForPhysical(physical);
 
                                 if (!base_1gb_virtual_page ||
-                                    !MmIsAddressValid(base_1gb_virtual_page))
+                                    !ImpMmIsAddressValid(base_1gb_virtual_page))
                                         continue;
 
                                 EnumerateKernelLargePages(base_1gb_virtual_page,
@@ -510,14 +511,14 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
                         physical.QuadPart = pdpt_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-                        pd_base = MmGetVirtualForPhysical(physical);
+                        pd_base = ImpMmGetVirtualForPhysical(physical);
 
-                        if (!pd_base || !MmIsAddressValid(pd_base))
+                        if (!pd_base || !ImpMmIsAddressValid(pd_base))
                                 continue;
 
                         for (INT pd_index = 0; pd_index < PD_ENTRY_COUNT; pd_index++)
                         {
-                                if (!MmIsAddressValid(pd_base + pd_index * sizeof(UINT64)))
+                                if (!ImpMmIsAddressValid(pd_base + pd_index * sizeof(UINT64)))
                                         continue;
 
                                 pd_entry.BitAddress =
@@ -538,10 +539,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                                                 physical.QuadPart, physical_memory_ranges) == FALSE)
                                                 continue;
 
-                                        base_2mb_virtual_page = MmGetVirtualForPhysical(physical);
+                                        base_2mb_virtual_page =
+                                            ImpMmGetVirtualForPhysical(physical);
 
                                         if (!base_2mb_virtual_page ||
-                                            !MmIsAddressValid(base_2mb_virtual_page))
+                                            !ImpMmIsAddressValid(base_2mb_virtual_page))
                                                 continue;
 
                                         EnumerateKernelLargePages(base_2mb_virtual_page,
@@ -554,17 +556,18 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
                                 physical.QuadPart = pd_entry.Bits.PhysicalAddress << PAGE_4KB_SHIFT;
 
-                                if (!MmIsAddressValid(pd_base + pd_index * sizeof(UINT64)))
+                                if (!ImpMmIsAddressValid(pd_base + pd_index * sizeof(UINT64)))
                                         continue;
 
-                                pt_base = MmGetVirtualForPhysical(physical);
+                                pt_base = ImpMmGetVirtualForPhysical(physical);
 
-                                if (!pt_base || !MmIsAddressValid(pt_base))
+                                if (!pt_base || !ImpMmIsAddressValid(pt_base))
                                         continue;
 
                                 for (INT pt_index = 0; pt_index < PT_ENTRY_COUNT; pt_index++)
                                 {
-                                        if (!MmIsAddressValid(pt_base + pt_index * sizeof(UINT64)))
+                                        if (!ImpMmIsAddressValid(pt_base +
+                                                                 pt_index * sizeof(UINT64)))
                                                 continue;
 
                                         pt_entry.BitAddress =
@@ -581,11 +584,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                                                 physical.QuadPart, physical_memory_ranges) == FALSE)
                                                 continue;
 
-                                        base_virtual_page = MmGetVirtualForPhysical(physical);
+                                        base_virtual_page = ImpMmGetVirtualForPhysical(physical);
 
                                         /* stupid fucking intellisense error GO AWAY! */
                                         if (base_virtual_page == NULL ||
-                                            !MmIsAddressValid(base_virtual_page))
+                                            !ImpMmIsAddressValid(base_virtual_page))
                                                 continue;
 
                                         ScanPageForKernelObjectAllocation(base_virtual_page,
@@ -690,7 +693,7 @@ FindUnlinkedProcesses()
                 DEBUG_WARNING("Potentially found an unlinked process allocation at address: %llx",
                               allocation);
 
-                report_buffer = ExAllocatePool2(
+                report_buffer = ImpExAllocatePool2(
                     POOL_FLAG_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
 
                 if (!report_buffer)
@@ -707,7 +710,7 @@ FindUnlinkedProcesses()
 end:
 
         if (context.process_buffer)
-                ExFreePoolWithTag(context.process_buffer, PROCESS_ADDRESS_LIST_TAG);
+                ImpExFreePoolWithTag(context.process_buffer, PROCESS_ADDRESS_LIST_TAG);
 
         return STATUS_SUCCESS;
 }
@@ -726,7 +729,7 @@ EnumerateBigPoolAllocations()
         SYSTEM_BIGPOOL_INFORMATION  pool_information = {0};
         PSYSTEM_BIGPOOL_INFORMATION pool_entries     = NULL;
         UNICODE_STRING              routine = RTL_CONSTANT_STRING(L"ZwQuerySystemInformation");
-        ZwQuerySystemInformation    pZwQuerySystemInformation = MmGetSystemRoutineAddress(&routine);
+        ZwQuerySystemInformation pZwQuerySystemInformation = ImpMmGetSystemRoutineAddress(&routine);
 
         if (!pZwQuerySystemInformation)
         {
@@ -747,7 +750,7 @@ EnumerateBigPoolAllocations()
 
         return_length += sizeof(SYSTEM_BIGPOOL_INFORMATION);
 
-        pool_entries = ExAllocatePool2(POOL_FLAG_NON_PAGED, return_length, POOL_TAG_INTEGRITY);
+        pool_entries = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, return_length, POOL_TAG_INTEGRITY);
 
         if (!pool_entries)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -770,7 +773,7 @@ EnumerateBigPoolAllocations()
 end:
 
         if (pool_entries)
-                ExFreePoolWithTag(pool_entries, POOL_TAG_INTEGRITY);
+                ImpExFreePoolWithTag(pool_entries, POOL_TAG_INTEGRITY);
 
         return status;
 }

@@ -8,6 +8,7 @@
 #include "thread.h"
 #include "queue.h"
 #include "hv.h"
+#include "imports.h"
 
 STATIC
 NTSTATUS
@@ -114,7 +115,7 @@ ValidateIrpOutputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize)
         PIO_STACK_LOCATION io = IoGetCurrentIrpStackLocation(Irp);
 
         if (!io)
-                return STATUS_ABANDONED;
+                return STATUS_UNSUCCESSFUL;
 
         if (io->Parameters.DeviceIoControl.OutputBufferLength < RequiredSize)
                 return STATUS_BUFFER_TOO_SMALL;
@@ -139,7 +140,7 @@ ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize)
         PIO_STACK_LOCATION io = IoGetCurrentIrpStackLocation(Irp);
 
         if (!io)
-                return STATUS_ABANDONED;
+                return STATUS_UNSUCCESSFUL;
 
         if (io->Parameters.DeviceIoControl.InputBufferLength != RequiredSize)
                 return STATUS_INVALID_BUFFER_SIZE;
@@ -197,7 +198,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                  * it will issue a bug check under windows driver verifier.
                  */
 
-                status = PsCreateSystemThread(
+                status = ImpPsCreateSystemThread(
                     &handle, PROCESS_ALL_ACCESS, NULL, NULL, NULL, HandleValidateDriversIOCTL, Irp);
 
                 if (!NT_SUCCESS(status))
@@ -212,35 +213,35 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                  * us to wait til our threads terminated and the IRP buffer has been either filled
                  * or left empty and then from there we can complete the IRP and return.
                  */
-                status = ObReferenceObjectByHandle(
+                status = ImpObReferenceObjectByHandle(
                     handle, THREAD_ALL_ACCESS, *PsThreadType, KernelMode, &thread, NULL);
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("ObReferenceObjectbyhandle failed with status %lx", status);
-                        ZwClose(handle);
+                        DEBUG_ERROR("ObReferenceObjectByHandle failed with status %lx", status);
+                        ImpZwClose(handle);
                         goto end;
                 }
 
-                KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
+                ImpKeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
 
-                ZwClose(handle);
-                ObDereferenceObject(thread);
+                ImpZwClose(handle);
+                ImpObDereferenceObject(thread);
 
                 break;
 
         case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
                 DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH Received");
-
+                
                 status = ProcLoadInitialiseProcessConfig(Irp);
-
+                
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("InitialiseProcessConfig failed with status %x", status);
                         goto end;
                 }
-
+                
                 status = ProcLoadEnableObCallbacks();
 
                 if (!NT_SUCCESS(status))
@@ -290,7 +291,7 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 DEBUG_VERBOSE("IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS Received");
 
-                status = PsCreateSystemThread(&handle,
+                status = ImpPsCreateSystemThread(&handle,
                                               PROCESS_ALL_ACCESS,
                                               NULL,
                                               NULL,
@@ -304,20 +305,20 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                         goto end;
                 }
 
-                status = ObReferenceObjectByHandle(
+                status = ImpObReferenceObjectByHandle(
                     handle, THREAD_ALL_ACCESS, *PsThreadType, KernelMode, &thread, NULL);
 
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("ObReferenceObjectbyhandle failed with status %lx", status);
-                        ZwClose(handle);
+                        ImpZwClose(handle);
                         goto end;
                 }
 
-                KeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
+                ImpKeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
 
-                ZwClose(handle);
-                ObDereferenceObject(thread);
+                ImpZwClose(handle);
+                ImpObDereferenceObject(thread);
 
                 break;
 

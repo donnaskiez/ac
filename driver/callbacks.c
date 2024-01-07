@@ -5,6 +5,8 @@
 #include "queue.h"
 #include "pool.h"
 #include "thread.h"
+#include "modules.h"
+#include "imports.h"
 
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx functions,
@@ -33,6 +35,17 @@ typedef struct _PROCESS_LIST
 
 PPROCESS_LIST process_list = NULL;
 
+typedef struct _DRIVER_LIST
+{
+        SINGLE_LIST_ENTRY start;
+        volatile ULONG    count;
+        volatile BOOLEAN  active;
+        KGUARDED_MUTEX    lock;
+
+} DRIVER_LIST, *PDRIVER_LIST;
+
+PDRIVER_LIST driver_list = NULL;
+
 STATIC
 BOOLEAN
 EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
@@ -56,29 +69,29 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 VOID
 CleanupProcessListFreeCallback(_In_ PPROCESS_LIST_ENTRY ProcessListEntry)
 {
-        ObDereferenceObject(ProcessListEntry->parent);
-        ObDereferenceObject(ProcessListEntry->process);
+        ImpObDereferenceObject(ProcessListEntry->parent);
+        ImpObDereferenceObject(ProcessListEntry->process);
 }
 
 VOID
 CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 {
-        ObDereferenceObject(ThreadListEntry->thread);
-        ObDereferenceObject(ThreadListEntry->owning_process);
+        ImpObDereferenceObject(ThreadListEntry->thread);
+        ImpObDereferenceObject(ThreadListEntry->owning_process);
 }
 
 VOID
 CleanupProcessListOnDriverUnload()
 {
         InterlockedExchange(&process_list->active, FALSE);
-        PsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
+        ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 
         for (;;)
         {
                 if (!ListFreeFirstEntry(
                         &process_list->start, &process_list->lock, CleanupProcessListFreeCallback))
                 {
-                        ExFreePoolWithTag(process_list, POOL_TAG_THREAD_LIST);
+                        ImpExFreePoolWithTag(process_list, POOL_TAG_THREAD_LIST);
                         return;
                 }
         }
@@ -88,14 +101,30 @@ VOID
 CleanupThreadListOnDriverUnload()
 {
         InterlockedExchange(&thread_list->active, FALSE);
-        PsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+        ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 
         for (;;)
         {
                 if (!ListFreeFirstEntry(
                         &thread_list->start, &thread_list->lock, CleanupThreadListFreeCallback))
                 {
-                        ExFreePoolWithTag(thread_list, POOL_TAG_THREAD_LIST);
+                        ImpExFreePoolWithTag(thread_list, POOL_TAG_THREAD_LIST);
+                        return;
+                }
+        }
+}
+
+VOID
+CleanupDriverListOnDriverUnload()
+{
+        InterlockedExchange(&driver_list->active, FALSE);
+        PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
+
+        for (;;)
+        {
+                if (!ListFreeFirstEntry(&driver_list->start, &driver_list->lock, NULL))
+                {
+                        ImpExFreePoolWithTag(driver_list, POOL_TAG_THREAD_LIST);
                         return;
                 }
         }
@@ -107,7 +136,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
-        KeAcquireGuardedMutex(&thread_list->lock);
+        ImpKeAcquireGuardedMutex(&thread_list->lock);
 
         if (!CallbackRoutine)
                 goto unlock;
@@ -122,7 +151,7 @@ EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOI
         }
 
 unlock:
-        KeReleaseGuardedMutex(&thread_list->lock);
+        ImpKeReleaseGuardedMutex(&thread_list->lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -131,7 +160,7 @@ _Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
-        KeAcquireGuardedMutex(&process_list->lock);
+        ImpKeAcquireGuardedMutex(&process_list->lock);
 
         if (!CallbackRoutine)
                 goto unlock;
@@ -146,7 +175,153 @@ EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVO
         }
 
 unlock:
-        KeReleaseGuardedMutex(&process_list->lock);
+        ImpKeReleaseGuardedMutex(&process_list->lock);
+}
+
+NTSTATUS
+InitialiseDriverList()
+{
+        PAGED_CODE();
+
+        NTSTATUS                  status       = STATUS_UNSUCCESSFUL;
+        SYSTEM_MODULES            modules      = {0};
+        PDRIVER_LIST_ENTRY        entry        = NULL;
+        PRTL_MODULE_EXTENDED_INFO module_entry = NULL;
+
+        driver_list =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST), POOL_TAG_THREAD_LIST);
+
+        if (!driver_list)
+                return STATUS_MEMORY_NOT_ALLOCATED;
+
+        InterlockedExchange(&driver_list->active, TRUE);
+        ListInit(&driver_list->start, &driver_list->lock);
+
+        status = GetSystemModuleInformation(&modules);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+                return status;
+        }
+
+        /* skip hal.dll and ntosknrl.exe */
+        for (INT index = 2; index < modules.module_count; index++)
+        {
+                entry = ImpExAllocatePool2(
+                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+
+                if (!entry)
+                {
+                        status = STATUS_MEMORY_NOT_ALLOCATED;
+                        goto end;
+                }
+
+                module_entry = &((PRTL_MODULE_EXTENDED_INFO)modules.address)[index];
+
+                entry->hashed    = TRUE;
+                entry->ImageBase = module_entry->ImageBase;
+                entry->ImageSize = module_entry->ImageSize;
+                RtlCopyMemory(
+                    entry->path, module_entry->FullPathName, sizeof(module_entry->FullPathName));
+
+                status = HashModule(module_entry, entry->text_hash);
+
+                if (status == STATUS_INVALID_IMAGE_WIN_32)
+                {
+                        DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+                        entry->hashed = FALSE;
+                }
+                else if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("HashModule failed with status %x", status);
+                        entry->hashed = FALSE;
+                }
+
+                ListInsert(&driver_list->start, entry, &driver_list->lock);
+        }
+
+end:
+        if (modules.address)
+                ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
+        return STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+_Acquires_lock_(_Lock_kind_mutex_)
+_Releases_lock_(_Lock_kind_mutex_)
+VOID
+FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry)
+{
+        *Entry = NULL;
+        ImpKeAcquireGuardedMutex(&driver_list->lock);
+
+        PDRIVER_LIST_ENTRY entry = (PDRIVER_LIST_ENTRY)driver_list->start.Next;
+
+        while (entry)
+        {
+                if (entry->ImageBase == ImageBase)
+                {
+                        *Entry = entry;
+                        goto unlock;
+                }
+
+                entry = entry->list.Next;
+        }
+unlock:
+        ImpKeReleaseGuardedMutex(&driver_list->lock);
+}
+
+VOID
+ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
+                               _In_ HANDLE              ProcessId,
+                               _In_ PIMAGE_INFO         ImageInfo)
+{
+        NTSTATUS                 status = STATUS_UNSUCCESSFUL;
+        PDRIVER_LIST_ENTRY       entry  = NULL;
+        RTL_MODULE_EXTENDED_INFO module = {0};
+
+        if (InterlockedExchange(&driver_list->active, driver_list->active) == FALSE)
+                return;
+
+        if (ImageInfo->SystemModeImage == TRUE)
+        {
+                FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
+
+                if (entry)
+                        return;
+
+                DEBUG_VERBOSE("New system image: %wZ", FullImageName);
+
+                entry = ExAllocatePool2(
+                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+
+                if (!entry)
+                        return;
+
+                entry->hashed    = TRUE;
+                entry->ImageBase = ImageInfo->ImageBase;
+                entry->ImageSize = ImageInfo->ImageSize;
+
+                module.ImageBase = ImageInfo->ImageBase;
+                module.ImageSize = ImageInfo->ImageSize;
+
+                status = HashModule(&module, &entry->text_hash);
+
+                if (status == STATUS_INVALID_IMAGE_WIN_32)
+                {
+                        DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+                        entry->hashed = FALSE;
+                }
+                else if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("HashModule failed with status %x", status);
+                        entry->hashed = FALSE;
+                }
+
+                ListInsert(&driver_list->start, entry, &driver_list->lock);
+        }
 }
 
 NTSTATUS
@@ -155,7 +330,7 @@ InitialiseProcessList()
         PAGED_CODE();
 
         process_list =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST), POOL_TAG_THREAD_LIST);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST), POOL_TAG_THREAD_LIST);
 
         if (!process_list)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -172,7 +347,7 @@ InitialiseThreadList()
         PAGED_CODE();
 
         thread_list =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST), POOL_TAG_THREAD_LIST);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST), POOL_TAG_THREAD_LIST);
 
         if (!thread_list)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -190,7 +365,7 @@ VOID
 FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTRY* Entry)
 {
         *Entry = NULL;
-        KeAcquireGuardedMutex(&process_list->lock);
+        ImpKeAcquireGuardedMutex(&process_list->lock);
 
         PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)process_list->start.Next;
 
@@ -205,7 +380,7 @@ FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTR
                 entry = entry->list.Next;
         }
 unlock:
-        KeReleaseGuardedMutex(&process_list->lock);
+        ImpKeReleaseGuardedMutex(&process_list->lock);
 }
 
 _IRQL_requires_max_(APC_LEVEL)
@@ -215,7 +390,7 @@ VOID
 FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_ENTRY* Entry)
 {
         *Entry = NULL;
-        KeAcquireGuardedMutex(&thread_list->lock);
+        ImpKeAcquireGuardedMutex(&thread_list->lock);
 
         PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)thread_list->start.Next;
 
@@ -230,7 +405,7 @@ FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_EN
                 entry = entry->list.Next;
         }
 unlock:
-        KeReleaseGuardedMutex(&thread_list->lock);
+        ImpKeReleaseGuardedMutex(&thread_list->lock);
 }
 
 VOID
@@ -243,22 +418,22 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
         if (InterlockedExchange(&process_list->active, process_list->active) == FALSE)
                 return;
 
-        PsLookupProcessByProcessId(ParentId, &parent);
-        PsLookupProcessByProcessId(ProcessId, &process);
+        ImpPsLookupProcessByProcessId(ParentId, &parent);
+        ImpPsLookupProcessByProcessId(ProcessId, &process);
 
         if (!parent || !process)
                 return;
 
         if (Create)
         {
-                entry = ExAllocatePool2(
+                entry = ImpExAllocatePool2(
                     POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST_ENTRY), POOL_TAG_THREAD_LIST);
 
                 if (!entry)
                         return;
 
-                ObReferenceObject(parent);
-                ObReferenceObject(process);
+                ImpObfReferenceObject(parent);
+                ImpObfReferenceObject(process);
 
                 entry->parent  = parent;
                 entry->process = process;
@@ -272,8 +447,8 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 if (!entry)
                         return;
 
-                ObDereferenceObject(entry->parent);
-                ObDereferenceObject(entry->process);
+                ImpObDereferenceObject(entry->parent);
+                ImpObDereferenceObject(entry->process);
 
                 ListRemoveEntry(&process_list->start, entry, &process_list->lock);
         }
@@ -290,22 +465,22 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
         if (InterlockedExchange(&thread_list->active, thread_list->active) == FALSE)
                 return;
 
-        PsLookupThreadByThreadId(ThreadId, &thread);
-        PsLookupProcessByProcessId(ProcessId, &process);
+        ImpPsLookupThreadByThreadId(ThreadId, &thread);
+        ImpPsLookupProcessByProcessId(ProcessId, &process);
 
         if (!thread || !process)
                 return;
 
         if (Create)
         {
-                entry = ExAllocatePool2(
+                entry = ImpExAllocatePool2(
                     POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST_ENTRY), POOL_TAG_THREAD_LIST);
 
                 if (!entry)
                         return;
 
-                ObReferenceObject(thread);
-                ObReferenceObject(process);
+                ImpObfReferenceObject(thread);
+                ImpObfReferenceObject(process);
 
                 entry->thread         = thread;
                 entry->owning_process = process;
@@ -321,8 +496,8 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
                 if (!entry)
                         return;
 
-                ObDereferenceObject(entry->thread);
-                ObDereferenceObject(entry->owning_process);
+                ImpObDereferenceObject(entry->thread);
+                ImpObDereferenceObject(entry->owning_process);
 
                 ListRemoveEntry(&thread_list->start, entry, &thread_list->lock);
         }
@@ -359,7 +534,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
         PEPROCESS            process_creator        = PsGetCurrentProcess();
         PEPROCESS            protected_process      = NULL;
         PEPROCESS            target_process         = (PEPROCESS)OperationInformation->Object;
-        HANDLE               process_creator_id     = PsGetProcessId(process_creator);
+        HANDLE               process_creator_id     = ImpPsGetProcessId(process_creator);
         LONG                 protected_process_id   = 0;
         LPCSTR               process_creator_name   = NULL;
         LPCSTR               target_process_name    = NULL;
@@ -376,16 +551,16 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
         if (!configuration)
                 return OB_PREOP_SUCCESS;
 
-        KeAcquireGuardedMutex(&configuration->lock);
+        ImpKeAcquireGuardedMutex(&configuration->lock);
         GetProtectedProcessId(&protected_process_id);
         GetProtectedProcessEProcess(&protected_process);
 
         if (!protected_process_id || !protected_process)
                 goto end;
 
-        process_creator_name   = PsGetProcessImageFileName(process_creator);
-        target_process_name    = PsGetProcessImageFileName(target_process);
-        protected_process_name = PsGetProcessImageFileName(protected_process);
+        process_creator_name   = ImpPsGetProcessImageFileName(process_creator);
+        target_process_name    = ImpPsGetProcessImageFileName(target_process);
+        protected_process_name = ImpPsGetProcessImageFileName(protected_process);
 
         if (!protected_process_name || !target_process_name)
                 goto end;
@@ -430,9 +605,9 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                         // DEBUG_LOG("handle stripped from: %s", process_creator_name);
 
                         POPEN_HANDLE_FAILURE_REPORT report =
-                            ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                            sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                            REPORT_POOL_TAG);
+                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                                               REPORT_POOL_TAG);
 
                         if (!report)
                                 goto end;
@@ -440,7 +615,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                         report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
                         report->is_kernel_handle = OperationInformation->KernelHandle;
                         report->process_id       = process_creator_id;
-                        report->thread_id        = PsGetCurrentThreadId();
+                        report->thread_id        = ImpPsGetCurrentThreadId();
                         report->access =
                             OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
@@ -454,7 +629,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
 
 end:
 
-        KeReleaseGuardedMutex(&configuration->lock);
+        ImpKeReleaseGuardedMutex(&configuration->lock);
         return OB_PREOP_SUCCESS;
 }
 
@@ -469,7 +644,7 @@ ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable, IN PHANDLE_TABLE_ENTRY Ha
         old_value = InterlockedOr((PLONG)&HandleTableEntry->VolatileLowValue, 1);
 
         /* Unblock any waiters */
-        ExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
+        ImpExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
 }
 
 STATIC
@@ -495,17 +670,17 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         /* Object header is the first 30 bytes of the object */
         object = (uintptr_t)object_header + OBJECT_HEADER_SIZE;
 
-        object_type = ObGetObjectType(object);
+        object_type = ImpObGetObjectType(object);
 
         /* TODO: check for threads aswell */
-        if (!RtlCompareUnicodeString(&object_type->Name, &OBJECT_TYPE_PROCESS, TRUE))
+        if (!ImpRtlCompareUnicodeString(&object_type->Name, &OBJECT_TYPE_PROCESS, TRUE))
         {
                 process      = (PEPROCESS)object;
-                process_name = PsGetProcessImageFileName(process);
+                process_name = ImpPsGetProcessImageFileName(process);
 
                 GetProtectedProcessEProcess(&protected_process);
 
-                protected_process_name = PsGetProcessImageFileName(protected_process);
+                protected_process_name = ImpPsGetProcessImageFileName(protected_process);
 
                 if (strcmp(process_name, protected_process_name))
                         goto end;
@@ -596,7 +771,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                         DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
                 }
 
-                POPEN_HANDLE_FAILURE_REPORT report = ExAllocatePool2(
+                POPEN_HANDLE_FAILURE_REPORT report = ImpExAllocatePool2(
                     POOL_FLAG_NON_PAGED, sizeof(OPEN_HANDLE_FAILURE_REPORT), REPORT_POOL_TAG);
 
                 if (!report)
@@ -612,7 +787,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                  */
                 report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
                 report->is_kernel_handle = 0;
-                report->process_id       = PsGetProcessId(process);
+                report->process_id       = ImpPsGetProcessId(process);
                 report->thread_id        = 0;
                 report->access           = handle_access_mask;
 
@@ -630,7 +805,7 @@ end:
 NTSTATUS
 EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context)
 {
-        /* Handles are stored in paged memory */
+        /* Handles are stored in pageable memory */
         PAGED_CODE();
 
         UNREFERENCED_PARAMETER(Context);
@@ -647,13 +822,13 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
         if (!handle_table)
                 return STATUS_INVALID_ADDRESS;
 
-        if (!MmIsAddressValid(handle_table))
+        if (!ImpMmIsAddressValid(handle_table))
                 return STATUS_INVALID_ADDRESS;
 
 #pragma warning(push)
 #pragma warning(suppress : 6387)
 
-        BOOLEAN result = ExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
+        BOOLEAN result = ImpExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
 
 #pragma warning(pop)
 

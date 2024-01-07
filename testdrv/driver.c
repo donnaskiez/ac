@@ -55,7 +55,6 @@ DriverUnload(
 )
 {
 	IoDeleteDevice(DriverObject->DeviceObject);
-	DEBUG_LOG("Driver unloaded");
 }
 
 NTSTATUS
@@ -78,7 +77,6 @@ DriverEntry(
 
 	if (!NT_SUCCESS(status))
 	{
-		DEBUG_ERROR("IoCreateDevice failed with status %x", status);
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
@@ -89,7 +87,6 @@ DriverEntry(
 
 	if (!NT_SUCCESS(status))
 	{
-		DEBUG_ERROR("failed to create symbolic link");
 		IoDeleteDevice(DriverObject->DeviceObject);
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
