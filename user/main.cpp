@@ -82,24 +82,21 @@ Init(HINSTANCE hinstDLL)
 
                 std::cout << "Seed: " << seed << std::endl;
 
-                //switch (seed)
-                //{
-                //case 0: kmanager.EnumerateHandleTables(); break;
-                //case 1: kmanager.PerformIntegrityCheck(); break;
-                //case 2: kmanager.ScanPoolsForUnlinkedProcesses(); break;
-                //case 3: kmanager.VerifySystemModuleDriverObjects(); break;
-                //case 4: kmanager.ValidateProcessModules(); break;
-                //case 5: kmanager.RunNmiCallbacks(); break;
-                //case 6: kmanager.CheckForAttachedThreads(); break;
-                //case 7: kmanager.InitiateApcStackwalkOperation(); break;
-                //case 8: kmanager.CheckForEptHooks(); break;
-                //case 9: kmanager.StackwalkThreadsViaDpc(); break;
-                //case 10: kmanager.ValidateSystemModules(); break;
-                //}
+                switch (seed)
+                {
+                case 0: kmanager.EnumerateHandleTables(); break;
+                case 1: kmanager.PerformIntegrityCheck(); break;
+                case 2: kmanager.ScanPoolsForUnlinkedProcesses(); break;
+                case 3: kmanager.VerifySystemModuleDriverObjects(); break;
+                case 4: kmanager.ValidateProcessModules(); break;
+                case 5: kmanager.RunNmiCallbacks(); break;
+                case 6: kmanager.CheckForAttachedThreads(); break;
+                case 7: kmanager.InitiateApcStackwalkOperation(); break;
+                case 8: kmanager.CheckForEptHooks(); break;
+                case 9: kmanager.StackwalkThreadsViaDpc(); break;
+                case 10: kmanager.ValidateSystemModules(); break;
+                }
 
-                kmanager.ValidateSystemModules();
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                kmanager.PerformIntegrityCheck();
                 kmanager.MonitorCallbackReports();
                 std::this_thread::sleep_for(std::chrono::seconds(10));
         }

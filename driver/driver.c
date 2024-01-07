@@ -1414,7 +1414,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         /* store the driver object here as we need to access it in ResolveNtImports */
         driver_config.driver_object = DriverObject;
 
-        ResolveNtImports();
+        status = ResolveNtImports();
+
+        if (!NT_SUCCESS(status))
+                return status;
 
         DEBUG_VERBOSE("Beginning driver entry routine...");
 

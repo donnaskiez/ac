@@ -1555,7 +1555,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
                 goto end;
         }
 
-        if (CompareHashes(hash, entry->text_hash, sizeof(entry->text_hash)))
+        if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH))
                 DEBUG_VERBOSE("Module: %s text regions are valid.", Module->FullPathName);
         else
                 DEBUG_WARNING("**!!** Module: %s text regions are not valid **!!**", Module->FullPathName);
@@ -1658,7 +1658,7 @@ ValidateOurDriverImage()
          * Since we don't pass a return value, I think we would raise an invalid module error and
          * stop the users game session ? since module .text section error would be a large red flag
          */
-        if (CompareHashes(disk_hash, memory_hash, memory_hash_size))
+        if (CompareHashes(disk_hash, memory_hash, SHA_256_HASH_LENGTH))
                 DEBUG_VERBOSE("Driver image is valid. Integrity check complete");
         else
                 DEBUG_WARNING("Drive image is NOT valid. !!!");

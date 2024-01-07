@@ -62,14 +62,17 @@ typedef struct _PROCESS_LIST_ENTRY
 
 } PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
+#define DRIVER_PATH_LENGTH 0x100
+#define SHA_256_HASH_LENGTH 32
+
 typedef struct _DRIVER_LIST_ENTRY
 {
         SINGLE_LIST_ENTRY list;
         PVOID             ImageBase;
         ULONG             ImageSize;
         BOOLEAN           hashed;
-        CHAR              path[0x100];
-        CHAR              text_hash[32];
+        CHAR              path[DRIVER_PATH_LENGTH];
+        CHAR              text_hash[SHA_256_HASH_LENGTH];
 
 } DRIVER_LIST_ENTRY, *PDRIVER_LIST_ENTRY;
 

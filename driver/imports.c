@@ -3,24 +3,6 @@
 #include "common.h"
 #include "driver.h"
 
-#define EPROCESS_SECTION_BASE_OFFSET 0x520
-
-#define IMAGE_DIRECTORY_ENTRY_EXPORT         0
-#define IMAGE_DIRECTORY_ENTRY_IMPORT         1
-#define IMAGE_DIRECTORY_ENTRY_RESOURCE       2
-#define IMAGE_DIRECTORY_ENTRY_EXCEPTION      3
-#define IMAGE_DIRECTORY_ENTRY_SECURITY       4
-#define IMAGE_DIRECTORY_ENTRY_BASERELOC      5
-#define IMAGE_DIRECTORY_ENTRY_DEBUG          6
-#define IMAGE_DIRECTORY_ENTRY_COPYRIGHT      7
-#define IMAGE_DIRECTORY_ENTRY_GLOBALPTR      8 /* (MIPS GP) */
-#define IMAGE_DIRECTORY_ENTRY_TLS            9
-#define IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG    10
-#define IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT   11
-#define IMAGE_DIRECTORY_ENTRY_IAT            12 /* Import Address Table */
-#define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT   13
-#define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14
-
 PDRIVER_IMPORTS driver_imports = NULL;
 
 VOID
@@ -84,7 +66,7 @@ FindNtExport(const char* ExportName)
         }
 
         /*
-         * todo: add comment explaining this shit
+         * todo: add comment explaining this shit also this ugly af
          */
         dos_header      = (PIMAGE_DOS_HEADER)image_base;
         nt_header       = (struct _IMAGE_NT_HEADERS64*)((UINT64)image_base + dos_header->e_lfanew);
@@ -123,7 +105,7 @@ ResolveNtImports()
 {
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-        /* todo fix! */
+        /* todo fix! store in data or sumting */
         driver_imports =
             ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_IMPORTS), POOL_TAG_INTEGRITY);
 
@@ -209,6 +191,85 @@ ResolveNtImports()
         driver_imports->DrvImpPsLookupThreadByThreadId          = FindNtExport("PsLookupThreadByThreadId");
         driver_imports->DrvImpIoGetCurrentIrpStackLocation      = FindNtExport("IoGetCurrentIrpStackLocation");
         driver_imports->DrvImpMmIsAddressValid                  = FindNtExport("MmIsAddressValid");
+
+        if (!driver_imports->DrvImpObDereferenceObject) return STATUS_UNSUCCESSFUL;
+        if (!driver_imports->DrvImpPsGetProcessImageFileName) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsSetCreateProcessNotifyRoutine) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsRemoveCreateThreadNotifyRoutine) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsGetCurrentThreadId) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsGetProcessId) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsLookupProcessByProcessId) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpExEnumHandleTable) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpObGetObjectType) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpExfUnblockPushLock) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpstrstr) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlInitUnicodeString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpMmGetSystemRoutineAddress) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlUnicodeStringToAnsiString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlCopyUnicodeString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlFreeAnsiString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpKeInitializeGuardedMutex) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoCreateDevice) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoCreateSymbolicLink) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoDeleteDevice) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoDeleteSymbolicLink) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpObRegisterCallbacks) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpObUnRegisterCallbacks) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpPsSetCreateThreadNotifyRoutine) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpKeRevertToUserAffinityThreadEx) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpKeSetSystemAffinityThreadEx) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpstrnlen) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlInitAnsiString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlAnsiStringToUnicodeString) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoGetCurrentProcess) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlGetVersion) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpRtlCompareMemory) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpExGetSystemFirmwareTable) return STATUS_UNSUCCESSFUL; 
+        if (!driver_imports->DrvImpIoAllocateWorkItem) return STATUS_UNSUCCESSFUL;
+        if (!driver_imports->DrvImpIoFreeWorkItem) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpIoQueueWorkItem) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwOpenFile) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwClose) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwCreateSection) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwMapViewOfSection) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwUnmapViewOfSection) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpMmCopyMemory) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwDeviceIoControlFile) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeStackAttachProcess) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeUnstackDetachProcess) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeWaitForSingleObject) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpPsCreateSystemThread) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpIofCompleteRequest) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpObReferenceObjectByHandle) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeDelayExecutionThread) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeRegisterNmiCallback) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeDeregisterNmiCallback) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeQueryActiveProcessorCount) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpExAcquirePushLockExclusiveEx) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpExReleasePushLockExclusiveEx) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpPsGetThreadId) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpRtlCaptureStackBackTrace) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpZwOpenDirectoryObject) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeInitializeAffinityEx) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeAddProcessorAffinityEx) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpRtlQueryModuleInformation) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeInitializeApc) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeInsertQueueApc) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeGenericCallDpc) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeSignalCallDpcDone) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpMmGetPhysicalMemoryRangesEx2) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpMmGetVirtualForPhysical) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpObfReferenceObject) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpExFreePoolWithTag) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpExAllocatePool2) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeReleaseGuardedMutex) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpKeAcquireGuardedMutex) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpDbgPrintEx) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpRtlCompareUnicodeString) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpRtlFreeUnicodeString) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpPsLookupThreadByThreadId) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpIoGetCurrentIrpStackLocation) return STATUS_UNSUCCESSFUL;     
+        if (!driver_imports->DrvImpMmIsAddressValid) return STATUS_UNSUCCESSFUL;
         // clang-format on
 
         return STATUS_SUCCESS;

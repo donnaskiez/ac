@@ -67,6 +67,7 @@
 #define MODULES_REPORT_POOL_TAG        'modu'
 #define POOL_TAG_LIST_ITEM             'tsil'
 #define POOL_TAG_THREAD_LIST           'list'
+#define POOL_TAG_DRIVER_LIST           'drvl'
 
 #define IA32_APERF_MSR 0x000000E8
 
@@ -92,6 +93,7 @@
 #define EPROCESS_OBJECT_TABLE_OFFSET      0x570
 #define EPROCESS_IMAGE_NAME_OFFSET        0x5a8
 #define EPROCESS_PEB_OFFSET               0x550
+#define EPROCESS_SECTION_BASE_OFFSET      0x520
 
 #define KPROCESS_THREADLIST_OFFSET           0x030
 #define KPROCESS_DIRECTORY_TABLE_BASE_OFFSET 0x028
@@ -122,6 +124,22 @@
 #define REPORT_APC_STACKWALK                       110
 #define REPORT_DPC_STACKWALK                       120
 #define REPORT_DATA_TABLE_ROUTINE                  130
+
+#define IMAGE_DIRECTORY_ENTRY_EXPORT         0
+#define IMAGE_DIRECTORY_ENTRY_IMPORT         1
+#define IMAGE_DIRECTORY_ENTRY_RESOURCE       2
+#define IMAGE_DIRECTORY_ENTRY_EXCEPTION      3
+#define IMAGE_DIRECTORY_ENTRY_SECURITY       4
+#define IMAGE_DIRECTORY_ENTRY_BASERELOC      5
+#define IMAGE_DIRECTORY_ENTRY_DEBUG          6
+#define IMAGE_DIRECTORY_ENTRY_COPYRIGHT      7
+#define IMAGE_DIRECTORY_ENTRY_GLOBALPTR      8 /* (MIPS GP) */
+#define IMAGE_DIRECTORY_ENTRY_TLS            9
+#define IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG    10
+#define IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT   11
+#define IMAGE_DIRECTORY_ENTRY_IAT            12 /* Import Address Table */
+#define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT   13
+#define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14
 
 /*
  * Generic macros that allow you to quickly determine whether

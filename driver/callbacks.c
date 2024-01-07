@@ -124,7 +124,7 @@ CleanupDriverListOnDriverUnload()
         {
                 if (!ListFreeFirstEntry(&driver_list->start, &driver_list->lock, NULL))
                 {
-                        ImpExFreePoolWithTag(driver_list, POOL_TAG_THREAD_LIST);
+                        ImpExFreePoolWithTag(driver_list, POOL_TAG_DRIVER_LIST);
                         return;
                 }
         }
@@ -189,7 +189,7 @@ InitialiseDriverList()
         PRTL_MODULE_EXTENDED_INFO module_entry = NULL;
 
         driver_list =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST), POOL_TAG_THREAD_LIST);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST), POOL_TAG_DRIVER_LIST);
 
         if (!driver_list)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -209,7 +209,7 @@ InitialiseDriverList()
         for (INT index = 2; index < modules.module_count; index++)
         {
                 entry = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
 
                 if (!entry)
                 {
@@ -248,6 +248,10 @@ end:
         return STATUS_SUCCESS;
 }
 
+/*
+ * I actually think a spinlock here for the driver list is what we want rather then a mutex, but
+ * implementing a spinlock has its challenges... todo: have a think!
+ */
 _IRQL_requires_max_(APC_LEVEL)
 _Acquires_lock_(_Lock_kind_mutex_)
 _Releases_lock_(_Lock_kind_mutex_)
@@ -285,43 +289,44 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         if (InterlockedExchange(&driver_list->active, driver_list->active) == FALSE)
                 return;
 
-        if (ImageInfo->SystemModeImage == TRUE)
+        if (ImageInfo->SystemModeImage == FALSE)
+                return;
+
+        FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
+
+        if (entry)
+                return;
+
+        DEBUG_VERBOSE("New system image: %wZ", FullImageName);
+
+        entry =
+            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
+
+        if (!entry)
+                return;
+
+        entry->hashed    = TRUE;
+        entry->ImageBase = ImageInfo->ImageBase;
+        entry->ImageSize = ImageInfo->ImageSize;
+
+        /*todo: unicode 2 ansi string -> store in buf */
+        module.ImageBase = ImageInfo->ImageBase;
+        module.ImageSize = ImageInfo->ImageSize;
+
+        status = HashModule(&module, &entry->text_hash);
+
+        if (status == STATUS_INVALID_IMAGE_WIN_32)
         {
-                FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
-
-                if (entry)
-                        return;
-
-                DEBUG_VERBOSE("New system image: %wZ", FullImageName);
-
-                entry = ExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_THREAD_LIST);
-
-                if (!entry)
-                        return;
-
-                entry->hashed    = TRUE;
-                entry->ImageBase = ImageInfo->ImageBase;
-                entry->ImageSize = ImageInfo->ImageSize;
-
-                module.ImageBase = ImageInfo->ImageBase;
-                module.ImageSize = ImageInfo->ImageSize;
-
-                status = HashModule(&module, &entry->text_hash);
-
-                if (status == STATUS_INVALID_IMAGE_WIN_32)
-                {
-                        DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
-                        entry->hashed = FALSE;
-                }
-                else if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("HashModule failed with status %x", status);
-                        entry->hashed = FALSE;
-                }
-
-                ListInsert(&driver_list->start, entry, &driver_list->lock);
+                DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+                entry->hashed = FALSE;
         }
+        else if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("HashModule failed with status %x", status);
+                entry->hashed = FALSE;
+        }
+
+        ListInsert(&driver_list->start, entry, &driver_list->lock);
 }
 
 NTSTATUS
