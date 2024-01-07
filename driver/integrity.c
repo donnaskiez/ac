@@ -1534,7 +1534,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         PDRIVER_LIST_ENTRY entry  = NULL;
         PVOID              hash   = NULL;
 
-        hash = ExAllocatePool2(POOL_FLAG_NON_PAGED, 32, POOL_TAG_INTEGRITY);
+        hash = ExAllocatePool2(POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
 
         if (!hash)
                 return;

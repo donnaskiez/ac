@@ -205,7 +205,7 @@ InitialiseDriverList()
                 return status;
         }
 
-        /* skip hal.dll and ntosknrl.exe */
+        /* skip hal.dll and ntoskrnl.exe */
         for (INT index = 2; index < modules.module_count; index++)
         {
                 entry = ImpExAllocatePool2(

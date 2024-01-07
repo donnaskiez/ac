@@ -1528,6 +1528,8 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
                         }
                 }
         }
+
+        return status;
 }
 
 /*
