@@ -121,7 +121,7 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
                                     _In_ PSYSTEM_MODULES SystemModules,
                                     _Out_ PBOOLEAN       Result);
 
-BOOLEAN
+VOID
 FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread, _In_ ULONG FlagIndex, _In_ BOOLEAN NewValue);
 
 NTSTATUS

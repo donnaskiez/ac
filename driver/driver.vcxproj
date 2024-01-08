@@ -214,7 +214,7 @@
     <ClInclude Include="thread.h" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="asm.asm" />
+    <MASM Include="arch.asm" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

@@ -128,9 +128,6 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
                                      _In_ PDRIVER_OBJECT  DriverObject,
                                      _Out_ PBOOLEAN       Result);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_critical_section_)
-_Releases_lock_(_Lock_kind_critical_section_)
 STATIC
 NTSTATUS
 ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
@@ -144,12 +141,10 @@ STATIC
 NTSTATUS
 LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext);
 
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcRundownRoutine(_In_ PRKAPC Apc);
 
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcKernelRoutine(_In_ PRKAPC                                     Apc,
@@ -158,14 +153,12 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                  _Inout_ _Deref_pre_maybenull_ PVOID*            SystemArgument1,
                  _Inout_ _Deref_pre_maybenull_ PVOID*            SystemArgument2);
 
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcNormalRoutine(_In_opt_ PVOID NormalContext,
                  _In_opt_ PVOID SystemArgument1,
                  _In_opt_ PVOID SystemArgument2);
 
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
@@ -473,9 +466,6 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return status;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_critical_section_)
-_Releases_lock_(_Lock_kind_critical_section_)
 STATIC
 NTSTATUS
 ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
@@ -975,7 +965,6 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
         return STATUS_SUCCESS;
 }
 
-_IRQL_requires_max_(HIGH_LEVEL)
 STATIC
 BOOLEAN
 NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
@@ -1134,7 +1123,6 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
  * The RundownRoutine is executed if the thread terminates before the APC was delivered to
  * user mode.
  */
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcRundownRoutine(_In_ PRKAPC Apc)
@@ -1148,7 +1136,6 @@ ApcRundownRoutine(_In_ PRKAPC Apc)
  * The KernelRoutine is executed in kernel mode at APC_LEVEL before the APC is delivered.
  * This is also where we want to free our APC object.
  */
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcKernelRoutine(_In_ PRKAPC                                     Apc,
@@ -1236,7 +1223,6 @@ free:
 /*
  * The NormalRoutine is executed in user mode when the APC is delivered.
  */
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ApcNormalRoutine(_In_opt_ PVOID NormalContext,
@@ -1264,7 +1250,6 @@ FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread, _In_ ULONG FlagIndex, _In_ BOOLEA
 #define THREAD_STATE_WAIT       5
 #define THREAD_STATE_INIT       0
 
-_IRQL_requires_max_(APC_LEVEL)
 STATIC
 VOID
 ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
@@ -1407,15 +1392,7 @@ ValidateThreadsViaKernelApc()
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
-        status =InsertApcContext(context);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InsertApcContext failed with status %x", status);
-                ImpExFreePoolWithTag(context->modules, POOL_TAG_APC);
-                ImpExFreePoolWithTag(context, POOL_TAG_APC);
-                return status;
-        }
+        InsertApcContext(context);
 
         context->header.allocation_in_progress = TRUE;
         EnumerateThreadListWithCallbackRoutine(ValidateThreadViaKernelApcCallback, context);
@@ -1447,10 +1424,6 @@ typedef struct _DPC_CONTEXT
 
 } DPC_CONTEXT, *PDPC_CONTEXT;
 
-_Function_class_(KDEFERRED_ROUTINE) _IRQL_requires_max_(DISPATCH_LEVEL)
-_IRQL_requires_min_(DISPATCH_LEVEL)
-_IRQL_requires_(DISPATCH_LEVEL)
-_IRQL_requires_same_
 VOID
 DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
                             _In_opt_ PVOID DeferredContext,

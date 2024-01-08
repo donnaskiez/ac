@@ -397,7 +397,7 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
          * the PE header and dealing with all relocations for us, meaning the mapped image
          * will be identical to the in memory image.
          */
-        status = ZwMapViewOfSection(*SectionHandle,
+        status = ImpZwMapViewOfSection(*SectionHandle,
                                     ZwCurrentProcess(),
                                     Section,
                                     NULL,
@@ -577,7 +577,7 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 
         status = GetModuleInformationByName(&module_info, driver_name);
 
-        if (!NT_SUCCESS(status) || !module_info.ImageBase || !module_info.ImageSize)
+        if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
                 return status;

@@ -130,9 +130,6 @@ CleanupDriverListOnDriverUnload()
         }
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
@@ -154,9 +151,6 @@ unlock:
         ImpKeReleaseGuardedMutex(&thread_list->lock);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
@@ -212,16 +206,14 @@ InitialiseDriverList()
                     POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
 
                 if (!entry)
-                {
-                        status = STATUS_MEMORY_NOT_ALLOCATED;
-                        goto end;
-                }
+                        continue;
 
                 module_entry = &((PRTL_MODULE_EXTENDED_INFO)modules.address)[index];
 
                 entry->hashed    = TRUE;
                 entry->ImageBase = module_entry->ImageBase;
                 entry->ImageSize = module_entry->ImageSize;
+
                 RtlCopyMemory(
                     entry->path, module_entry->FullPathName, sizeof(module_entry->FullPathName));
 
@@ -252,9 +244,6 @@ end:
  * I actually think a spinlock here for the driver list is what we want rather then a mutex, but
  * implementing a spinlock has its challenges... todo: have a think!
  */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry)
 {
@@ -363,9 +352,6 @@ InitialiseThreadList()
         return STATUS_SUCCESS;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTRY* Entry)
 {
@@ -388,9 +374,6 @@ unlock:
         ImpKeReleaseGuardedMutex(&process_list->lock);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_ENTRY* Entry)
 {
@@ -518,9 +501,6 @@ ObPostOpCallbackRoutine(_In_ PVOID                          RegistrationContext,
         UNREFERENCED_PARAMETER(OperationInformation);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                        _In_ POB_PRE_OPERATION_INFORMATION OperationInformation)

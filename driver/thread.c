@@ -71,9 +71,9 @@ ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
  * state and is quite important during context switch scenarios as it's how the thread determines if
  * it has any APC's queued.
  */
-_IRQL_always_function_min_(DISPATCH_LEVEL) STATIC VOID
-    DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
-                                         _Inout_opt_ PVOID       Context)
+STATIC VOID
+DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
+                                     _Inout_opt_ PVOID       Context)
 {
         UNREFERENCED_PARAMETER(Context);
 

@@ -36,58 +36,37 @@ typedef struct _REPORT_HEADER
 
 #define LIST_POOL_TAG 'list'
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head);
 
 VOID
 InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 InsertReportToQueue(_In_ PVOID Report);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeGlobalReportQueueObjects();
 
 VOID
 ListInit(_Inout_ PSINGLE_LIST_ENTRY Head, _Inout_ PKGUARDED_MUTEX Lock);
 
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListInsert(_Inout_ PSINGLE_LIST_ENTRY Head,
            _Inout_ PSINGLE_LIST_ENTRY NewEntry,
            _In_ PKGUARDED_MUTEX       Lock);
 
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                    _In_ PKGUARDED_MUTEX       Lock,
                    _In_opt_ PVOID             CallbackRoutine);
 
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 _Inout_ PSINGLE_LIST_ENTRY Entry,

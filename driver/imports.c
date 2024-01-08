@@ -37,8 +37,8 @@ FindDriverBaseNoApi(_In_ PWCH Name)
         return NULL;
 }
 
-void*
-FindNtExport(const char* ExportName)
+PVOID
+FindNtExport(PCZPSTR ExportName)
 {
         PVOID                    image_base           = NULL;
         PIMAGE_DOS_HEADER        dos_header           = NULL;

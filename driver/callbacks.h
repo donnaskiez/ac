@@ -62,7 +62,7 @@ typedef struct _PROCESS_LIST_ENTRY
 
 } PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
-#define DRIVER_PATH_LENGTH 0x100
+#define DRIVER_PATH_LENGTH  0x100
 #define SHA_256_HASH_LENGTH 32
 
 typedef struct _DRIVER_LIST_ENTRY
@@ -86,24 +86,9 @@ VOID
 ObPostOpCallbackRoutine(_In_ PVOID                          RegistrationContext,
                         _In_ POB_POST_OPERATION_INFORMATION OperationInformation);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                        _In_ POB_PRE_OPERATION_INFORMATION OperationInformation);
-
-// VOID ProcessCreateNotifyRoutine(
-//	_In_ HANDLE ParentId,
-//	_In_ HANDLE ProcessId,
-//	_In_ BOOLEAN Create
-//);
-
-// VOID
-// EnumerateProcessListWithCallbackFunction(
-//	_In_ PVOID Function,
-//	_In_opt_ PVOID Context
-//);
 
 NTSTATUS
 EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context);
@@ -123,33 +108,18 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
 VOID
 CleanupThreadListOnDriverUnload();
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_ENTRY* Entry);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTRY* Entry);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context);
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry);
 

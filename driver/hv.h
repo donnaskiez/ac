@@ -14,7 +14,8 @@ typedef struct _HYPERVISOR_DETECTION_REPORT
 NTSTATUS
 PerformVirtualizationDetection(_Inout_ PIRP Irp);
 
-_IRQL_always_function_max_(HIGH_LEVEL) INT APERFMsrTimingCheck();
+BOOLEAN
+APERFMsrTimingCheck();
 
 extern INT
 TestINVDEmulation();

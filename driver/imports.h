@@ -3,11 +3,14 @@
 
 #include "common.h"
 
-void*
-FindNtExport(const char* ExportName);
+PVOID
+FindNtExport(PCZPSTR ExportName);
 
 VOID
 FreeDriverImportsStructure();
+
+NTSTATUS
+ResolveNtImports();
 
 #define IMPORT_FUNCTION_MAX_LENGTH 128
 #define IMPORT_FUNCTION_COUNT      256
@@ -712,8 +715,5 @@ extern PDRIVER_IMPORTS driver_imports;
 #define ImpRtlCompareUnicodeString           DRVIMPORTS->DrvImpRtlCompareUnicodeString
 #define ImpRtlFreeUnicodeString              DRVIMPORTS->DrvImpRtlFreeUnicodeString
 #define ImpPsGetProcessImageFileName         DRVIMPORTS->DrvImpPsGetProcessImageFileName
-
-NTSTATUS
-ResolveNtImports();
 
 #endif

@@ -180,9 +180,7 @@ TerminateProtectedProcessOnViolation()
                 return;
         }
 
-        /*
-         * Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle.
-         */
+        /* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle. */
         status = ZwTerminateProcess(process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
 
         if (!NT_SUCCESS(status))
@@ -273,33 +271,26 @@ STATIC
 BOOLEAN
 FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
 {
-        BOOLEAN result = FALSE;
-
         DEBUG_VERBOSE("All APCs executed, freeing context structure");
 
         for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
         {
                 PUINT64 entry = driver_config.apc_contexts;
 
-                if (entry[index] == Context)
-                {
-                        if (Context->count != 0)
-                                goto unlock;
+                if (entry[index] != Context)
+                        continue;
 
-                        ImpExFreePoolWithTag(Context, POOL_TAG_APC);
-                        entry[index] = NULL;
-                        result       = TRUE;
-                        goto unlock;
-                }
+                if (Context->count > 0)
+                        return FALSE;
+
+                ImpExFreePoolWithTag(Context, POOL_TAG_APC);
+                entry[index] = NULL;
+                return TRUE;
         }
 
-unlock:
-        return result;
+        return FALSE;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 IncrementApcCount(_In_ LONG ContextId)
 {
@@ -309,14 +300,12 @@ IncrementApcCount(_In_ LONG ContextId)
         if (!header)
                 return;
 
+        /* i actually dont think we need this lock here */
         ImpKeAcquireGuardedMutex(&driver_config.lock);
         header->count += 1;
         ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
 {
@@ -326,11 +315,10 @@ FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
         GetApcContext(&context, ContextId);
 
         if (!context)
-                goto end;
+                return;
 
         ImpKeAcquireGuardedMutex(&driver_config.lock);
         context->count -= 1;
-end:
         ImpKeReleaseGuardedMutex(&driver_config.lock);
 }
 
@@ -357,9 +345,6 @@ end:
  * the count is 0 and allocation_in_progress is 0. We can then call this function alongside
  * other query callbacks via IOCTL to constantly monitor the status of open APC contexts.
  */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
@@ -368,23 +353,13 @@ QueryActiveApcContextsForCompletion()
                 PAPC_CONTEXT_HEADER entry = NULL;
                 GetApcContextByIndex(&entry, index);
 
-                /* acquire mutex after we get the context to prevent thread deadlock */
                 ImpKeAcquireGuardedMutex(&driver_config.lock);
 
-                if (entry == NULL)
-                {
-                        ImpKeReleaseGuardedMutex(&driver_config.lock);
-                        continue;
-                }
-
-                DEBUG_VERBOSE("APC Context Id: %lx", entry->context_id);
-                DEBUG_VERBOSE("Active APC Count: %i", entry->count);
+                if (!entry)
+                        goto increment;
 
                 if (entry->count > 0 || entry->allocation_in_progress == TRUE)
-                {
-                        ImpKeReleaseGuardedMutex(&driver_config.lock);
-                        continue;
-                }
+                        goto increment;
 
                 switch (entry->context_id)
                 {
@@ -394,23 +369,15 @@ QueryActiveApcContextsForCompletion()
                         break;
                 }
 
+        increment:
                 ImpKeReleaseGuardedMutex(&driver_config.lock);
         }
         return STATUS_SUCCESS;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-NTSTATUS
+VOID
 InsertApcContext(_In_ PVOID Context)
 {
-        NTSTATUS status = STATUS_SUCCESS;
-
-        /*
-         * prevents the race condition where the driver is unloaded whilst a new apc operation
-         * is attempted to start, ensuring that even if it holds
-         */
         if (InterlockedExchange(&driver_config.unload_in_progress,
                                 driver_config.unload_in_progress) == TRUE)
                 return STATUS_UNSUCCESSFUL;
@@ -431,421 +398,6 @@ InsertApcContext(_In_ PVOID Context)
         }
 end:
         ImpKeReleaseGuardedMutex(&driver_config.lock);
-        return status;
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier)
-{
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-
-        for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
-        {
-                PAPC_CONTEXT_HEADER header = driver_config.apc_contexts[index];
-
-                if (header == NULL)
-                        continue;
-
-                if (header->context_id == ContextIdentifier)
-                {
-                        *Context = header;
-                        goto unlock;
-                }
-        }
-
-unlock:
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
-{
-        if (!Context)
-                return;
-
-        *Context = NULL;
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        *Context = driver_config.apc_contexts[Index];
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-/*
- *
- * Config getters
- *
- */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetCallbackConfigStructure(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
-{
-        if (!CallbackConfiguration)
-                return;
-
-        *CallbackConfiguration = NULL;
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        *CallbackConfiguration = &process_config.ob_cb_config;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverName(_Out_ LPCSTR* DriverName)
-{
-        PAGED_CODE();
-
-        if (DriverName == NULL)
-                return;
-
-        *DriverName = NULL;
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        *DriverName = driver_config.ansi_driver_name.Buffer;
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-PDEVICE_OBJECT
-GetDriverDeviceObject()
-{
-        return driver_config.device_object;
-}
-
-PDRIVER_OBJECT
-GetDriverObject()
-{
-        return driver_config.driver_object;
-}
-
-GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
-{
-        *Context = &driver_config.sys_val_context;
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverPath(_Out_ PUNICODE_STRING DriverPath)
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        RtlZeroMemory(DriverPath, sizeof(UNICODE_STRING));
-        ImpRtlInitUnicodeString(DriverPath, driver_config.driver_path.Buffer);
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverRegistryPath(_Out_ PUNICODE_STRING RegistryPath)
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        RtlZeroMemory(RegistryPath, sizeof(UNICODE_STRING));
-        ImpRtlCopyUnicodeString(RegistryPath, &driver_config.registry_path);
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverDeviceName(_Out_ PUNICODE_STRING DeviceName)
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        RtlZeroMemory(DeviceName, sizeof(UNICODE_STRING));
-        ImpRtlCopyUnicodeString(DeviceName, &driver_config.device_name);
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverSymbolicLink(_Out_ PUNICODE_STRING DeviceSymbolicLink)
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        RtlZeroMemory(DeviceSymbolicLink, sizeof(UNICODE_STRING));
-        ImpRtlCopyUnicodeString(DeviceSymbolicLink, &driver_config.device_symbolic_link);
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetDriverConfigSystemInformation(_Out_ PSYSTEM_INFORMATION* SystemInformation)
-{
-        PAGED_CODE();
-
-        if (SystemInformation == NULL)
-                return;
-
-        *SystemInformation = NULL;
-        ImpKeAcquireGuardedMutex(&driver_config.lock);
-        *SystemInformation = &driver_config.system_information;
-        ImpKeReleaseGuardedMutex(&driver_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-ReadProcessInitialisedConfigFlag(_Out_ PBOOLEAN Flag)
-{
-        PAGED_CODE();
-
-        if (Flag == NULL)
-                return;
-
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        *Flag = process_config.initialised;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetProtectedProcessEProcess(_Out_ PEPROCESS* Process)
-{
-        PAGED_CODE();
-
-        if (Process == NULL)
-                return;
-
-        *Process = NULL;
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        *Process = process_config.process;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-GetProtectedProcessId(_Out_ PLONG ProcessId)
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        RtlZeroMemory(ProcessId, sizeof(LONG));
-        *ProcessId = process_config.km_handle;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-/*
- *
- * Routines run at process close
- *
- */
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-ProcCloseDisableObCallbacks()
-{
-        PAGED_CODE();
-
-        ImpKeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
-
-        if (process_config.ob_cb_config.registration_handle)
-        {
-                ImpObUnRegisterCallbacks(process_config.ob_cb_config.registration_handle);
-                process_config.ob_cb_config.registration_handle = NULL;
-        }
-
-        ImpKeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-ProcCloseClearProcessConfiguration()
-{
-        PAGED_CODE();
-
-        DEBUG_INFO("Protected process closed. Clearing process configuration.");
-
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        process_config.km_handle   = NULL;
-        process_config.um_handle   = NULL;
-        process_config.process     = NULL;
-        process_config.initialised = FALSE;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-/*
- *
- * Routines run at process load
- *
- */
-
-/*
- * The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
- * to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have
- * moved them here. This way, we can make use of both locks (which is very ugly and I am pretty sure
- * means I have made a mistake implementation wise but alas) ensuring we get rid of any race
- * conditions aswell as the sturcture being paged out as we allocate in a non-paged pool meaning
- * theres no chance our mutex will cause an IRQL bug check due to being paged out during
- * acquisition.
- */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-NTSTATUS
-ProcLoadEnableObCallbacks()
-{
-        PAGED_CODE();
-
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
-
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-
-        OB_CALLBACK_REGISTRATION          callback_registration  = {0};
-        OB_OPERATION_REGISTRATION         operation_registration = {0};
-        PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine         = {0};
-
-        operation_registration.ObjectType = PsProcessType;
-        operation_registration.Operations =
-            OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE;
-        operation_registration.PreOperation  = ObPreOpCallbackRoutine;
-        operation_registration.PostOperation = ObPostOpCallbackRoutine;
-
-        callback_registration.Version                    = OB_FLT_REGISTRATION_VERSION;
-        callback_registration.OperationRegistration      = &operation_registration;
-        callback_registration.OperationRegistrationCount = 1;
-        callback_registration.RegistrationContext        = NULL;
-
-        status = ImpObRegisterCallbacks(&callback_registration,
-                                     &process_config.ob_cb_config.registration_handle);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
-                goto end;
-        }
-
-        // status = PsSetCreateProcessNotifyRoutine(
-        //	ProcessCreateNotifyRoutine,
-        //	FALSE
-        //);
-
-        // if ( !NT_SUCCESS( status ) )
-        //	DEBUG_ERROR( "Failed to launch ps create notif routines with status %x", status );
-
-end:
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-        return status;
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-VOID
-ImageLoadSetProcessId(_In_ HANDLE ProcessId)
-{
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-        process_config.km_handle = (ULONG)ProcessId;
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-}
-
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
-NTSTATUS
-ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
-{
-        PAGED_CODE();
-
-        NTSTATUS                       status      = STATUS_UNSUCCESSFUL;
-        PEPROCESS                      process     = NULL;
-        PDRIVER_INITIATION_INFORMATION information = NULL;
-
-        status = ValidateIrpInputBuffer(Irp, sizeof(DRIVER_INITIATION_INFORMATION));
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
-                return status;
-        }
-
-        information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
-
-        ImpKeAcquireGuardedMutex(&process_config.lock);
-
-        process_config.um_handle = information->protected_process_id;
-
-        /*
-         * What if we pass an invalid handle here? not good.
-         */
-        status = ImpPsLookupProcessByProcessId(process_config.um_handle, &process);
-
-        if (!NT_SUCCESS(status))
-        {
-                status = STATUS_INVALID_PARAMETER;
-                goto end;
-        }
-
-        process_config.km_handle = ImpPsGetProcessId(process);
-
-        if (!process_config.km_handle)
-        {
-                status = STATUS_INVALID_PARAMETER;
-                goto end;
-        }
-
-        process_config.process     = process;
-        process_config.um_handle   = information->protected_process_id;
-        process_config.initialised = TRUE;
-
-end:
-        ImpKeReleaseGuardedMutex(&process_config.lock);
-
-        return status;
-}
-
-/*
- *
- * Routines run at driver unload
- *
- */
-
-/*
- * The question is, What happens if we attempt to register our callbacks after we
- * unregister them but before we free the pool? Hm.. No Good.
- *
- * Okay to solve this well acquire the driver lock aswell, we could also just
- * store the structure in the .data section but i ceebs atm.
- *
- * This definitely doesn't seem optimal, but it works ...
- */
-STATIC
-VOID
-DrvUnloadUnregisterObCallbacks()
-{
-        PAGED_CODE();
-
-        ProcCloseDisableObCallbacks();
 }
 
 /*
@@ -872,38 +424,299 @@ DrvUnloadUnregisterObCallbacks()
  * to the limitations windows places on APCs, however I am in the process of finding a solution for
  * this.
  */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 STATIC
 BOOLEAN
 DrvUnloadFreeAllApcContextStructures()
 {
-        BOOLEAN flag = TRUE;
-        
         ImpKeAcquireGuardedMutex(&driver_config.lock);
 
         for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
         {
                 PUINT64 entry = driver_config.apc_contexts;
 
-                if (entry[index] != NULL)
+                if (entry[index] == NULL)
+                        continue;
+
+                PAPC_CONTEXT_HEADER context = entry[index];
+
+                if (context->count > 0)
                 {
-                        PAPC_CONTEXT_HEADER context = entry[index];
-
-                        if (context->count > 0)
-                        {
-                                flag = FALSE;
-                                goto unlock;
-                        }
-
-                        ImpExFreePoolWithTag(entry, POOL_TAG_APC);
+                        ImpKeReleaseGuardedMutex(&driver_config.lock);
+                        return FALSE;
                 }
-        }
 
+                ImpExFreePoolWithTag(entry, POOL_TAG_APC);
+        }
 unlock:
         ImpKeReleaseGuardedMutex(&driver_config.lock);
-        return flag;
+        return TRUE;
+}
+
+VOID
+GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier)
+{
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
+
+        for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++)
+        {
+                PAPC_CONTEXT_HEADER header = driver_config.apc_contexts[index];
+
+                if (!header)
+                        continue;
+
+                if (header->context_id != ContextIdentifier)
+                        continue;
+
+                *Context = header;
+                goto unlock;
+        }
+unlock:
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
+}
+
+VOID
+GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
+{
+        ImpKeAcquireGuardedMutex(&driver_config.lock);
+        *Context = driver_config.apc_contexts[Index];
+        ImpKeReleaseGuardedMutex(&driver_config.lock);
+}
+
+VOID
+GetCallbackConfigStructure(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
+{
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        *CallbackConfiguration = &process_config.ob_cb_config;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+GetDriverName(_Out_ LPCSTR* DriverName)
+{
+        PAGED_CODE();
+        *DriverName = driver_config.ansi_driver_name.Buffer;
+}
+
+PDEVICE_OBJECT
+GetDriverDeviceObject()
+{
+        PAGED_CODE();
+        return driver_config.device_object;
+}
+
+PDRIVER_OBJECT
+GetDriverObject()
+{
+        PAGED_CODE();
+        return driver_config.driver_object;
+}
+
+GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
+{
+        PAGED_CODE();
+        *Context = &driver_config.sys_val_context;
+}
+
+VOID
+GetDriverPath(_Out_ PUNICODE_STRING DriverPath)
+{
+        PAGED_CODE();
+        ImpRtlInitUnicodeString(DriverPath, driver_config.driver_path.Buffer);
+}
+
+VOID
+GetDriverRegistryPath(_Out_ PUNICODE_STRING RegistryPath)
+{
+        PAGED_CODE();
+        ImpRtlCopyUnicodeString(RegistryPath, &driver_config.registry_path);
+}
+
+VOID
+GetDriverDeviceName(_Out_ PUNICODE_STRING DeviceName)
+{
+        PAGED_CODE();
+        ImpRtlCopyUnicodeString(DeviceName, &driver_config.device_name);
+}
+
+VOID
+GetDriverSymbolicLink(_Out_ PUNICODE_STRING DeviceSymbolicLink)
+{
+        PAGED_CODE();
+        ImpRtlCopyUnicodeString(DeviceSymbolicLink, &driver_config.device_symbolic_link);
+}
+
+VOID
+GetDriverConfigSystemInformation(_Out_ PSYSTEM_INFORMATION* SystemInformation)
+{
+        PAGED_CODE();
+        *SystemInformation = &driver_config.system_information;
+}
+
+VOID
+ReadProcessInitialisedConfigFlag(_Out_ PBOOLEAN Flag)
+{
+        PAGED_CODE();
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        *Flag = process_config.initialised;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+GetProtectedProcessEProcess(_Out_ PEPROCESS* Process)
+{
+        PAGED_CODE();
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        *Process = process_config.process;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+GetProtectedProcessId(_Out_ PLONG ProcessId)
+{
+        PAGED_CODE();
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        *ProcessId = process_config.km_handle;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+ProcCloseDisableObCallbacks()
+{
+        PAGED_CODE();
+        ImpKeAcquireGuardedMutex(&process_config.ob_cb_config.lock);
+
+        if (process_config.ob_cb_config.registration_handle)
+        {
+                ImpObUnRegisterCallbacks(process_config.ob_cb_config.registration_handle);
+                process_config.ob_cb_config.registration_handle = NULL;
+        }
+
+        ImpKeReleaseGuardedMutex(&process_config.ob_cb_config.lock);
+}
+
+VOID
+ProcCloseClearProcessConfiguration()
+{
+        PAGED_CODE();
+
+        DEBUG_INFO("Protected process closed. Clearing process configuration.");
+
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        process_config.km_handle   = NULL;
+        process_config.um_handle   = NULL;
+        process_config.process     = NULL;
+        process_config.initialised = FALSE;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+VOID
+ImageLoadSetProcessId(_In_ HANDLE ProcessId)
+{
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+        process_config.km_handle = (ULONG)ProcessId;
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+}
+
+/*
+ * The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
+ * to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have
+ * moved them here. This way, we can make use of both locks (which is very ugly and I am pretty sure
+ * means I have made a mistake implementation wise but alas) ensuring we get rid of any race
+ * conditions aswell as the sturcture being paged out as we allocate in a non-paged pool meaning
+ * theres no chance our mutex will cause an IRQL bug check due to being paged out during
+ * acquisition.
+ */
+NTSTATUS
+ProcLoadEnableObCallbacks()
+{
+        PAGED_CODE();
+
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+
+        OB_CALLBACK_REGISTRATION          callback_registration  = {0};
+        OB_OPERATION_REGISTRATION         operation_registration = {0};
+        PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine         = {0};
+
+        operation_registration.ObjectType = PsProcessType;
+        operation_registration.Operations |= OB_OPERATION_HANDLE_CREATE;
+        operation_registration.Operations |= OB_OPERATION_HANDLE_DUPLICATE;
+        operation_registration.PreOperation  = ObPreOpCallbackRoutine;
+        operation_registration.PostOperation = ObPostOpCallbackRoutine;
+
+        callback_registration.Version                    = OB_FLT_REGISTRATION_VERSION;
+        callback_registration.OperationRegistration      = &operation_registration;
+        callback_registration.OperationRegistrationCount = 1;
+        callback_registration.RegistrationContext        = NULL;
+
+        status = ImpObRegisterCallbacks(&callback_registration,
+                                        &process_config.ob_cb_config.registration_handle);
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
+
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+        return status;
+}
+
+NTSTATUS
+ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
+{
+        PAGED_CODE();
+
+        NTSTATUS                       status      = STATUS_UNSUCCESSFUL;
+        PEPROCESS                      process     = NULL;
+        PDRIVER_INITIATION_INFORMATION information = NULL;
+
+        status = ValidateIrpInputBuffer(Irp, sizeof(DRIVER_INITIATION_INFORMATION));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
+                return status;
+        }
+
+        information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+
+        ImpKeAcquireGuardedMutex(&process_config.lock);
+
+        process_config.um_handle = information->protected_process_id;
+
+        /* What if we pass an invalid handle here? not good. */
+        status = ImpPsLookupProcessByProcessId(process_config.um_handle, &process);
+
+        if (!NT_SUCCESS(status))
+        {
+                status = STATUS_INVALID_PARAMETER;
+                goto end;
+        }
+
+        process_config.km_handle   = ImpPsGetProcessId(process);
+        process_config.process     = process;
+        process_config.initialised = TRUE;
+
+end:
+        ImpKeReleaseGuardedMutex(&process_config.lock);
+        return status;
+}
+
+/*
+ * The question is, What happens if we attempt to register our callbacks after we
+ * unregister them but before we free the pool? Hm.. No Good.
+ *
+ * Okay to solve this well acquire the driver lock aswell, we could also just
+ * store the structure in the .data section but i ceebs atm.
+ *
+ * This definitely doesn't seem optimal, but it works ...
+ */
+STATIC
+VOID
+DrvUnloadUnregisterObCallbacks()
+{
+        PAGED_CODE();
+        ProcCloseDisableObCallbacks();
 }
 
 STATIC
@@ -927,7 +740,6 @@ VOID
 DrvUnloadFreeSymbolicLink()
 {
         PAGED_CODE();
-
         ImpIoDeleteSymbolicLink(&driver_config.device_symbolic_link);
 }
 
@@ -936,7 +748,6 @@ VOID
 DrvUnloadFreeGlobalReportQueue()
 {
         PAGED_CODE();
-
         FreeGlobalReportQueueObjects();
 }
 
@@ -945,7 +756,6 @@ VOID
 DrvUnloadFreeThreadList()
 {
         PAGED_CODE();
-
         CleanupThreadListOnDriverUnload();
 }
 
@@ -954,7 +764,6 @@ VOID
 DrvUnloadFreeDriverList()
 {
         PAGED_CODE();
-
         CleanupDriverListOnDriverUnload();
 }
 
@@ -963,7 +772,6 @@ VOID
 DrvUnloadFreeProcessList()
 {
         PAGED_CODE();
-
         CleanupProcessListOnDriverUnload();
 }
 
@@ -972,7 +780,6 @@ VOID
 DrvUnloadFreeModuleValidationContext()
 {
         PAGED_CODE();
-
         CleanupValidationContextOnUnload(&driver_config.sys_val_context);
 }
 
@@ -981,7 +788,6 @@ VOID
 DrvUnloadFreeImportsStructure()
 {
         PAGED_CODE();
-
         FreeDriverImportsStructure();
 }
 
@@ -1010,16 +816,9 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         DrvUnloadFreeGlobalReportQueue();
         DrvUnloadFreeSymbolicLink();
         ImpIoDeleteDevice(DriverObject->DeviceObject);
-        DrvUnloadFreeImportsStructure();
-
         DEBUG_INFO("Driver successfully unloaded.");
+        DrvUnloadFreeImportsStructure();
 }
-
-/*
- *
- * Routines that are run at driver load
- *
- */
 
 STATIC
 NTSTATUS
@@ -1037,7 +836,6 @@ DrvLoadEnableNotifyRoutines()
         {
                 DEBUG_ERROR("InitialiseDriverList failed with status %x", status);
                 return status;
-                
         }
 
         status = InitialiseThreadList();
@@ -1096,7 +894,6 @@ DrvLoadEnableNotifyRoutines()
         }
 
         DEBUG_VERBOSE("Successfully enabled driver wide notify routines.");
-
         return status;
 }
 
@@ -1105,11 +902,6 @@ NTSTATUS
 DrvLoadInitialiseObCbConfig()
 {
         PAGED_CODE();
-        /*
-         * This mutex ensures we don't unregister our ObRegisterCallbacks while
-         * the callback function is running since this might cause some funny stuff
-         * to happen. Better to be safe then sorry :)
-         */
         ImpKeInitializeGuardedMutex(&process_config.ob_cb_config.lock);
 }
 
@@ -1118,7 +910,6 @@ VOID
 DrvLoadInitialiseReportQueue(_Out_ PBOOLEAN Flag)
 {
         PAGED_CODE();
-
         InitialiseGlobalReportQueue(Flag);
 }
 
@@ -1127,7 +918,6 @@ VOID
 DrvLoadInitialiseProcessConfig()
 {
         PAGED_CODE();
-
         ImpKeInitializeGuardedMutex(&process_config.lock);
 }
 
@@ -1254,7 +1044,7 @@ DrvLoadGatherSystemEnvironmentSettings()
          */
         if (APERFMsrTimingCheck())
                 driver_config.system_information.virtualised_environment = TRUE;
-        
+
         status = GetOsVersionInformation(&driver_config.system_information.os_information);
 
         if (!NT_SUCCESS(status))
@@ -1262,7 +1052,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DEBUG_ERROR("GetOsVersionInformation failed with status %x", status);
                 return status;
         }
-        
+
         status = GetSystemProcessorType();
 
         if (!NT_SUCCESS(status))
@@ -1270,7 +1060,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DEBUG_ERROR("GetSystemProcessorType failed with status %x", status);
                 return status;
         }
-        
+
         status = ParseSmbiosForGivenSystemEnvironment();
 
         if (!NT_SUCCESS(status))
@@ -1279,7 +1069,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
-        
+
         status =
             GetHardDiskDriveSerialNumber(&driver_config.system_information.drive_0_serial,
                                          sizeof(driver_config.system_information.drive_0_serial));
@@ -1290,7 +1080,7 @@ DrvLoadGatherSystemEnvironmentSettings()
                 DrvUnloadFreeConfigStrings();
                 return status;
         }
-        
+
         DEBUG_VERBOSE("OS Major Version: %lx, Minor Version: %lx, Build Number: %lx",
                       driver_config.system_information.os_information.dwMajorVersion,
                       driver_config.system_information.os_information.dwMinorVersion,
@@ -1300,7 +1090,7 @@ DrvLoadGatherSystemEnvironmentSettings()
         DEBUG_VERBOSE("Motherboard serial: %s",
                       driver_config.system_information.motherboard_serial);
         DEBUG_VERBOSE("Drive 0 serial: %s", driver_config.system_information.drive_0_serial);
-        
+
         return status;
 }
 
@@ -1410,7 +1200,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
         BOOLEAN  flag   = FALSE;
         NTSTATUS status = STATUS_UNSUCCESSFUL;
-        
+
         /* store the driver object here as we need to access it in ResolveNtImports */
         driver_config.driver_object = DriverObject;
 
@@ -1432,12 +1222,12 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DrvLoadInitialiseProcessConfig();
 
         status = ImpIoCreateDevice(DriverObject,
-                                NULL,
-                                &driver_config.device_name,
-                                FILE_DEVICE_UNKNOWN,
-                                FILE_DEVICE_SECURE_OPEN,
-                                FALSE,
-                                &DriverObject->DeviceObject);
+                                   NULL,
+                                   &driver_config.device_name,
+                                   FILE_DEVICE_UNKNOWN,
+                                   FILE_DEVICE_SECURE_OPEN,
+                                   FALSE,
+                                   &DriverObject->DeviceObject);
 
         if (!NT_SUCCESS(status))
         {
@@ -1449,8 +1239,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         driver_config.driver_object = DriverObject;
         driver_config.device_object = DriverObject->DeviceObject;
 
-        status =
-            ImpIoCreateSymbolicLink(&driver_config.device_symbolic_link, &driver_config.device_name);
+        status = ImpIoCreateSymbolicLink(&driver_config.device_symbolic_link,
+                                         &driver_config.device_name);
 
         if (!NT_SUCCESS(status))
         {

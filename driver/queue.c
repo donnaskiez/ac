@@ -60,9 +60,6 @@ InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status)
 //	return head;
 // }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
 {
@@ -89,9 +86,6 @@ end:
         ImpKeReleaseGuardedMutex(&Head->lock);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head)
 {
@@ -118,9 +112,6 @@ end:
         return data;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 InsertReportToQueue(_In_ PVOID Report)
 {
@@ -133,9 +124,6 @@ InsertReportToQueue(_In_ PVOID Report)
         ImpKeReleaseGuardedMutex(&report_queue_config.lock);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 FreeGlobalReportQueueObjects()
 {
@@ -164,9 +152,6 @@ end:
  * reports as a result of a single usermode request and hence it makes dealing with
  * reports generated from ObRegisterCallbacks for example much easier.
  */
-_IRQL_requires_max_(APC_LEVEL)
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 NTSTATUS
 HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 {
@@ -345,8 +330,6 @@ ListInit(_Inout_ PSINGLE_LIST_ENTRY Head, _Inout_ PKGUARDED_MUTEX Lock)
         Head->Next = NULL;
 }
 
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListInsert(_Inout_ PSINGLE_LIST_ENTRY Head,
            _Inout_ PSINGLE_LIST_ENTRY NewEntry,
@@ -368,8 +351,6 @@ ListInsert(_Inout_ PSINGLE_LIST_ENTRY Head,
  * allows us to dereference/free structure specific items whilst still allowing
  * the list to remain flexible.
  */
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 BOOLEAN
 ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                    _In_ PKGUARDED_MUTEX       Lock,
@@ -401,8 +382,6 @@ ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
  * If we are removing a specific entry, its assumed we have freed and/or dereferenced
  * any fields in the structure.
  */
-_Acquires_lock_(_Lock_kind_mutex_)
-_Releases_lock_(_Lock_kind_mutex_)
 VOID
 ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 _Inout_ PSINGLE_LIST_ENTRY Entry,
