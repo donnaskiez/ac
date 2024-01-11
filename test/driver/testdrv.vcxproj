@@ -127,6 +127,7 @@
     </DriverSign>
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release - No Server|x64'">
@@ -159,10 +160,14 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="driver.c" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="patch.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="driver.h" />
+    <ClInclude Include="common.hpp" />
+    <ClInclude Include="driver.hpp" />
+    <ClInclude Include="framework.hpp" />
+    <ClInclude Include="patch.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

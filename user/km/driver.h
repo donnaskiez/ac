@@ -42,6 +42,8 @@
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_SYSTEM_MODULES \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_INSERT_IRP_INTO_QUEUE \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define MAX_REPORTS_PER_IRP 20
 
@@ -96,6 +98,7 @@ class Driver
         VOID    StackwalkThreadsViaDpc();
         VOID    ValidateSystemModules();
         BOOLEAN InitiateApcOperation(INT OperationId);
+        VOID    SendIrpForDriverToStore();
 };
 
 struct DRIVER_INITIATION_INFORMATION

@@ -450,8 +450,8 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         }
 
         /* Query the modules again this time passing a pointer to the allocated buffer */
-        status = RtlQueryModuleInformation(
-            &size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
+        status =
+            RtlQueryModuleInformation(&size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
 
         if (!NT_SUCCESS(status))
         {
@@ -525,8 +525,8 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
 
         whitelisted_regions_buffer =
             ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                            WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
-                            WHITELISTED_MODULE_TAG);
+                               WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
+                               WHITELISTED_MODULE_TAG);
 
         if (!whitelisted_regions_buffer)
                 goto end;
@@ -688,7 +688,8 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                         goto end;
                 }
 
-                buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
+                buffer =
+                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
 
                 if (!buffer)
                 {
@@ -832,7 +833,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
 
         if (!NmiContext || !SystemModules)
                 return STATUS_INVALID_PARAMETER;
-        
+
         for (INT core = 0; core < ImpKeQueryActiveProcessorCount(0); core++)
         {
                 /* Make sure our NMIs were run  */
@@ -890,8 +891,8 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
 
                         PHIDDEN_SYSTEM_THREAD_REPORT report =
                             ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                            sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                                            REPORT_POOL_TAG);
+                                               sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
+                                               REPORT_POOL_TAG);
 
                         if (!report)
                                 continue;
@@ -1063,8 +1064,8 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
                 DEBUG_ERROR("ValidateHalDispatchTables failed with status %x", status);
 
         nmi_context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                      ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
-                                      NMI_CONTEXT_POOL);
+                                         ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT),
+                                         NMI_CONTEXT_POOL);
 
         if (!nmi_context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -1321,13 +1322,13 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                 return;
 
         ImpKeInitializeApc(apc,
-                        ThreadListEntry->thread,
-                        OriginalApcEnvironment,
-                        ApcKernelRoutine,
-                        ApcRundownRoutine,
-                        ApcNormalRoutine,
-                        KernelMode,
-                        Context);
+                           ThreadListEntry->thread,
+                           OriginalApcEnvironment,
+                           ApcKernelRoutine,
+                           ApcRundownRoutine,
+                           ApcNormalRoutine,
+                           KernelMode,
+                           Context);
 
         apc_status = ImpKeInsertQueueApc(apc, NULL, NULL, IO_NO_INCREMENT);
 
@@ -1367,7 +1368,8 @@ ValidateThreadsViaKernelApc()
                 return STATUS_SUCCESS;
         }
 
-        context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
+        context =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
 
         if (!context)
                 return STATUS_MEMORY_NOT_ALLOCATED;
@@ -1433,9 +1435,9 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
         PDPC_CONTEXT context = &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
 
         context->frames_captured = ImpRtlCaptureStackBackTrace(DPC_STACKWALK_FRAMES_TO_SKIP,
-                                                            DPC_STACKWALK_STACKFRAME_COUNT,
-                                                            &context->stack_frame,
-                                                            NULL);
+                                                               DPC_STACKWALK_STACKFRAME_COUNT,
+                                                               &context->stack_frame,
+                                                               NULL);
         InterlockedExchange(&context->executed, TRUE);
         ImpKeSignalCallDpcDone(SystemArgument1);
 
@@ -1483,8 +1485,8 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
                         if (!flag)
                         {
                                 report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                                         sizeof(DPC_STACKWALK_REPORT),
-                                                         POOL_TAG_DPC);
+                                                            sizeof(DPC_STACKWALK_REPORT),
+                                                            POOL_TAG_DPC);
 
                                 if (!report)
                                         continue;
@@ -1521,7 +1523,7 @@ DispatchStackwalkToEachCpuViaDpc()
 
         context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                                      ImpKeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT),
-                                  POOL_TAG_DPC);
+                                     POOL_TAG_DPC);
 
         if (!context)
                 return STATUS_MEMORY_NOT_ALLOCATED;

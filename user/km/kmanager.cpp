@@ -104,3 +104,15 @@ kernelmode::KManager::ValidateSystemModules()
 {
         this->thread_pool->QueueJob([this]() { this->driver_interface->ValidateSystemModules(); });
 }
+
+VOID
+kernelmode::KManager::InsertIrpIntoIrpQueue()
+{
+        this->thread_pool->QueueJob([this]() { this->driver_interface->SendIrpForDriverToStore(); });
+}
+
+VOID 
+kernelmode::KManager::StartIoCompletionPortThread()
+{
+
+}

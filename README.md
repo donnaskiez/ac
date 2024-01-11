@@ -12,21 +12,22 @@ open source anti cheat (lol) which I made for fun.
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module device object verification
-- System module .text integrity checks (see known issues)
+- System module .text integrity checks
 - Unlinked process detection
 - Removed thread PspCidTable entry detection
 - Dispatch routine validation
 - Extraction of hardware identifiers
-- EPT hook detection (currently detects hyperdbg and DdiMon)
+- EPT hook detection
 - Driver integrity checks both locally and over server
 - Hypervisor detection
 - HalDispatch and HalPrivateDispatch routine validation
+- Dynamic import resolving 
 
 # planned features
 
 - Heartbeat
 - optimise stuff 
-- ntoskrnl integrity checks, or atleast a small subset of the kernel encompasing critical functions
+- ntoskrnl integrity checks
 - spoofed stack identifier
 - process module inline hook detection (this would include checking whether the hook is valid, as many legimate programs hook user mode modules such as discord, nvidia overlay etc.)
 - cr3 protection 
@@ -37,6 +38,7 @@ open source anti cheat (lol) which I made for fun.
 - testing program to test the features
 - simple user mode logger + usermode logging overhaul
 - data ptr detction (+ chained data ptr walking)
+- lots more which I cant think of
 
 # example
 

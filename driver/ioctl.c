@@ -57,8 +57,52 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_SYSTEM_MODULES \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_INSERT_IRP_INTO_QUEUE \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
+
+VOID
+IrpQueueMarkIrpCompleteCallback(_In_ PIRP_QUEUE_ENTRY Entry)
+{
+        ImpIofCompleteRequest(Entry->irp, IO_NO_INCREMENT);
+}
+
+VOID
+IrpQueueDequeue(PVOID Callback)
+{
+        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+        ListFreeFirstEntry(&queue->start, &queue->lock, Callback);
+}
+
+VOID
+IrpQueueInitialise()
+{
+        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+        queue->count          = 0;
+        ImpKeInitializeGuardedMutex(&queue->lock);
+        ListInit(&queue->start, &queue->lock);
+}
+
+VOID
+IrpQueueInsert(PIRP Irp)
+{
+        PIRP_QUEUE_HEAD  queue = GetIrpQueueHead();
+        PIRP_QUEUE_ENTRY entry = NULL;
+
+        entry = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(IRP_QUEUE_ENTRY), POOL_TAG_IRP_QUEUE);
+
+        if (!entry)
+                return;
+
+        Irp->IoStatus.Status = STATUS_PENDING;
+        IoMarkIrpPending(Irp);
+        entry->irp = Irp;
+        queue->count++;
+
+        ListInsert(&queue->start, &entry->entry, &queue->lock);
+        IrpQueueDequeue(IrpQueueMarkIrpCompleteCallback);
+}
 
 STATIC
 NTSTATUS
@@ -233,15 +277,15 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
         case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
 
                 DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH Received");
-                
+
                 status = ProcLoadInitialiseProcessConfig(Irp);
-                
+
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("InitialiseProcessConfig failed with status %x", status);
                         goto end;
                 }
-                
+
                 status = ProcLoadEnableObCallbacks();
 
                 if (!NT_SUCCESS(status))
@@ -292,12 +336,12 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
                 DEBUG_VERBOSE("IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS Received");
 
                 status = ImpPsCreateSystemThread(&handle,
-                                              PROCESS_ALL_ACCESS,
-                                              NULL,
-                                              NULL,
-                                              NULL,
-                                              RetrieveInMemoryModuleExecutableSections,
-                                              Irp);
+                                                 PROCESS_ALL_ACCESS,
+                                                 NULL,
+                                                 NULL,
+                                                 NULL,
+                                                 RetrieveInMemoryModuleExecutableSections,
+                                                 Irp);
 
                 if (!NT_SUCCESS(status))
                 {
@@ -441,11 +485,6 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
 
-                /*
-                 * Currently the validation is buggy, once the validation is better will
-                 * probably bugcheck the system.
-                 */
-                //status = ValidateSystemModules();
                 status = SystemModuleVerificationDispatcher();
 
                 if (!NT_SUCCESS(status))
@@ -465,10 +504,18 @@ DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
 
                 break;
 
+        case IOCTL_INSERT_IRP_INTO_QUEUE:
+
+                DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
+
+                IrpQueueInsert(Irp);
+
+                /* we dont want to complete the request */
+                return STATUS_SUCCESS;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
-                            stack_location->Parameters.DeviceIoControl.IoControlCode);
+                              stack_location->Parameters.DeviceIoControl.IoControlCode);
 
                 status = STATUS_INVALID_PARAMETER;
                 break;
@@ -481,11 +528,10 @@ end:
         return status;
 }
 
-_Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
-    DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
+NTSTATUS
+DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
-
         UNREFERENCED_PARAMETER(DeviceObject);
 
         DEBUG_INFO("Handle to driver closed.");
@@ -499,11 +545,10 @@ _Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
         return Irp->IoStatus.Status;
 }
 
-_Dispatch_type_(IRP_MJ_CREATE) NTSTATUS
-    DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
+NTSTATUS
+DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
-
         DEBUG_INFO("Handle to driver opened.");
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;

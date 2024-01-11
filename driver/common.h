@@ -68,6 +68,7 @@
 #define POOL_TAG_LIST_ITEM             'tsil'
 #define POOL_TAG_THREAD_LIST           'list'
 #define POOL_TAG_DRIVER_LIST           'drvl'
+#define POOL_TAG_IRP_QUEUE             'irpp'
 
 #define IA32_APERF_MSR 0x000000E8
 

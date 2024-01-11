@@ -205,10 +205,7 @@ kernelmode::Driver::QueryReportQueue()
 
         REPORT_QUEUE_HEADER* header = (REPORT_QUEUE_HEADER*)buffer;
 
-        if (!header)
-                goto end;
-
-        if (header->count == 0)
+        if (!header || !header->count)
                 goto end;
 
         for (INT index = 0; index < header->count; index++)
@@ -554,7 +551,8 @@ kernelmode::Driver::VerifyProcessLoadedModuleExecutableRegions()
                 module_information.module_base = module_entry.modBaseAddr;
                 module_information.module_size = module_entry.modBaseSize;
 
-                status = (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath, &nt_path_name, NULL, NULL);
+                status = (*pRtlDosPathNameToNtPathName_U)(
+                    module_entry.szExePath, &nt_path_name, NULL, NULL);
 
                 if (!status)
                 {
@@ -653,6 +651,18 @@ kernelmode::Driver::InitiateApcOperation(INT OperationId)
                 LOG_ERROR("DeviceIoControl failed with status %x", GetLastError());
                 return status;
         }
+}
+
+VOID
+kernelmode::Driver::SendIrpForDriverToStore()
+{
+        BOOLEAN status = FALSE;
+
+        status = DeviceIoControl(
+            this->driver_handle, IOCTL_INSERT_IRP_INTO_QUEUE, NULL, NULL, NULL, NULL, NULL, NULL);
+
+        if (status == NULL)
+                LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
 }
 
 VOID

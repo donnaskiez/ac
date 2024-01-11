@@ -1558,7 +1558,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH))
                 DEBUG_VERBOSE("Module: %s text regions are valid.", Module->FullPathName);
         else
-                DEBUG_WARNING("**!!** Module: %s text regions are not valid **!!**", Module->FullPathName);
+                DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**", Module->FullPathName);
 
 end:
         if (hash)
@@ -1928,3 +1928,4 @@ CalculateCpuCoreUsage(_In_ UINT32 Core)
 
         return (100 - (UINT32)(UInt32x32To64(idle_time, 100) / (UINT64)(kernel_time + user_time)));
 }
+

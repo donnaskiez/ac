@@ -287,11 +287,9 @@ end:
         ImpKeReleaseGuardedMutex(&report_queue_config.lock);
 
         Irp->IoStatus.Information = sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size;
-
-        header.count = count;
+        header.count              = count;
 
         RtlCopyMemory(report_buffer, &header, sizeof(GLOBAL_REPORT_QUEUE_HEADER));
-
         RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
                       report_buffer,
                       sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size);

@@ -280,7 +280,7 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
 
         if (ImageInfo->SystemModeImage == FALSE)
                 return;
-
+        
         FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
 
         if (entry)

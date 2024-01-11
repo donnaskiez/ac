@@ -59,6 +59,21 @@ typedef struct _OB_CALLBACKS_CONFIG
 
 } OB_CALLBACKS_CONFIG, *POB_CALLBACKS_CONFIG;
 
+typedef struct _IRP_QUEUE_HEAD
+{
+        SINGLE_LIST_ENTRY start;
+        volatile INT      count;
+        KGUARDED_MUTEX    lock;
+
+} IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
+
+typedef struct _IRP_QUEUE_ENTRY
+{
+        SINGLE_LIST_ENTRY entry;
+        PIRP              irp;
+
+} IRP_QUEUE_ENTRY, *PIRP_QUEUE_ENTRY;
+
 NTSTATUS
 ProcLoadInitialiseProcessConfig(_In_ PIRP Irp);
 
@@ -132,5 +147,8 @@ GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context);
 
 PDRIVER_OBJECT
 GetDriverObject();
+
+PIRP_QUEUE_HEAD
+GetIrpQueueHead();
 
 #endif

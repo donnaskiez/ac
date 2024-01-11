@@ -14,6 +14,8 @@ class KManager
         std::unique_ptr<Driver>             driver_interface;
         std::shared_ptr<global::ThreadPool> thread_pool;
 
+        VOID StartIoCompletionPortThread();
+
     public:
         KManager(LPCWSTR                             DriverName,
                  std::shared_ptr<global::ThreadPool> ThreadPool,
@@ -34,6 +36,7 @@ class KManager
         VOID CheckForEptHooks();
         VOID StackwalkThreadsViaDpc();
         VOID ValidateSystemModules();
+        VOID InsertIrpIntoIrpQueue();
 };
 }
 

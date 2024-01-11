@@ -117,6 +117,5 @@ VOID
 DetectThreadsAttachedToProtectedProcess()
 {
         PAGED_CODE();
-
         EnumerateThreadListWithCallbackRoutine(DetectAttachedThreadsProcessCallback, NULL);
 }

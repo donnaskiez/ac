@@ -119,6 +119,7 @@ typedef struct _DRIVER_CONFIG
         volatile BOOLEAN       unload_in_progress;
         KGUARDED_MUTEX         lock;
         SYS_MODULE_VAL_CONTEXT sys_val_context;
+        IRP_QUEUE_HEAD         irp_queue;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -509,6 +510,12 @@ GetDriverObject()
 {
         PAGED_CODE();
         return driver_config.driver_object;
+}
+
+PIRP_QUEUE_HEAD
+GetIrpQueueHead()
+{
+        return &driver_config.irp_queue;
 }
 
 GetSystemModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT* Context)
@@ -1136,10 +1143,9 @@ DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
             &driver_config.ansi_driver_name, &driver_config.unicode_driver_name, TRUE);
 
         if (!NT_SUCCESS(status))
-        {
                 DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
-                return status;
-        }
+
+        return status;
 }
 
 STATIC
@@ -1153,6 +1159,8 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         DEBUG_VERBOSE("Initialising driver configuration");
 
         ImpKeInitializeGuardedMutex(&driver_config.lock);
+
+        IrpQueueInitialise();
 
         driver_config.unload_in_progress                         = FALSE;
         driver_config.system_information.virtualised_environment = FALSE;
@@ -1194,7 +1202,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         return status;
 }
 
-_Function_class_(DRIVER_INITIALIZE) _IRQL_requires_same_
 NTSTATUS
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
