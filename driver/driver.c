@@ -120,6 +120,7 @@ typedef struct _DRIVER_CONFIG
         KGUARDED_MUTEX         lock;
         SYS_MODULE_VAL_CONTEXT sys_val_context;
         IRP_QUEUE_HEAD         irp_queue;
+        TIMER_OBJECT           timer;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -776,6 +777,14 @@ DrvUnloadFreeDriverList()
 
 STATIC
 VOID
+DrvUnloadFreeTimerObject()
+{
+        PAGED_CODE();
+        CleanupDriverTimerObjects(&driver_config.timer);
+}
+
+STATIC
+VOID
 DrvUnloadFreeProcessList()
 {
         PAGED_CODE();
@@ -814,6 +823,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         while (DrvUnloadFreeAllApcContextStructures() == FALSE)
                 YieldProcessor();
 
+        DrvUnloadFreeTimerObject();
         DrvUnloadFreeModuleValidationContext();
         DrvUnloadUnregisterObCallbacks();
         DrvUnloadFreeThreadList();
@@ -1197,6 +1207,15 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
                 return status;
         }
 
+        status = InitialiseTimerObject(&driver_config.timer);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitialiseTimerObject failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
+                return status;
+        }
+
         DEBUG_VERBOSE("driver name: %s", driver_config.ansi_driver_name.Buffer);
 
         return status;
@@ -1208,6 +1227,11 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         BOOLEAN  flag   = FALSE;
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
+        DriverObject->MajorFunction[IRP_MJ_CREATE]         = DeviceCreate;
+        DriverObject->MajorFunction[IRP_MJ_CLOSE]          = DeviceClose;
+        DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceControl;
+        DriverObject->DriverUnload                         = DriverUnload;
+
         /* store the driver object here as we need to access it in ResolveNtImports */
         driver_config.driver_object = DriverObject;
 
@@ -1217,16 +1241,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return status;
 
         DEBUG_VERBOSE("Beginning driver entry routine...");
-
-        status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x", status);
-                return status;
-        }
-
-        DrvLoadInitialiseProcessConfig();
 
         status = ImpIoCreateDevice(DriverObject,
                                    NULL,
@@ -1239,12 +1253,22 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("IoCreateDevice failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
-                return STATUS_FAILED_DRIVER_ENTRY;
+                return status;
         }
 
         driver_config.driver_object = DriverObject;
         driver_config.device_object = DriverObject->DeviceObject;
+
+        status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x", status);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
+                return status;
+        }
+
+        DrvLoadInitialiseProcessConfig();
 
         status = ImpIoCreateSymbolicLink(&driver_config.device_symbolic_link,
                                          &driver_config.device_name);
@@ -1256,11 +1280,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
-
-        DriverObject->MajorFunction[IRP_MJ_CREATE]         = DeviceCreate;
-        DriverObject->MajorFunction[IRP_MJ_CLOSE]          = DeviceClose;
-        DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceControl;
-        DriverObject->DriverUnload                         = DriverUnload;
 
         DrvLoadInitialiseReportQueue(&flag);
 

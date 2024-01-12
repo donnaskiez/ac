@@ -130,4 +130,7 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash);
 VOID
 ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module);
 
+BOOLEAN
+ValidateOurDriversDispatchRoutines();
+
 #endif

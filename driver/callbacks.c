@@ -280,7 +280,7 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
 
         if (ImageInfo->SystemModeImage == FALSE)
                 return;
-        
+
         FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
 
         if (entry)
@@ -555,6 +555,9 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                 /*
                  * WerFault is some windows 11 application that cries when it cant get a handle,
                  * so well allow it for now... todo; learn more about it
+                 *
+                 * todo: perform stricter checks rather then the image name. perhapds check some
+                 * certificate or something.
                  */
                 if (!strcmp(process_creator_name, "lsass.exe") ||
                     !strcmp(process_creator_name, "csrss.exe") ||
@@ -818,4 +821,105 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 #pragma warning(pop)
 
         return STATUS_SUCCESS;
+}
+
+#define REPEAT_TIME_10_SEC 10000
+
+VOID
+TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+        NTSTATUS      status = STATUS_UNSUCCESSFUL;
+        PTIMER_OBJECT timer  = (PTIMER_OBJECT)Context;
+
+        DEBUG_VERBOSE("Integrity check timer callback invoked.");
+
+        if (!ValidateOurDriversDispatchRoutines())
+        {
+                DEBUG_VERBOSE("l");
+        }
+
+        status = ValidateOurDriverImage();
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("ValidateOurDriverImage failed with status %x", status);
+
+        InterlockedDecrement(&timer->state);
+}
+
+/*
+ * This routine is executed every x seconds, and is run at IRQL = DISPATCH_LEVEL
+ */
+VOID
+TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
+                           _In_opt_ PVOID DeferredContext,
+                           _In_opt_ PVOID SystemArgument1,
+                           _In_opt_ PVOID SystemArgument2)
+{
+        PTIMER_OBJECT timer = (PTIMER_OBJECT)DeferredContext;
+        
+        /* we dont want to queue our work item if it hasnt executed */
+        if (timer->state)
+                return;
+
+        /* we queue a work item because DPCs run at IRQL = DISPATCH_LEVEL and we need certain
+         * routines which cannot be run at an IRQL this high.*/
+        InterlockedIncrement(&timer->state);
+        IoQueueWorkItem(timer->work_item, TimerObjectWorkItemRoutine, BackgroundWorkQueue, timer);
+}
+
+NTSTATUS
+InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
+{
+        LARGE_INTEGER due_time = {0};
+        LONG          period   = 0;
+
+        due_time.QuadPart = ABSOLUTE(SECONDS(5));
+
+        Timer->timer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KTIMER), POOL_TAG_TIMER);
+
+        if (!Timer->timer)
+                return STATUS_MEMORY_NOT_ALLOCATED;
+
+        Timer->dpc = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KDPC), POOL_TAG_DPC);
+
+        if (!Timer->dpc)
+        {
+                ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
+                return STATUS_MEMORY_NOT_ALLOCATED;
+        }
+
+        Timer->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
+
+        if (!Timer->work_item)
+        {
+                ExFreePoolWithTag(Timer->dpc, POOL_TAG_DPC);
+                ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
+                return STATUS_MEMORY_NOT_ALLOCATED;
+        }
+
+        KeInitializeDpc(Timer->dpc, TimerObjectCallbackRoutine, Timer);
+        KeInitializeTimer(Timer->timer);
+        KeSetTimerEx(Timer->timer, due_time, REPEAT_TIME_10_SEC, Timer->dpc);
+
+        DEBUG_VERBOSE("Successfully initialised global timer callback.");
+        return STATUS_SUCCESS;
+}
+
+VOID
+CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer)
+{
+        /* this routine blocks until all queued DPCs on all processors have executed. */
+        KeFlushQueuedDpcs();
+
+        /* wait for our work item to complete */
+        while (Timer->state)
+                YieldProcessor();
+
+        /* now its safe to free and cancel our timers, pools etc. */
+        KeCancelTimer(Timer->timer);
+        IoFreeWorkItem(Timer->work_item);
+        ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
+        ExFreePoolWithTag(Timer->dpc, POOL_TAG_DPC);
+
+        DEBUG_VERBOSE("Freed timer objects.");
 }

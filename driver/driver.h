@@ -22,6 +22,20 @@
 
 #define MAXIMUM_APC_CONTEXTS 10
 
+typedef struct _TIMER_OBJECT
+{
+        /*
+         * state = 1: callback in progress
+         * state = 0: no callback in progress (i.e safe to free and unregister)
+         */
+        volatile LONG state;
+
+        PKTIMER      timer;
+        PKDPC        dpc;
+        PIO_WORKITEM work_item;
+
+} TIMER_OBJECT, *PTIMER_OBJECT;
+
 typedef enum _ENVIRONMENT_TYPE
 {
         NativeWindows = 0,

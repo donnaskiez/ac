@@ -398,15 +398,15 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
          * will be identical to the in memory image.
          */
         status = ImpZwMapViewOfSection(*SectionHandle,
-                                    ZwCurrentProcess(),
-                                    Section,
-                                    NULL,
-                                    NULL,
-                                    NULL,
-                                    Size,
-                                    ViewUnmap,
-                                    MEM_TOP_DOWN,
-                                    PAGE_READONLY);
+                                       ZwCurrentProcess(),
+                                       Section,
+                                       NULL,
+                                       NULL,
+                                       NULL,
+                                       Size,
+                                       ViewUnmap,
+                                       MEM_TOP_DOWN,
+                                       PAGE_READONLY);
 
         if (!NT_SUCCESS(status))
         {
@@ -1558,7 +1558,8 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH))
                 DEBUG_VERBOSE("Module: %s text regions are valid.", Module->FullPathName);
         else
-                DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**", Module->FullPathName);
+                DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**",
+                              Module->FullPathName);
 
 end:
         if (hash)
@@ -1568,23 +1569,14 @@ end:
 NTSTATUS
 ValidateOurDriverImage()
 {
-        NTSTATUS                  status             = STATUS_UNSUCCESSFUL;
-        LPCSTR                    driver_name        = NULL;
-        UNICODE_STRING            path               = {0};
-        SYSTEM_MODULES            modules            = {0};
-        PRTL_MODULE_EXTENDED_INFO module_info        = NULL;
-        PVOID                     section            = NULL;
-        HANDLE                    section_handle     = NULL;
-        ULONG                     section_size       = 0;
-        PVAL_INTEGRITY_HEADER     disk_buffer        = NULL;
-        ULONG                     disk_buffer_size   = 0;
-        PVOID                     disk_hash          = NULL;
-        ULONG                     disk_hash_size     = 0;
-        ULONG                     memory_text_size   = 0;
-        PVOID                     memory_hash        = NULL;
-        ULONG                     memory_hash_size   = 0;
-        PVAL_INTEGRITY_HEADER     memory_buffer      = NULL;
-        ULONG                     memory_buffer_size = 0;
+        NTSTATUS                  status           = STATUS_UNSUCCESSFUL;
+        LPCSTR                    driver_name      = NULL;
+        UNICODE_STRING            path             = {0};
+        SYSTEM_MODULES            modules          = {0};
+        PRTL_MODULE_EXTENDED_INFO module_info      = NULL;
+        PVOID                     memory_hash      = NULL;
+        ULONG                     memory_hash_size = 0;
+        PDRIVER_LIST_ENTRY        entry            = NULL;
 
         GetDriverPath(&path);
         GetDriverName(&driver_name);
@@ -1611,46 +1603,24 @@ ValidateOurDriverImage()
                 goto end;
         }
 
-        /* here we need to map our disk image, like the previous integ checks */
-        status =
-            MapDiskImageIntoVirtualAddressSpace(&section_handle, &section, &path, &section_size);
+        memory_hash = ExAllocatePool2(POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
 
-        if (!NT_SUCCESS(status))
+        if (!memory_hash)
+                goto end;
+
+        FindDriverEntryByBaseAddress(module_info->ImageBase, &entry);
+
+        if (!entry)
         {
-                DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x", status);
+                DEBUG_ERROR("FindDriverEntryByBaseAddress failed with no status.");
                 goto end;
         }
 
-        status = StoreModuleExecutableRegionsInBuffer(
-            (PVOID)&disk_buffer, section, section_size, &disk_buffer_size);
+        status = HashModule(module_info, memory_hash);
 
         if (!NT_SUCCESS(status))
         {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
-                goto end;
-        }
-
-        status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
-                                                      module_info->ImageBase,
-                                                      module_info->ImageSize,
-                                                      &memory_buffer_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer 2 failed with status %x", status);
-                goto end;
-        }
-
-        status = ComputeHashOfSections(&memory_buffer->section_header,
-                                       &disk_buffer->section_header,
-                                       &disk_hash,
-                                       &disk_hash_size,
-                                       &memory_hash,
-                                       &memory_hash_size);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_VERBOSE("ComputeHashOfSections failed with status %x", status);
+                DEBUG_ERROR("HashModule failed with status %x", status);
                 goto end;
         }
 
@@ -1658,29 +1628,15 @@ ValidateOurDriverImage()
          * Since we don't pass a return value, I think we would raise an invalid module error and
          * stop the users game session ? since module .text section error would be a large red flag
          */
-        if (CompareHashes(disk_hash, memory_hash, SHA_256_HASH_LENGTH))
+        if (CompareHashes(memory_hash, entry->text_hash, SHA_256_HASH_LENGTH))
                 DEBUG_VERBOSE("Driver image is valid. Integrity check complete");
         else
-                DEBUG_WARNING("Drive image is NOT valid. !!!");
+                DEBUG_WARNING("**!!** Driver image is NOT valid. **!!**");
 
 end:
-        if (memory_buffer)
-                ExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
-
-        if (disk_buffer)
-                ExFreePoolWithTag(disk_buffer, POOL_TAG_INTEGRITY);
 
         if (memory_hash)
                 ExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
-
-        if (disk_hash)
-                ExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
-
-        if (section_handle)
-                ZwClose(section_handle);
-
-        if (section)
-                ZwUnmapViewOfSection(ZwCurrentProcess(), section);
 
         if (modules.address)
                 ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -1929,3 +1885,18 @@ CalculateCpuCoreUsage(_In_ UINT32 Core)
         return (100 - (UINT32)(UInt32x32To64(idle_time, 100) / (UINT64)(kernel_time + user_time)));
 }
 
+BOOLEAN
+ValidateOurDriversDispatchRoutines()
+{
+        PDRIVER_OBJECT driver = GetDriverObject();
+
+        if (driver->MajorFunction[IRP_MJ_CREATE] != DeviceCreate ||
+            driver->MajorFunction[IRP_MJ_CLOSE] != DeviceClose ||
+            driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] != DeviceControl)
+        {
+                DEBUG_WARNING("**!!** Drivers dispatch routine has been tampered with. **!!**");
+                return FALSE;
+        }
+
+        return TRUE;
+}

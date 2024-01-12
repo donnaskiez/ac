@@ -647,6 +647,10 @@ CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY ProcessListEntr
         }
 }
 
+/*
+ * This is actually broken right now since changing to use our process list, will need to fix at
+ * somepoint.
+ */
 NTSTATUS
 FindUnlinkedProcesses()
 {

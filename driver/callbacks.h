@@ -5,6 +5,7 @@
 #include <wdftypes.h>
 #include <wdf.h>
 #include "common.h"
+#include "driver.h"
 
 #define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
 
@@ -133,5 +134,11 @@ VOID
 ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
                                _In_ PIMAGE_INFO         ImageInfo);
+
+NTSTATUS
+InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer);
+
+VOID
+CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer);
 
 #endif

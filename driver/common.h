@@ -69,6 +69,7 @@
 #define POOL_TAG_THREAD_LIST           'list'
 #define POOL_TAG_DRIVER_LIST           'drvl'
 #define POOL_TAG_IRP_QUEUE             'irpp'
+#define POOL_TAG_TIMER                 'time'
 
 #define IA32_APERF_MSR 0x000000E8
 
@@ -1491,5 +1492,17 @@ PsGetNextProcess(IN PEPROCESS OldProcess OPTIONAL);
 PETHREAD
 NTAPI
 PsGetNextProcessThread(IN PEPROCESS Process, IN PETHREAD Thread OPTIONAL);
+
+#define ABSOLUTE(wait) (wait)
+
+#define RELATIVE(wait) (-(wait))
+
+#define NANOSECONDS(nanos) (((signed __int64)(nanos)) / 100L)
+
+#define MICROSECONDS(micros) (((signed __int64)(micros)) * NANOSECONDS(1000L))
+
+#define MILLISECONDS(milli) (((signed __int64)(milli)) * MICROSECONDS(1000L))
+
+#define SECONDS(seconds) (((signed __int64)(seconds)) * MILLISECONDS(1000L))
 
 #endif
