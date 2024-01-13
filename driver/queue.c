@@ -11,54 +11,19 @@
 #include "common.h"
 #include "imports.h"
 
-/*
- * This mutex is to prevent a new item being pushed to the queue
- * while the HandlePeriodicCallbackReportQueue is iterating through
- * the objects. This can be an issue because the spinlock is released
- * after each report is placed in the IRP buffer which means a new report
- * can be pushed into the queue before the next iteration can take ownership
- * of the spinlock.
- */
-typedef struct _REPORT_QUEUE_CONFIGURATION
-{
-        QUEUE_HEAD       head;
-        volatile BOOLEAN is_driver_unloading;
-        KGUARDED_MUTEX   lock;
-
-} REPORT_QUEUE_CONFIGURATION, *PREPORT_QUEUE_CONFIGURATION;
-
-REPORT_QUEUE_CONFIGURATION report_queue_config = {0};
-
 VOID
-InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status)
+InitialiseGlobalReportQueue()
 {
-        report_queue_config.head.start          = NULL;
-        report_queue_config.head.end            = NULL;
-        report_queue_config.head.entries        = 0;
-        report_queue_config.is_driver_unloading = FALSE;
+        PREPORT_QUEUE_HEAD queue = GetDriverReportQueue();
 
-        ImpKeInitializeGuardedMutex(&report_queue_config.head.lock);
-        ImpKeInitializeGuardedMutex(&report_queue_config.lock);
+        queue->head.start          = NULL;
+        queue->head.end            = NULL;
+        queue->head.entries        = 0;
+        queue->is_driver_unloading = FALSE;
 
-        *Status = TRUE;
+        ImpKeInitializeGuardedMutex(&queue->head.lock);
+        ImpKeInitializeGuardedMutex(&queue->lock);
 }
-
-// PQUEUE_HEAD QueueCreate()
-//{
-//	PQUEUE_HEAD head = ExAllocatePool2( POOL_FLAG_NON_PAGED, sizeof( QUEUE_HEAD ),
-// QUEUE_POOL_TAG );
-//
-//	if ( !head )
-//		return NULL;
-//
-//	head->end = NULL;
-//	head->start = NULL;
-//	head->entries = 0;
-//
-//	KeInitializeSpinLock( &head->lock );
-//
-//	return head;
-// }
 
 VOID
 QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
@@ -115,33 +80,34 @@ end:
 VOID
 InsertReportToQueue(_In_ PVOID Report)
 {
-        if (InterlockedExchange(&report_queue_config.is_driver_unloading,
-                                report_queue_config.is_driver_unloading))
+        PREPORT_QUEUE_HEAD queue = GetDriverReportQueue();
+
+        if (InterlockedExchange(&queue->is_driver_unloading, queue->is_driver_unloading))
                 return;
 
-        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
-        QueuePush(&report_queue_config.head, Report);
-        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeAcquireGuardedMutex(&queue->lock);
+        QueuePush(&queue->head, Report);
+        ImpKeReleaseGuardedMutex(&queue->lock);
 }
 
 VOID
 FreeGlobalReportQueueObjects()
 {
-        InterlockedExchange(&report_queue_config.is_driver_unloading, TRUE);
-        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
+        PREPORT_QUEUE_HEAD queue = GetDriverReportQueue();
 
-        PVOID report = QueuePop(&report_queue_config.head);
+        InterlockedExchange(&queue->is_driver_unloading, TRUE);
+        ImpKeAcquireGuardedMutex(&queue->lock);
 
-        while (report != NULL)
+        PVOID report = QueuePop(&queue->head);
+
+        while (report)
         {
                 ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
-                report = QueuePop(&report_queue_config.head);
-                DEBUG_VERBOSE("Unloading report queue. Entries remaining: %i",
-                              report_queue_config.head.entries);
+                report = QueuePop(&queue->head);
         }
 
 end:
-        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeReleaseGuardedMutex(&queue->lock);
 }
 
 /*
@@ -153,7 +119,7 @@ end:
  * reports generated from ObRegisterCallbacks for example much easier.
  */
 NTSTATUS
-HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
+HandlePeriodicGlobalReportQueueQuery(_Out_ PIRP Irp)
 {
         INT                        count              = 0;
         NTSTATUS                   status             = STATUS_UNSUCCESSFUL;
@@ -163,8 +129,9 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
         ULONG                      report_buffer_size = 0;
         PREPORT_HEADER             report_header      = NULL;
         GLOBAL_REPORT_QUEUE_HEADER header             = {0};
+        PREPORT_QUEUE_HEAD         queue              = GetDriverReportQueue();
 
-        ImpKeAcquireGuardedMutex(&report_queue_config.lock);
+        ImpKeAcquireGuardedMutex(&queue->lock);
 
         report_buffer_size = sizeof(INVALID_PROCESS_ALLOCATION_REPORT) * MAX_REPORTS_PER_IRP +
                              sizeof(GLOBAL_REPORT_QUEUE_HEADER);
@@ -174,7 +141,7 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
-                ImpKeReleaseGuardedMutex(&report_queue_config.lock);
+                ImpKeReleaseGuardedMutex(&queue->lock);
                 return status;
         }
 
@@ -183,11 +150,11 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
 
         if (!report_buffer)
         {
-                ImpKeReleaseGuardedMutex(&report_queue_config.lock);
+                ImpKeReleaseGuardedMutex(&queue->lock);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
-        report = QueuePop(&report_queue_config.head);
+        report = QueuePop(&queue->head);
 
         if (report == NULL)
         {
@@ -278,13 +245,13 @@ HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp)
                 /* QueuePop frees the node, but we still need to free the returned data */
                 ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
 
-                report = QueuePop(&report_queue_config.head);
+                report = QueuePop(&queue->head);
                 count += 1;
         }
 
 end:
 
-        ImpKeReleaseGuardedMutex(&report_queue_config.lock);
+        ImpKeReleaseGuardedMutex(&queue->lock);
 
         Irp->IoStatus.Information = sizeof(GLOBAL_REPORT_QUEUE_HEADER) + total_size;
         header.count              = count;

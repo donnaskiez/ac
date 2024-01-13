@@ -8,44 +8,6 @@
 #include "modules.h"
 #include "imports.h"
 
-/*
- * Interlocked intrinsics are only atomic with respect to other InterlockedXxx functions,
- * so all reads and writes to the THREAD_LIST->active flag must be with Interlocked instrinsics
- * to ensure atomicity.
- */
-typedef struct _THREAD_LIST
-{
-        SINGLE_LIST_ENTRY start;
-        volatile BOOLEAN  active;
-        KGUARDED_MUTEX    lock;
-
-} THREAD_LIST, *PTHREAD_LIST;
-
-/* todo: maybe put this in the global config? hmm.. I kinda like how its encapsulated here tho hm..
- */
-PTHREAD_LIST thread_list = NULL;
-
-typedef struct _PROCESS_LIST
-{
-        SINGLE_LIST_ENTRY start;
-        volatile BOOLEAN  active;
-        KGUARDED_MUTEX    lock;
-
-} PROCESS_LIST, *PPROCESS_LIST;
-
-PPROCESS_LIST process_list = NULL;
-
-typedef struct _DRIVER_LIST
-{
-        SINGLE_LIST_ENTRY start;
-        volatile ULONG    count;
-        volatile BOOLEAN  active;
-        KGUARDED_MUTEX    lock;
-
-} DRIVER_LIST, *PDRIVER_LIST;
-
-PDRIVER_LIST driver_list = NULL;
-
 STATIC
 BOOLEAN
 EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
@@ -83,62 +45,55 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 VOID
 CleanupProcessListOnDriverUnload()
 {
-        InterlockedExchange(&process_list->active, FALSE);
+        PPROCESS_LIST_HEAD list = GetProcessList();
+        InterlockedExchange(&list->active, FALSE);
         ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 
         for (;;)
         {
-                if (!ListFreeFirstEntry(
-                        &process_list->start, &process_list->lock, CleanupProcessListFreeCallback))
-                {
-                        ImpExFreePoolWithTag(process_list, POOL_TAG_THREAD_LIST);
+                if (!ListFreeFirstEntry(&list->start, &list->lock, CleanupProcessListFreeCallback))
                         return;
-                }
         }
 }
 
 VOID
 CleanupThreadListOnDriverUnload()
 {
-        InterlockedExchange(&thread_list->active, FALSE);
+        PTHREAD_LIST_HEAD list = GetThreadList();
+        InterlockedExchange(&list->active, FALSE);
         ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 
         for (;;)
         {
-                if (!ListFreeFirstEntry(
-                        &thread_list->start, &thread_list->lock, CleanupThreadListFreeCallback))
-                {
-                        ImpExFreePoolWithTag(thread_list, POOL_TAG_THREAD_LIST);
+                if (!ListFreeFirstEntry(&list->start, &list->lock, CleanupThreadListFreeCallback))
                         return;
-                }
         }
 }
 
 VOID
 CleanupDriverListOnDriverUnload()
 {
-        InterlockedExchange(&driver_list->active, FALSE);
+        PDRIVER_LIST_HEAD list = GetDriverList();
+        InterlockedExchange(&list->active, FALSE);
         PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
 
         for (;;)
         {
-                if (!ListFreeFirstEntry(&driver_list->start, &driver_list->lock, NULL))
-                {
-                        ImpExFreePoolWithTag(driver_list, POOL_TAG_DRIVER_LIST);
+                if (!ListFreeFirstEntry(&list->start, &list->lock, NULL))
                         return;
-                }
         }
 }
 
 VOID
 EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
-        ImpKeAcquireGuardedMutex(&thread_list->lock);
+        PTHREAD_LIST_HEAD list = GetThreadList();
+        ImpKeAcquireGuardedMutex(&list->lock);
 
         if (!CallbackRoutine)
                 goto unlock;
 
-        PTHREAD_LIST_ENTRY entry = thread_list->start.Next;
+        PTHREAD_LIST_ENTRY entry = list->start.Next;
 
         while (entry)
         {
@@ -148,18 +103,19 @@ EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOI
         }
 
 unlock:
-        ImpKeReleaseGuardedMutex(&thread_list->lock);
+        ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
-        ImpKeAcquireGuardedMutex(&process_list->lock);
+        PPROCESS_LIST_HEAD list = GetProcessList();
+        ImpKeAcquireGuardedMutex(&list->lock);
 
         if (!CallbackRoutine)
                 goto unlock;
 
-        PPROCESS_LIST_ENTRY entry = process_list->start.Next;
+        PPROCESS_LIST_ENTRY entry = list->start.Next;
 
         while (entry)
         {
@@ -169,7 +125,7 @@ EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVO
         }
 
 unlock:
-        ImpKeReleaseGuardedMutex(&process_list->lock);
+        ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 NTSTATUS
@@ -181,15 +137,10 @@ InitialiseDriverList()
         SYSTEM_MODULES            modules      = {0};
         PDRIVER_LIST_ENTRY        entry        = NULL;
         PRTL_MODULE_EXTENDED_INFO module_entry = NULL;
+        PDRIVER_LIST_HEAD         list         = GetDriverList();
 
-        driver_list =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST), POOL_TAG_DRIVER_LIST);
-
-        if (!driver_list)
-                return STATUS_MEMORY_NOT_ALLOCATED;
-
-        InterlockedExchange(&driver_list->active, TRUE);
-        ListInit(&driver_list->start, &driver_list->lock);
+        InterlockedExchange(&list->active, TRUE);
+        ListInit(&list->start, &list->lock);
 
         status = GetSystemModuleInformation(&modules);
 
@@ -230,7 +181,7 @@ InitialiseDriverList()
                         entry->hashed = FALSE;
                 }
 
-                ListInsert(&driver_list->start, entry, &driver_list->lock);
+                ListInsert(&list->start, entry, &list->lock);
         }
 
 end:
@@ -247,10 +198,11 @@ end:
 VOID
 FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry)
 {
+        PDRIVER_LIST_HEAD list = GetDriverList();
+        ImpKeAcquireGuardedMutex(&list->lock);
         *Entry = NULL;
-        ImpKeAcquireGuardedMutex(&driver_list->lock);
 
-        PDRIVER_LIST_ENTRY entry = (PDRIVER_LIST_ENTRY)driver_list->start.Next;
+        PDRIVER_LIST_ENTRY entry = (PDRIVER_LIST_ENTRY)list->start.Next;
 
         while (entry)
         {
@@ -263,7 +215,7 @@ FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Ent
                 entry = entry->list.Next;
         }
 unlock:
-        ImpKeReleaseGuardedMutex(&driver_list->lock);
+        ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
@@ -274,8 +226,9 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         NTSTATUS                 status = STATUS_UNSUCCESSFUL;
         PDRIVER_LIST_ENTRY       entry  = NULL;
         RTL_MODULE_EXTENDED_INFO module = {0};
+        PDRIVER_LIST_HEAD        list   = GetDriverList();
 
-        if (InterlockedExchange(&driver_list->active, driver_list->active) == FALSE)
+        if (InterlockedExchange(&list->active, list->active) == FALSE)
                 return;
 
         if (ImageInfo->SystemModeImage == FALSE)
@@ -315,50 +268,33 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                 entry->hashed = FALSE;
         }
 
-        ListInsert(&driver_list->start, entry, &driver_list->lock);
-}
-
-NTSTATUS
-InitialiseProcessList()
-{
-        PAGED_CODE();
-
-        process_list =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST), POOL_TAG_THREAD_LIST);
-
-        if (!process_list)
-                return STATUS_MEMORY_NOT_ALLOCATED;
-
-        InterlockedExchange(&process_list->active, TRUE);
-        ListInit(&process_list->start, &process_list->lock);
-
-        return STATUS_SUCCESS;
-}
-
-NTSTATUS
-InitialiseThreadList()
-{
-        PAGED_CODE();
-
-        thread_list =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST), POOL_TAG_THREAD_LIST);
-
-        if (!thread_list)
-                return STATUS_MEMORY_NOT_ALLOCATED;
-
-        InterlockedExchange(&thread_list->active, TRUE);
-        ListInit(&thread_list->start, &thread_list->lock);
-
-        return STATUS_SUCCESS;
+        ListInsert(&list->start, entry, &list->lock);
 }
 
 VOID
-FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTRY* Entry)
+InitialiseProcessList()
 {
-        *Entry = NULL;
-        ImpKeAcquireGuardedMutex(&process_list->lock);
+        PPROCESS_LIST_HEAD list = GetProcessList();
+        InterlockedExchange(&list->active, TRUE);
+        ListInit(&list->start, &list->lock);
+}
 
-        PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)process_list->start.Next;
+VOID
+InitialiseThreadList()
+{
+        PTHREAD_LIST_HEAD list = GetThreadList();
+        InterlockedExchange(&list->active, TRUE);
+        ListInit(&list->start, &list->lock);
+}
+
+VOID
+FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Out_ PPROCESS_LIST_ENTRY* Entry)
+{
+        PPROCESS_LIST_HEAD list = GetProcessList();
+        ImpKeAcquireGuardedMutex(&list->lock);
+        *Entry = NULL;
+
+        PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)list->start.Next;
 
         while (entry)
         {
@@ -371,16 +307,17 @@ FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Inout_ PPROCESS_LIST_ENTR
                 entry = entry->list.Next;
         }
 unlock:
-        ImpKeReleaseGuardedMutex(&process_list->lock);
+        ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
-FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_ENTRY* Entry)
+FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Out_ PTHREAD_LIST_ENTRY* Entry)
 {
+        PTHREAD_LIST_HEAD list = GetThreadList();
+        ImpKeAcquireGuardedMutex(&list->lock);
         *Entry = NULL;
-        ImpKeAcquireGuardedMutex(&thread_list->lock);
 
-        PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)thread_list->start.Next;
+        PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)list->start.Next;
 
         while (entry)
         {
@@ -393,7 +330,7 @@ FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Inout_ PTHREAD_LIST_EN
                 entry = entry->list.Next;
         }
 unlock:
-        ImpKeReleaseGuardedMutex(&thread_list->lock);
+        ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
@@ -402,8 +339,9 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
         PPROCESS_LIST_ENTRY entry   = NULL;
         PKPROCESS           parent  = NULL;
         PKPROCESS           process = NULL;
+        PPROCESS_LIST_HEAD  list    = GetProcessList();
 
-        if (InterlockedExchange(&process_list->active, process_list->active) == FALSE)
+        if (InterlockedExchange(&list->active, list->active) == FALSE)
                 return;
 
         ImpPsLookupProcessByProcessId(ParentId, &parent);
@@ -426,7 +364,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 entry->parent  = parent;
                 entry->process = process;
 
-                ListInsert(&process_list->start, entry, &process_list->lock);
+                ListInsert(&list->start, entry, &list->lock);
         }
         else
         {
@@ -438,7 +376,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 ImpObDereferenceObject(entry->parent);
                 ImpObDereferenceObject(entry->process);
 
-                ListRemoveEntry(&process_list->start, entry, &process_list->lock);
+                ListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -448,9 +386,10 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
         PTHREAD_LIST_ENTRY entry   = NULL;
         PKTHREAD           thread  = NULL;
         PKPROCESS          process = NULL;
+        PTHREAD_LIST_HEAD  list    = GetThreadList();
 
         /* ensure we don't insert new entries if we are unloading */
-        if (InterlockedExchange(&thread_list->active, thread_list->active) == FALSE)
+        if (InterlockedExchange(&list->active, list->active) == FALSE)
                 return;
 
         ImpPsLookupThreadByThreadId(ThreadId, &thread);
@@ -475,7 +414,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
                 entry->apc            = NULL;
                 entry->apc_queued     = FALSE;
 
-                ListInsert(&thread_list->start, &entry->list, &thread_list->lock);
+                ListInsert(&list->start, &entry->list, &list->lock);
         }
         else
         {
@@ -487,7 +426,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
                 ImpObDereferenceObject(entry->thread);
                 ImpObDereferenceObject(entry->owning_process);
 
-                ListRemoveEntry(&thread_list->start, entry, &thread_list->lock);
+                ListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -856,7 +795,7 @@ TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
                            _In_opt_ PVOID SystemArgument2)
 {
         PTIMER_OBJECT timer = (PTIMER_OBJECT)DeferredContext;
-        
+
         /* we dont want to queue our work item if it hasnt executed */
         if (timer->state)
                 return;

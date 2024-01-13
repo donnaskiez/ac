@@ -101,7 +101,7 @@ FindNtExport(PCZPSTR ExportName)
 }
 
 NTSTATUS
-ResolveNtImports()
+ResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject)
 {
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 

@@ -194,9 +194,8 @@ ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize)
 
 //_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
-DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp)
+DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
-        UNREFERENCED_PARAMETER(DriverObject);
         PAGED_CODE();
 
         NTSTATUS           status         = STATUS_SUCCESS;

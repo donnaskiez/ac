@@ -188,6 +188,7 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="apc.c" />
     <ClCompile Include="callbacks.c" />
     <ClCompile Include="driver.c" />
     <ClCompile Include="hv.c" />
@@ -200,6 +201,7 @@
     <ClCompile Include="thread.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="apc.h" />
     <ClInclude Include="callbacks.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="driver.h" />

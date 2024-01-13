@@ -54,6 +54,9 @@
     <ClCompile Include="imports.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="apc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -90,6 +93,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="imports.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="apc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -5,7 +5,7 @@
 #include "ioctl.h"
 #include "ia32.h"
 #include "imports.h"
-
+#include "apc.h"
 #include "thread.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
@@ -139,7 +139,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
 
 STATIC
 NTSTATUS
-LaunchNonMaskableInterrupt(_Inout_ PNMI_CONTEXT NmiContext);
+LaunchNonMaskableInterrupt();
 
 STATIC
 VOID

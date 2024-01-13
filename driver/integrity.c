@@ -117,17 +117,9 @@ GetDriverImageSize(_Inout_ PIRP Irp)
         PAGED_CODE();
 
         NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
-        LPCSTR                    driver_name = NULL;
+        LPCSTR                    driver_name = GetDriverName();
         SYSTEM_MODULES            modules     = {0};
         PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
-
-        GetDriverName(&driver_name);
-
-        if (!driver_name)
-        {
-                DEBUG_ERROR("GetDriverName failed with no status.");
-                return status;
-        }
 
         status = GetSystemModuleInformation(&modules);
 
@@ -172,17 +164,9 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
         PAGED_CODE();
 
         NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
-        LPCSTR                    driver_name = NULL;
+        LPCSTR                    driver_name = GetDriverName();
         SYSTEM_MODULES            modules     = {0};
         PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
-
-        GetDriverName(&driver_name);
-
-        if (!driver_name)
-        {
-                DEBUG_ERROR("GetDriverName failed with no status.");
-                return status;
-        }
 
         status = GetSystemModuleInformation(&modules);
 
@@ -562,18 +546,10 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
         PAGED_CODE();
 
         NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
-        LPCSTR                   driver_name   = NULL;
         SIZE_T                   bytes_written = NULL;
         PVOID                    buffer        = NULL;
         RTL_MODULE_EXTENDED_INFO module_info   = {0};
-
-        GetDriverName(&driver_name);
-
-        if (!driver_name)
-        {
-                DEBUG_ERROR("GetDriverName failed with no status");
-                return status;
-        }
+        LPCSTR                   driver_name   = GetDriverName();
 
         status = GetModuleInformationByName(&module_info, driver_name);
 
@@ -1570,22 +1546,13 @@ NTSTATUS
 ValidateOurDriverImage()
 {
         NTSTATUS                  status           = STATUS_UNSUCCESSFUL;
-        LPCSTR                    driver_name      = NULL;
-        UNICODE_STRING            path             = {0};
         SYSTEM_MODULES            modules          = {0};
         PRTL_MODULE_EXTENDED_INFO module_info      = NULL;
         PVOID                     memory_hash      = NULL;
         ULONG                     memory_hash_size = 0;
         PDRIVER_LIST_ENTRY        entry            = NULL;
-
-        GetDriverPath(&path);
-        GetDriverName(&driver_name);
-
-        if (!driver_name)
-        {
-                DEBUG_ERROR("GetDriverName failed with no status");
-                return status;
-        }
+        LPCSTR                    driver_name      = GetDriverName();
+        PUNICODE_STRING           path             = GetDriverPath();
 
         status = GetSystemModuleInformation(&modules);
 
@@ -1772,10 +1739,8 @@ NTSTATUS
 SystemModuleVerificationDispatcher()
 {
         NTSTATUS                status    = STATUS_UNSUCCESSFUL;
-        PSYS_MODULE_VAL_CONTEXT context   = NULL;
         PIO_WORKITEM            work_item = NULL;
-
-        GetSystemModuleValidationContext(&context);
+        PSYS_MODULE_VAL_CONTEXT context   = GetSystemModuleValidationContext();
 
         if (context->complete)
         {

@@ -14,7 +14,7 @@ typedef struct _DRIVER_INITIATION_INFORMATION
 
 //_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
-DeviceControl(_In_ PDRIVER_OBJECT DriverObject, _Inout_ PIRP Irp);
+DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 
 _Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
     DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);

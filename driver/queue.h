@@ -6,13 +6,6 @@
 
 #define MAX_REPORTS_PER_IRP 20
 
-typedef struct _QUEUE_NODE
-{
-        struct _QUEUE_NODE* next;
-        PVOID               data;
-
-} QUEUE_NODE, *PQUEUE_NODE;
-
 typedef struct QUEUE_HEAD
 {
         struct _QUEUE_NODE* start;
@@ -21,6 +14,29 @@ typedef struct QUEUE_HEAD
         INT                 entries;
 
 } QUEUE_HEAD, *PQUEUE_HEAD;
+
+/*
+ * This mutex is to prevent a new item being pushed to the queue
+ * while the HandlePeriodicCallbackReportQueue is iterating through
+ * the objects. This can be an issue because the spinlock is released
+ * after each report is placed in the IRP buffer which means a new report
+ * can be pushed into the queue before the next iteration can take ownership
+ * of the spinlock.
+ */
+typedef struct _REPORT_QUEUE_HEAD
+{
+        QUEUE_HEAD       head;
+        volatile BOOLEAN is_driver_unloading;
+        KGUARDED_MUTEX   lock;
+
+} REPORT_QUEUE_HEAD, *PREPORT_QUEUE_HEAD;
+
+typedef struct _QUEUE_NODE
+{
+        struct _QUEUE_NODE* next;
+        PVOID               data;
+
+} QUEUE_NODE, *PQUEUE_NODE;
 
 typedef struct _GLOBAL_REPORT_QUEUE_HEADER
 {
@@ -43,16 +59,16 @@ PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head);
 
 VOID
-InitialiseGlobalReportQueue(_Out_ PBOOLEAN Status);
+InitialiseGlobalReportQueue();
 
 VOID
 InsertReportToQueue(_In_ PVOID Report);
 
 NTSTATUS
-HandlePeriodicGlobalReportQueueQuery(_Inout_ PIRP Irp);
+HandlePeriodicGlobalReportQueueQuery(_Out_ PIRP Irp);
 
-VOID
-FreeGlobalReportQueueObjects();
+NTSTATUS
+HandlePeriodicGlobalReportQueueQuery(_Out_ PIRP Irp);
 
 VOID
 ListInit(_Inout_ PSINGLE_LIST_ENTRY Head, _Inout_ PKGUARDED_MUTEX Lock);
@@ -71,5 +87,8 @@ VOID
 ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 _Inout_ PSINGLE_LIST_ENTRY Entry,
                 _In_ PKGUARDED_MUTEX       Lock);
+
+VOID
+FreeGlobalReportQueueObjects();
 
 #endif

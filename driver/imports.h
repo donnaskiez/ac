@@ -10,7 +10,7 @@ VOID
 FreeDriverImportsStructure();
 
 NTSTATUS
-ResolveNtImports();
+ResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject);
 
 #define IMPORT_FUNCTION_MAX_LENGTH 128
 #define IMPORT_FUNCTION_COUNT      256

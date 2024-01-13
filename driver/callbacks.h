@@ -1,6 +1,5 @@
 #ifndef CALLBACKS_H
 #define CALLBACKS_H
-
 #include <ntifs.h>
 #include <wdftypes.h>
 #include <wdf.h>
@@ -25,7 +24,7 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT
 #define PROCESS_CREATE_PROCESS            0x0080
 #define PROCESS_TERMINATE                 0x0001
 #define PROCESS_CREATE_THREAD             0x0002
-#define PROCESS_DUP_HANDLE                0x0040
+//#define PROCESS_DUP_HANDLE                0x0040
 #define PROCESS_QUERY_INFORMATION         0x0400
 #define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
 #define PROCESS_SET_INFORMATION           0x0200
@@ -44,24 +43,6 @@ static const uintptr_t EPROCESS_PLIST_ENTRY_OFFSET     = 0x448;
 
 static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING(L"Process");
 static UNICODE_STRING OBJECT_TYPE_THREAD  = RTL_CONSTANT_STRING(L"Thread");
-
-typedef struct _THREAD_LIST_ENTRY
-{
-        SINGLE_LIST_ENTRY list;
-        PKTHREAD          thread;
-        PKPROCESS         owning_process;
-        BOOLEAN           apc_queued;
-        PKAPC             apc;
-
-} THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
-
-typedef struct _PROCESS_LIST_ENTRY
-{
-        SINGLE_LIST_ENTRY list;
-        PKPROCESS         process;
-        PKPROCESS         parent;
-
-} PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
 #define DRIVER_PATH_LENGTH  0x100
 #define SHA_256_HASH_LENGTH 32
@@ -94,10 +75,10 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
 NTSTATUS
 EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context);
 
-NTSTATUS
+VOID
 InitialiseThreadList();
 
-NTSTATUS
+VOID
 InitialiseProcessList();
 
 VOID
