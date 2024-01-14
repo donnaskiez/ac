@@ -184,6 +184,8 @@ InitialiseDriverList()
                 ListInsert(&list->start, entry, &list->lock);
         }
 
+        list->active = TRUE;
+
 end:
         if (modules.address)
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -767,8 +769,12 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
-        NTSTATUS      status = STATUS_UNSUCCESSFUL;
-        PTIMER_OBJECT timer  = (PTIMER_OBJECT)Context;
+        NTSTATUS          status = STATUS_UNSUCCESSFUL;
+        PTIMER_OBJECT     timer  = (PTIMER_OBJECT)Context;
+        PDRIVER_LIST_HEAD list   = GetDriverList();
+
+        if (!list->active)
+                return;
 
         DEBUG_VERBOSE("Integrity check timer callback invoked.");
 
