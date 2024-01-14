@@ -49,6 +49,7 @@ typedef struct _THREAD_LIST_HEAD
         SINGLE_LIST_ENTRY start;
         volatile BOOLEAN  active;
         KGUARDED_MUTEX    lock;
+        LOOKASIDE_LIST_EX lookaside_list;
 
 } THREAD_LIST_HEAD, *PTHREAD_LIST_HEAD;
 
@@ -57,6 +58,7 @@ typedef struct _PROCESS_LIST_HEAD
         SINGLE_LIST_ENTRY start;
         volatile BOOLEAN  active;
         KGUARDED_MUTEX    lock;
+        LOOKASIDE_LIST_EX lookaside_list;
 
 } PROCESS_LIST_HEAD, *PPROCESS_LIST_HEAD;
 
@@ -210,9 +212,10 @@ typedef struct _IRP_QUEUE_ENTRY
 #define MODULES_REPORT_POOL_TAG        'modu'
 #define POOL_TAG_LIST_ITEM             'tsil'
 #define POOL_TAG_THREAD_LIST           'list'
+#define POOL_TAG_PROCESS_LIST           'plis'
 #define POOL_TAG_DRIVER_LIST           'drvl'
 #define POOL_TAG_IRP_QUEUE             'irpp'
-#define POOL_TAG_TIMER             'time'
+#define POOL_TAG_TIMER                 'time'
 
 #define IA32_APERF_MSR 0x000000E8
 

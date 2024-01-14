@@ -347,15 +347,6 @@ ProcCloseClearProcessConfiguration()
 //         ImpKeReleaseGuardedMutex(&process_config.lock);
 // }
 
-/*
- * The CALLBACKS_CONFIGURATION structure was being paged out, aswell as enabling a race condition
- * to occur by being encapsulated in the callbacks.c file, so to solve both these problems I have
- * moved them here. This way, we can make use of both locks (which is very ugly and I am pretty sure
- * means I have made a mistake implementation wise but alas) ensuring we get rid of any race
- * conditions aswell as the sturcture being paged out as we allocate in a non-paged pool meaning
- * theres no chance our mutex will cause an IRQL bug check due to being paged out during
- * acquisition.
- */
 NTSTATUS
 ProcLoadEnableObCallbacks()
 {
@@ -549,9 +540,15 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         DrvUnloadFreeTimerObject();
         DrvUnloadFreeModuleValidationContext();
         DrvUnloadUnregisterObCallbacks();
+
+        UnregisterThreadCreateNotifyRoutine();
+        UnregisterProcessCreateNotifyRoutine();
+        UnregisterImageLoadNotifyRoutine();
+
         DrvUnloadFreeThreadList();
         DrvUnloadFreeProcessList();
         DrvUnloadFreeDriverList();
+
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeGlobalReportQueue();
         DrvUnloadFreeSymbolicLink();
@@ -571,10 +568,6 @@ DrvLoadEnableNotifyRoutines()
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
         DEBUG_VERBOSE("Enabling driver wide notify routines.");
-
-        InitialiseDriverList();
-        InitialiseThreadList();
-        InitialiseProcessList();
 
         status = PsSetLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
 
@@ -604,6 +597,47 @@ DrvLoadEnableNotifyRoutines()
         }
 
         DEBUG_VERBOSE("Successfully enabled driver wide notify routines.");
+        return status;
+}
+
+STATIC
+NTSTATUS
+DrvLoadSetupDriverLists()
+{
+        PAGED_CODE();
+
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        status = InitialiseDriverList();
+
+        if (!NT_SUCCESS(status))
+        {
+                UnregisterImageLoadNotifyRoutine();
+                DEBUG_ERROR("InitialiseDriverList failed with status %x", status);
+                return status;
+        }
+
+        status = InitialiseThreadList();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
+                UnregisterThreadCreateNotifyRoutine();
+                UnregisterImageLoadNotifyRoutine();
+                return status;
+        }
+
+        status = InitialiseProcessList();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("InitialiseProcessList failed with status %x", status);
+                UnregisterProcessCreateNotifyRoutine();
+                UnregisterThreadCreateNotifyRoutine();
+                UnregisterImageLoadNotifyRoutine();
+                return status;
+        }
+
         return status;
 }
 
@@ -1073,6 +1107,16 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return STATUS_FAILED_DRIVER_ENTRY;
+        }
+
+        status = DrvLoadSetupDriverLists();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
+                ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
         }
 
         DEBUG_VERBOSE("Driver Entry Complete.");

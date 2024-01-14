@@ -88,13 +88,13 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         apc_state = (PKAPC_STATE)((UINT64)ThreadListEntry->thread + KTHREAD_APC_STATE_OFFSET);
 
         /*
-         * Just a sanity check even though it doesnt really make sense for internal threads of our
-         * protected process to attach..
-         *
+         * We don't care if a thread owned by our protected process is attached
+         * 
          * todo: this is filterless and will just report anything, need to have a look into what
          * processes actually attach to real games
          */
-        if (apc_state->Process == protected_process)
+        if (apc_state->Process == protected_process &&
+            ThreadListEntry->owning_process != protected_process)
         {
                 DEBUG_WARNING("Thread is attached to our protected process: %llx",
                               (UINT64)ThreadListEntry->thread);
@@ -117,5 +117,6 @@ VOID
 DetectThreadsAttachedToProtectedProcess()
 {
         PAGED_CODE();
+        DEBUG_VERBOSE("Detecting threads attached to our process...");
         EnumerateThreadListWithCallbackRoutine(DetectAttachedThreadsProcessCallback, NULL);
 }

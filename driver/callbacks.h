@@ -75,10 +75,10 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
 NTSTATUS
 EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context);
 
-VOID
+NTSTATUS
 InitialiseThreadList();
 
-VOID
+NTSTATUS
 InitialiseProcessList();
 
 VOID
@@ -121,5 +121,14 @@ InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer);
 
 VOID
 CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer);
+
+VOID
+UnregisterProcessCreateNotifyRoutine();
+
+VOID
+UnregisterImageLoadNotifyRoutine();
+
+VOID
+UnregisterThreadCreateNotifyRoutine();
 
 #endif

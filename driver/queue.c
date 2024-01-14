@@ -381,3 +381,68 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
 unlock:
         ImpKeReleaseGuardedMutex(Lock);
 }
+
+VOID
+LookasideThreadListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
+                               _Inout_ PSINGLE_LIST_ENTRY Entry,
+                               _In_ PKGUARDED_MUTEX       Lock)
+{
+        ImpKeAcquireGuardedMutex(Lock);
+
+        PTHREAD_LIST_HEAD  head  = GetThreadList();
+        PSINGLE_LIST_ENTRY entry = Head->Next;
+
+        if (!entry)
+                goto unlock;
+
+        if (entry == Entry)
+        {
+                Head->Next = entry->Next;
+                ExFreeToLookasideListEx(&head->lookaside_list, Entry);
+                goto unlock;
+        }
+
+        while (entry->Next)
+        {
+                if (entry->Next == Entry)
+                {
+                        entry->Next = Entry->Next;
+                        ExFreeToLookasideListEx(&head->lookaside_list, Entry);
+                        goto unlock;
+                }
+
+                entry = entry->Next;
+        }
+
+unlock:
+        ImpKeReleaseGuardedMutex(Lock);
+}
+
+BOOLEAN
+LookasideListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
+                            _In_ PKGUARDED_MUTEX       Lock,
+                            _In_opt_ PVOID             CallbackRoutine)
+{
+        ImpKeAcquireGuardedMutex(Lock);
+
+        PTHREAD_LIST_HEAD head   = GetThreadList();
+        BOOLEAN           result = FALSE;
+
+        if (Head->Next)
+        {
+                PSINGLE_LIST_ENTRY entry = Head->Next;
+
+                if (CallbackRoutine)
+                {
+                        VOID (*callback_function_ptr)(PVOID) = CallbackRoutine;
+                        (*callback_function_ptr)(entry);
+                }
+
+                Head->Next = Head->Next->Next;
+                ExFreeToLookasideListEx(&head->lookaside_list, entry);
+                result = TRUE;
+        }
+
+        ImpKeReleaseGuardedMutex(Lock);
+        return result;
+}

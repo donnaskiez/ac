@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <Configurations>Debug;Release;Release - No Server</Configurations>
+    <Configurations>Debug;Release;Release - No Server;Release - No Server - Win11</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

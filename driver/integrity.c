@@ -1583,6 +1583,13 @@ ValidateOurDriverImage()
                 goto end;
         }
 
+        if (entry->hashed == FALSE)
+        {
+                DEBUG_WARNING("Our module has not been hashed, returning.");
+                status = STATUS_HASH_NOT_PRESENT;
+                goto end;
+        }
+
         status = HashModule(module_info, memory_hash);
 
         if (!NT_SUCCESS(status))

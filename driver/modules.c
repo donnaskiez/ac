@@ -1495,9 +1495,9 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
                                 report->kthread_address = PsGetCurrentThread();
                                 report->invalid_rip     = Context[core].stack_frame[frame];
 
-                                RtlCopyMemory(report->driver,
-                                              (UINT64)Context[core].stack_frame[frame] - 0x500,
-                                              APC_STACKWALK_BUFFER_SIZE);
+                                //RtlCopyMemory(report->driver,
+                                //              (UINT64)Context[core].stack_frame[frame] - 0x50,
+                                //              APC_STACKWALK_BUFFER_SIZE);
 
                                 InsertReportToQueue(report);
                         }

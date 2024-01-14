@@ -91,4 +91,14 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
 VOID
 FreeGlobalReportQueueObjects();
 
+VOID
+LookasideThreadListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
+                               _Inout_ PSINGLE_LIST_ENTRY Entry,
+                               _In_ PKGUARDED_MUTEX       Lock);
+
+BOOLEAN
+LookasideListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
+                            _In_ PKGUARDED_MUTEX       Lock,
+                            _In_opt_ PVOID             CallbackRoutine);
+
 #endif

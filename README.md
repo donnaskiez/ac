@@ -78,7 +78,7 @@ bcdedit /debug on
 
 1. Clone the project i.e `git clone git@github.com:donnaskiez/ac.git`
 2. Open the project in visual studio
-3. Select `Release - No Server`
+3. Select `Release - No Server - Win10` or `Release - No Server - Win11` depending on the version of Windows you will be running the driver on.
 4. Build the project in visual studio, if you experience any build issues - check the drivers project settings are the following:
 	- `Inf2Cat -> General -> Use Local Time` to `Yes`
 	- `C/C++ -> Treat Warnings As Errors` to `No`

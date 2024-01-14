@@ -43,16 +43,41 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 }
 
 VOID
-CleanupProcessListOnDriverUnload()
+UnregisterProcessCreateNotifyRoutine()
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
         InterlockedExchange(&list->active, FALSE);
         ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
+}
 
+VOID
+UnregisterImageLoadNotifyRoutine()
+{
+        PDRIVER_LIST_HEAD list = GetDriverList();
+        InterlockedExchange(&list->active, FALSE);
+        PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
+}
+
+VOID
+UnregisterThreadCreateNotifyRoutine()
+{
+        PTHREAD_LIST_HEAD list = GetThreadList();
+        InterlockedExchange(&list->active, FALSE);
+        ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
+}
+
+VOID
+CleanupProcessListOnDriverUnload()
+{
+        PPROCESS_LIST_HEAD list = GetProcessList();
         for (;;)
         {
-                if (!ListFreeFirstEntry(&list->start, &list->lock, CleanupProcessListFreeCallback))
+                if (!LookasideListFreeFirstEntry(
+                        &list->start, &list->lock, CleanupProcessListFreeCallback))
+                {
+                        ExDeleteLookasideListEx(&list->lookaside_list);
                         return;
+                }
         }
 }
 
@@ -60,13 +85,14 @@ VOID
 CleanupThreadListOnDriverUnload()
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
-        InterlockedExchange(&list->active, FALSE);
-        ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
-
         for (;;)
         {
-                if (!ListFreeFirstEntry(&list->start, &list->lock, CleanupThreadListFreeCallback))
+                if (!LookasideListFreeFirstEntry(
+                        &list->start, &list->lock, CleanupThreadListFreeCallback))
+                {
+                        ExDeleteLookasideListEx(&list->lookaside_list);
                         return;
+                }
         }
 }
 
@@ -74,9 +100,6 @@ VOID
 CleanupDriverListOnDriverUnload()
 {
         PDRIVER_LIST_HEAD list = GetDriverList();
-        InterlockedExchange(&list->active, FALSE);
-        PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
-
         for (;;)
         {
                 if (!ListFreeFirstEntry(&list->start, &list->lock, NULL))
@@ -225,10 +248,11 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
                                _In_ PIMAGE_INFO         ImageInfo)
 {
-        NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-        PDRIVER_LIST_ENTRY       entry  = NULL;
-        RTL_MODULE_EXTENDED_INFO module = {0};
-        PDRIVER_LIST_HEAD        list   = GetDriverList();
+        NTSTATUS                 status    = STATUS_UNSUCCESSFUL;
+        PDRIVER_LIST_ENTRY       entry     = NULL;
+        RTL_MODULE_EXTENDED_INFO module    = {0};
+        PDRIVER_LIST_HEAD        list      = GetDriverList();
+        ANSI_STRING              ansi_path = {0};
 
         if (InterlockedExchange(&list->active, list->active) == FALSE)
                 return;
@@ -257,6 +281,14 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         module.ImageBase = ImageInfo->ImageBase;
         module.ImageSize = ImageInfo->ImageSize;
 
+        // if (FullImageName)
+        //{
+        //         status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
+
+        //        if (!NT_SUCCESS(status))
+        //                DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
+        //}
+
         status = HashModule(&module, &entry->text_hash);
 
         if (status == STATUS_INVALID_IMAGE_WIN_32)
@@ -273,20 +305,56 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         ListInsert(&list->start, entry, &list->lock);
 }
 
-VOID
+NTSTATUS
 InitialiseProcessList()
 {
-        PPROCESS_LIST_HEAD list = GetProcessList();
+        NTSTATUS           status = STATUS_UNSUCCESSFUL;
+        PPROCESS_LIST_HEAD list   = GetProcessList();
+
+        status = ExInitializeLookasideListEx(&list->lookaside_list,
+                                             NULL,
+                                             NULL,
+                                             POOL_NX_ALLOCATION,
+                                             0,
+                                             sizeof(PROCESS_LIST_ENTRY),
+                                             POOL_TAG_PROCESS_LIST,
+                                             0);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x", status);
+                return status;
+        }
+
         InterlockedExchange(&list->active, TRUE);
         ListInit(&list->start, &list->lock);
+        return status;
 }
 
-VOID
+NTSTATUS
 InitialiseThreadList()
 {
-        PTHREAD_LIST_HEAD list = GetThreadList();
+        NTSTATUS          status = STATUS_UNSUCCESSFUL;
+        PTHREAD_LIST_HEAD list   = GetThreadList();
+
+        status = ExInitializeLookasideListEx(&list->lookaside_list,
+                                             NULL,
+                                             NULL,
+                                             POOL_NX_ALLOCATION,
+                                             0,
+                                             sizeof(THREAD_LIST_ENTRY),
+                                             POOL_TAG_PROCESS_LIST,
+                                             0);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x", status);
+                return status;
+        }
+
         InterlockedExchange(&list->active, TRUE);
         ListInit(&list->start, &list->lock);
+        return status;
 }
 
 VOID
@@ -354,8 +422,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
 
         if (Create)
         {
-                entry = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(PROCESS_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+                entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
                 if (!entry)
                         return;
@@ -378,7 +445,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 ImpObDereferenceObject(entry->parent);
                 ImpObDereferenceObject(entry->process);
 
-                ListRemoveEntry(&list->start, entry, &list->lock);
+                LookasideThreadListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -391,7 +458,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
         PTHREAD_LIST_HEAD  list    = GetThreadList();
 
         /* ensure we don't insert new entries if we are unloading */
-        if (InterlockedExchange(&list->active, list->active) == FALSE)
+        if (!list->active)
                 return;
 
         ImpPsLookupThreadByThreadId(ThreadId, &thread);
@@ -402,8 +469,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
 
         if (Create)
         {
-                entry = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(THREAD_LIST_ENTRY), POOL_TAG_THREAD_LIST);
+                entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
                 if (!entry)
                         return;
@@ -428,7 +494,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
                 ImpObDereferenceObject(entry->thread);
                 ImpObDereferenceObject(entry->owning_process);
 
-                ListRemoveEntry(&list->start, entry, &list->lock);
+                LookasideThreadListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -774,7 +840,7 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Cont
         PDRIVER_LIST_HEAD list   = GetDriverList();
 
         if (!list->active)
-                return;
+                goto end;
 
         DEBUG_VERBOSE("Integrity check timer callback invoked.");
 
@@ -788,7 +854,8 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Cont
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("ValidateOurDriverImage failed with status %x", status);
 
-        InterlockedDecrement(&timer->state);
+end:
+        InterlockedExchange(&timer->state, FALSE);
 }
 
 /*
@@ -808,7 +875,7 @@ TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
 
         /* we queue a work item because DPCs run at IRQL = DISPATCH_LEVEL and we need certain
          * routines which cannot be run at an IRQL this high.*/
-        InterlockedIncrement(&timer->state);
+        InterlockedExchange(&timer->state, TRUE);
         IoQueueWorkItem(timer->work_item, TimerObjectWorkItemRoutine, BackgroundWorkQueue, timer);
 }
 
