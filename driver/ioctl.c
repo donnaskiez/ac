@@ -430,15 +430,8 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_REQUEST_HARDWARE_INFORMATION Received");
 
-                PSYSTEM_INFORMATION system_information = NULL;
-
-                GetDriverConfigSystemInformation(&system_information);
-
-                if (!system_information)
-                {
-                        DEBUG_ERROR("GetDriverConfigSystemInformation failed with no status.");
-                        goto end;
-                }
+                PSYSTEM_INFORMATION system_information =
+                    GetDriverConfigSystemInformation(&system_information);
 
                 status = ValidateIrpOutputBuffer(Irp, sizeof(SYSTEM_INFORMATION));
 
