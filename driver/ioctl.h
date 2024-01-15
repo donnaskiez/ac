@@ -12,15 +12,14 @@ typedef struct _DRIVER_INITIATION_INFORMATION
 
 } DRIVER_INITIATION_INFORMATION, *PDRIVER_INITIATION_INFORMATION;
 
-//_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
 DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 
-_Dispatch_type_(IRP_MJ_CLOSE) NTSTATUS
-    DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
+NTSTATUS
+DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 
-_Dispatch_type_(IRP_MJ_CREATE) NTSTATUS
-    DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
+NTSTATUS
+DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 
 NTSTATUS
 ValidateIrpOutputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize);

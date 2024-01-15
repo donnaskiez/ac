@@ -29,7 +29,7 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX
 {
         UINT64  thread;
         BOOLEAN thread_found_in_pspcidtable;
-        //BOOLEAN thread_found_in_kthreadlist;
+        // BOOLEAN thread_found_in_kthreadlist;
         BOOLEAN finished;
 
 } KPRCB_THREAD_VALIDATION_CTX, *PKPRCB_THREAD_VALIDATION_CTX;

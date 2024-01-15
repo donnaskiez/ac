@@ -251,6 +251,7 @@
     <ClCompile Include="imports.c" />
     <ClCompile Include="integrity.c" />
     <ClCompile Include="ioctl.c" />
+    <ClCompile Include="list.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
@@ -266,6 +267,7 @@
     <ClInclude Include="imports.h" />
     <ClInclude Include="integrity.h" />
     <ClInclude Include="ioctl.h" />
+    <ClInclude Include="list.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />

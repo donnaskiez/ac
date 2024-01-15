@@ -7,6 +7,7 @@
 #include "thread.h"
 #include "modules.h"
 #include "imports.h"
+#include "list.h"
 
 STATIC
 BOOLEAN
@@ -66,6 +67,10 @@ UnregisterThreadCreateNotifyRoutine()
         ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 }
 
+/*
+ * While ExDeleteLookasideListEx already frees each item, we wanna allow ourselves to reduce the
+ * reference count to any objects we are referencing.
+ */
 VOID
 CleanupProcessListOnDriverUnload()
 {
@@ -108,7 +113,8 @@ CleanupDriverListOnDriverUnload()
 }
 
 VOID
-EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
+EnumerateThreadListWithCallbackRoutine(_In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine,
+                                       _In_opt_ PVOID                   Context)
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -120,8 +126,7 @@ EnumerateThreadListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOI
 
         while (entry)
         {
-                VOID (*callback_function_ptr)(PTHREAD_LIST_ENTRY, PVOID) = CallbackRoutine;
-                (*callback_function_ptr)(entry, Context);
+                CallbackRoutine(entry, Context);
                 entry = entry->list.Next;
         }
 
@@ -130,7 +135,8 @@ unlock:
 }
 
 VOID
-EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
+EnumerateProcessListWithCallbackRoutine(_In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine,
+                                        _In_opt_ PVOID                    Context)
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -142,8 +148,7 @@ EnumerateProcessListWithCallbackRoutine(_In_ PVOID CallbackRoutine, _In_opt_ PVO
 
         while (entry)
         {
-                VOID (*callback_function_ptr)(PPROCESS_LIST_ENTRY, PVOID) = CallbackRoutine;
-                (*callback_function_ptr)(entry, Context);
+                CallbackRoutine(entry, Context);
                 entry = entry->list.Next;
         }
 
@@ -411,7 +416,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
         PKPROCESS           process = NULL;
         PPROCESS_LIST_HEAD  list    = GetProcessList();
 
-        if (InterlockedExchange(&list->active, list->active) == FALSE)
+        if (!list->active)
                 return;
 
         ImpPsLookupProcessByProcessId(ParentId, &parent);
@@ -445,7 +450,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 ImpObDereferenceObject(entry->parent);
                 ImpObDereferenceObject(entry->process);
 
-                LookasideThreadListRemoveEntry(&list->start, entry, &list->lock);
+                LookasideListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -494,7 +499,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
                 ImpObDereferenceObject(entry->thread);
                 ImpObDereferenceObject(entry->owning_process);
 
-                LookasideThreadListRemoveEntry(&list->start, entry, &list->lock);
+                LookasideListRemoveEntry(&list->start, entry, &list->lock);
         }
 }
 
@@ -503,10 +508,12 @@ ObPostOpCallbackRoutine(_In_ PVOID                          RegistrationContext,
                         _In_ POB_POST_OPERATION_INFORMATION OperationInformation)
 {
         PAGED_CODE();
-
         UNREFERENCED_PARAMETER(RegistrationContext);
         UNREFERENCED_PARAMETER(OperationInformation);
 }
+
+// https://www.sysnative.com/forums/threads/object-headers-handles-and-types.34987/
+#define GET_OBJECT_HEADER_FROM_HANDLE(x) ((x << 4) | 0xffff000000000000);
 
 OB_PREOP_CALLBACK_STATUS
 ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
@@ -641,6 +648,9 @@ ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable, IN PHANDLE_TABLE_ENTRY Ha
         /* Unblock any waiters */
         ImpExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
 }
+
+static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING(L"Process");
+static UNICODE_STRING OBJECT_TYPE_THREAD  = RTL_CONSTANT_STRING(L"Thread");
 
 STATIC
 BOOLEAN
@@ -934,4 +944,62 @@ CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer)
         ExFreePoolWithTag(Timer->dpc, POOL_TAG_DPC);
 
         DEBUG_VERBOSE("Freed timer objects.");
+}
+
+VOID
+UnregisterProcessObCallbacks()
+{
+        PAGED_CODE();
+        PPROCESS_CONFIG config = GetProcessConfig();
+        AcquireDriverConfigLock();
+
+        if (config->callback_info.registration_handle)
+        {
+                ImpObUnRegisterCallbacks(config->callback_info.registration_handle);
+                config->callback_info.registration_handle = NULL;
+        }
+
+        ReleaseDriverConfigLock();
+}
+
+NTSTATUS
+RegisterProcessObCallbacks()
+{
+        PAGED_CODE();
+
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        PPROCESS_CONFIG config = GetProcessConfig();
+
+        DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
+        AcquireDriverConfigLock();
+
+        OB_CALLBACK_REGISTRATION          callback_registration  = {0};
+        OB_OPERATION_REGISTRATION         operation_registration = {0};
+        PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine         = {0};
+
+        operation_registration.ObjectType = PsProcessType;
+        operation_registration.Operations |= OB_OPERATION_HANDLE_CREATE;
+        operation_registration.Operations |= OB_OPERATION_HANDLE_DUPLICATE;
+        operation_registration.PreOperation  = ObPreOpCallbackRoutine;
+        operation_registration.PostOperation = ObPostOpCallbackRoutine;
+
+        callback_registration.Version                    = OB_FLT_REGISTRATION_VERSION;
+        callback_registration.OperationRegistration      = &operation_registration;
+        callback_registration.OperationRegistrationCount = 1;
+        callback_registration.RegistrationContext        = NULL;
+
+        status = ImpObRegisterCallbacks(&callback_registration,
+                                        &config->callback_info.registration_handle);
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
+
+        ReleaseDriverConfigLock();
+        return status;
+}
+
+VOID
+InitialiseObCallbacksConfiguration(_Out_ PPROCESS_CONFIG ProcessConfig)
+{
+        ImpKeInitializeGuardedMutex(&ProcessConfig->callback_info.lock);
 }

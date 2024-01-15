@@ -1,11 +1,10 @@
 #ifndef DRIVER_H
 #define DRIVER_H
 
-#include <ntifs.h>
-#include <wdftypes.h>
+#include "common.h"
+
 #include <wdf.h>
 
-#include "common.h"
 #include "queue.h"
 #include "modules.h"
 #include "integrity.h"
@@ -28,12 +27,6 @@ QueryActiveApcContextsForCompletion();
 
 VOID
 TerminateProtectedProcessOnViolation();
-
-NTSTATUS
-ProcLoadEnableObCallbacks();
-
-VOID
-ProcCloseDisableObCallbacks();
 
 VOID
 ProcCloseClearProcessConfiguration();
@@ -94,5 +87,8 @@ ReleaseDriverConfigLock();
 
 BOOLEAN
 IsDriverUnloading();
+
+PPROCESS_CONFIG
+GetProcessConfig();
 
 #endif

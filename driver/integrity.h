@@ -19,15 +19,6 @@ typedef struct _SYSTEM_MODULE_INFORMATION
 
 } SYSTEM_MODULE_INFORMATION, *PSYSTEM_MODULE_INFORMATION;
 
-// #pragma pack(1)
-// typedef struct VERIFICATION_CONTEXT
-//{
-//         // PSYSTEM_MODULE_INFORMATION module_info;
-//
-//
-// } VERIFICATION_CONTEXT, *PVERIFICATION_CONTEXT;
-// #pragma pack()
-
 #define VERIFICATION_THREAD_COUNT 4
 
 typedef struct _SYS_MODULE_VAL_CONTEXT
@@ -100,11 +91,6 @@ ScanForSignature(_In_ PVOID  BaseAddress,
                  _In_ SIZE_T MaxLength,
                  _In_ LPCSTR Signature,
                  _In_ SIZE_T SignatureLength);
-
-// NTSTATUS
-// DetermineIfTestSigningIsEnabled(
-//	_Inout_ PBOOLEAN Result
-//);
 
 NTSTATUS
 ValidateNtoskrnl();

@@ -9,6 +9,7 @@
 #include "queue.h"
 #include "hv.h"
 #include "imports.h"
+#include "list.h"
 
 STATIC
 NTSTATUS
@@ -192,7 +193,6 @@ ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize)
         return STATUS_SUCCESS;
 }
 
-//_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
 NTSTATUS
 DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
@@ -285,7 +285,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                         goto end;
                 }
 
-                status = ProcLoadEnableObCallbacks();
+                status = RegisterProcessObCallbacks();
 
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("EnableObCallbacks failed with status %x", status);
@@ -381,7 +381,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION Received");
 
                 ProcCloseClearProcessConfiguration();
-                ProcCloseDisableObCallbacks();
+                UnregisterProcessObCallbacks();
 
                 break;
 
@@ -538,7 +538,7 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         /* we also lose reports here, so sohuld pass em into the irp before freeing */
         FreeGlobalReportQueueObjects();
         ProcCloseClearProcessConfiguration();
-        ProcCloseDisableObCallbacks();
+        UnregisterProcessObCallbacks();
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;

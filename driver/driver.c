@@ -81,10 +81,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, GetDriverConfigSystemInformation)
 #        pragma alloc_text(PAGE, RegistryPathQueryCallbackRoutine)
 #        pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
-#        pragma alloc_text(PAGE, ProcCloseDisableObCallbacks)
-#        pragma alloc_text(PAGE, ProcCloseClearProcessConfiguration)
-#        pragma alloc_text(PAGE, ProcLoadEnableObCallbacks)
-#        pragma alloc_text(PAGE, ProcLoadInitialiseProcessConfig)
 #        pragma alloc_text(PAGE, DrvUnloadUnregisterObCallbacks)
 #        pragma alloc_text(PAGE, DrvUnloadFreeConfigStrings)
 #        pragma alloc_text(PAGE, DrvUnloadFreeSymbolicLink)
@@ -93,27 +89,10 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #        pragma alloc_text(PAGE, DrvLoadInitialiseObCbConfig)
-// #        pragma alloc_text(PAGE, DrvLoadInitialiseReportQueue)
 #        pragma alloc_text(PAGE, DrvLoadInitialiseProcessConfig)
 #        pragma alloc_text(PAGE, DrvLoadInitialiseDriverConfig)
 #        pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
 #endif
-
-/*
- * This structure can change at anytime based on whether
- * the target process to protect is open / closed / changes etc.
- */
-typedef struct _PROCESS_CONFIG
-{
-        BOOLEAN             initialised;
-        ULONG               um_handle;
-        PVOID               km_handle;
-        PEPROCESS           process;
-        OB_CALLBACKS_CONFIG callback_info;
-        UINT16              cookie;
-        KGUARDED_MUTEX      lock;
-
-} PROCESS_CONFIG, *PPROCESS_CONFIG;
 
 typedef struct _DRIVER_CONFIG
 {
@@ -175,6 +154,12 @@ IsDriverUnloading()
 {
         return InterlockedExchange(&g_DriverConfig->unload_in_progress,
                                    g_DriverConfig->unload_in_progress);
+}
+
+PPROCESS_CONFIG
+GetProcessConfig()
+{
+        return &g_DriverConfig->process_config;
 }
 
 VOID
@@ -310,22 +295,6 @@ GetProtectedProcessId(_Out_ PLONG ProcessId)
 }
 
 VOID
-ProcCloseDisableObCallbacks()
-{
-        PAGED_CODE();
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.callback_info.lock);
-
-        if (g_DriverConfig->process_config.callback_info.registration_handle)
-        {
-                ImpObUnRegisterCallbacks(
-                    g_DriverConfig->process_config.callback_info.registration_handle);
-                g_DriverConfig->process_config.callback_info.registration_handle = NULL;
-        }
-
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.callback_info.lock);
-}
-
-VOID
 ProcCloseClearProcessConfiguration()
 {
         PAGED_CODE();
@@ -337,50 +306,6 @@ ProcCloseClearProcessConfiguration()
         g_DriverConfig->process_config.process     = NULL;
         g_DriverConfig->process_config.initialised = FALSE;
         ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-// VOID
-// ImageLoadSetProcessId(_In_ HANDLE ProcessId)
-//{
-//         ImpKeAcquireGuardedMutex(&process_config.lock);
-//         process_config.km_handle = (ULONG)ProcessId;
-//         ImpKeReleaseGuardedMutex(&process_config.lock);
-// }
-
-NTSTATUS
-ProcLoadEnableObCallbacks()
-{
-        PAGED_CODE();
-
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-
-        OB_CALLBACK_REGISTRATION          callback_registration  = {0};
-        OB_OPERATION_REGISTRATION         operation_registration = {0};
-        PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine         = {0};
-
-        operation_registration.ObjectType = PsProcessType;
-        operation_registration.Operations |= OB_OPERATION_HANDLE_CREATE;
-        operation_registration.Operations |= OB_OPERATION_HANDLE_DUPLICATE;
-        operation_registration.PreOperation  = ObPreOpCallbackRoutine;
-        operation_registration.PostOperation = ObPostOpCallbackRoutine;
-
-        callback_registration.Version                    = OB_FLT_REGISTRATION_VERSION;
-        callback_registration.OperationRegistration      = &operation_registration;
-        callback_registration.OperationRegistrationCount = 1;
-        callback_registration.RegistrationContext        = NULL;
-
-        status = ImpObRegisterCallbacks(
-            &callback_registration,
-            &g_DriverConfig->process_config.callback_info.registration_handle);
-
-        if (!NT_SUCCESS(status))
-                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
-
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-        return status;
 }
 
 NTSTATUS
@@ -438,7 +363,7 @@ VOID
 DrvUnloadUnregisterObCallbacks()
 {
         PAGED_CODE();
-        ProcCloseDisableObCallbacks();
+        UnregisterProcessObCallbacks();
 }
 
 STATIC
@@ -642,14 +567,6 @@ DrvLoadSetupDriverLists()
 }
 
 STATIC
-NTSTATUS
-DrvLoadInitialiseObCbConfig()
-{
-        PAGED_CODE();
-        ImpKeInitializeGuardedMutex(&g_DriverConfig->process_config.callback_info.lock);
-}
-
-STATIC
 VOID
 DrvLoadInitialiseReportQueue()
 {
@@ -663,6 +580,14 @@ DrvLoadInitialiseProcessConfig()
 {
         PAGED_CODE();
         ImpKeInitializeGuardedMutex(&g_DriverConfig->process_config.lock);
+}
+
+STATIC
+NTSTATUS
+DrvLoadInitialiseObCbConfig()
+{
+        PAGED_CODE();
+        InitialiseObCallbacksConfiguration(&g_DriverConfig->process_config);
 }
 
 /*
