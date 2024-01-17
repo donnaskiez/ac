@@ -996,6 +996,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         RtlCopyUnicodeString(&g_DriverConfig->device_name, &device_name);
         RtlCopyUnicodeString(&g_DriverConfig->device_symbolic_link, &symbolic_link);
 
+        /* this needs to be restructured since we leak device object */
         status = ResolveDynamicImports(DriverObject);
 
         if (!NT_SUCCESS(status))
@@ -1020,6 +1021,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
+                DrvUnloadFreeTimerObject();
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
@@ -1029,8 +1031,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         {
                 DEBUG_ERROR("EnablenotifyRoutines failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
+                DrvUnloadFreeTimerObject();
                 ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
+                DrvUnloadFreeImportsStructure();
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
@@ -1040,8 +1044,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         {
                 DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
+                DrvUnloadFreeTimerObject();
                 ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
+                DrvUnloadFreeImportsStructure();
         }
 
         DEBUG_VERBOSE("Driver Entry Complete.");
