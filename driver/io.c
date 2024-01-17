@@ -1,4 +1,4 @@
-#include "ioctl.h"
+#include "io.h"
 
 #include "modules.h"
 #include "driver.h"
@@ -63,46 +63,76 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
 
 #define APC_OPERATION_STACKWALK 0x1
 
+/*
+ * Basic cancel-safe IRP queue implementation. Stores pending IRPs in a list, allowing us to dequeue
+ * entries to send data back to user mode without being invoked by the user mode module via an io
+ * completion port.
+ */
 VOID
-IrpQueueMarkIrpCompleteCallback(_In_ PIRP_QUEUE_ENTRY Entry)
+IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
-        ImpIofCompleteRequest(Entry->irp, IO_NO_INCREMENT);
+        KeAcquireGuardedMutex(&GetIrpQueueHead()->lock);
 }
 
 VOID
-IrpQueueDequeue(PVOID Callback)
+IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
+{
+        KeReleaseGuardedMutex(&GetIrpQueueHead()->lock);
+}
+
+PIRP
+IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
         PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-        ListFreeFirstEntry(&queue->start, &queue->lock, Callback);
+        return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
 }
 
 VOID
+IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
+{
+        UNREFERENCED_PARAMETER(Csq);
+        GetIrpQueueHead()->count--;
+        RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
+}
+
+VOID
+IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
+{
+        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+        queue->count++;
+        InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
+}
+
+VOID
+IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
+{
+        UNREFERENCED_PARAMETER(Csq);
+        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Status = 0;
+        ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
+}
+
+NTSTATUS
 IrpQueueInitialise()
 {
-        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-        queue->count          = 0;
-        ImpKeInitializeGuardedMutex(&queue->lock);
-        ListInit(&queue->start, &queue->lock);
-}
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
 
-VOID
-IrpQueueInsert(PIRP Irp)
-{
-        PIRP_QUEUE_HEAD  queue = GetIrpQueueHead();
-        PIRP_QUEUE_ENTRY entry = NULL;
+        KeInitializeGuardedMutex(&queue->lock);
+        InitializeListHead(&queue->queue);
 
-        entry = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(IRP_QUEUE_ENTRY), POOL_TAG_IRP_QUEUE);
+        status = IoCsqInitialize(&queue->csq,
+                                 IrpQueueInsert,
+                                 IrpQueueRemove,
+                                 IrpQueuePeekNextEntry,
+                                 IrpQueueAcquireLock,
+                                 IrpQueueReleaseLock,
+                                 IrpQueueCompleteCancelledIrp);
 
-        if (!entry)
-                return;
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("IoCsqInitialize failed with status %x", status);
 
-        Irp->IoStatus.Status = STATUS_PENDING;
-        IoMarkIrpPending(Irp);
-        entry->irp = Irp;
-        queue->count++;
-
-        ListInsert(&queue->start, &entry->entry, &queue->lock);
-        IrpQueueDequeue(IrpQueueMarkIrpCompleteCallback);
+        return status;
 }
 
 STATIC
@@ -500,10 +530,12 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
-                IrpQueueInsert(Irp);
+                PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+
+                IoCsqInsertIrp(&queue->csq, Irp, NULL);
 
                 /* we dont want to complete the request */
-                return STATUS_SUCCESS;
+                return STATUS_PENDING;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

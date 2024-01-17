@@ -1,7 +1,7 @@
 #include "driver.h"
 
 #include "common.h"
-#include "ioctl.h"
+#include "io.h"
 #include "callbacks.h"
 
 #include "hv.h"
@@ -952,6 +952,15 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("InitialiseTimerObject failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
+                return status;
+        }
+
+        status = IrpQueueInitialise();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("IrpQueueInitialise failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 return status;
         }

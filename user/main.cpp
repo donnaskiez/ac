@@ -73,7 +73,16 @@ Init(HINSTANCE hinstDLL)
          * have, such as the process module validation. At the end of the day an anti cheat that
          * imposes a significant performance pentalty on the game its protecting is useless.
          */
-        
+
+        while (true)
+        {
+                for (int i = 0; i < 10; i++)
+                {
+                        kmanager.InsertIrpIntoIrpQueue();
+                        Sleep(1000);
+                }
+        }
+
         srand(time(NULL));
 
         while (!GetAsyncKeyState(VK_DELETE))

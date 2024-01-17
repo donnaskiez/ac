@@ -2,7 +2,7 @@
 
 #include "callbacks.h"
 #include "driver.h"
-#include "ioctl.h"
+#include "io.h"
 #include "ia32.h"
 #include "imports.h"
 #include "apc.h"

@@ -171,9 +171,10 @@ typedef struct _OB_CALLBACKS_CONFIG
 
 typedef struct _IRP_QUEUE_HEAD
 {
-        SINGLE_LIST_ENTRY start;
-        volatile INT      count;
-        KGUARDED_MUTEX    lock;
+        LIST_ENTRY     queue;
+        volatile INT   count;
+        IO_CSQ         csq;
+        KGUARDED_MUTEX lock;
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 

@@ -4,7 +4,7 @@
 #include "driver.h"
 #include "modules.h"
 #include "callbacks.h"
-#include "ioctl.h"
+#include "io.h"
 #include "imports.h"
 
 #include <bcrypt.h>

@@ -256,6 +256,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="km\io.cpp" />
     <ClCompile Include="pipe.cpp" />
     <ClCompile Include="km\driver.cpp" />
     <ClCompile Include="km\kmanager.cpp" />
@@ -267,6 +268,7 @@
     <ClCompile Include="client.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="km\io.h" />
     <ClInclude Include="pipe.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="km\driver.h" />

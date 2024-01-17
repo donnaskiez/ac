@@ -1,5 +1,5 @@
-#ifndef IOCTL_H
-#define IOCTL_H
+#ifndef IO_H
+#define IO_H
 
 #include <ntifs.h>
 #include <wdftypes.h>
@@ -27,7 +27,7 @@ ValidateIrpOutputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize);
 NTSTATUS
 ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize);
 
-VOID
+NTSTATUS
 IrpQueueInitialise();
 
 #endif

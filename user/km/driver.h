@@ -5,6 +5,7 @@
 
 #include "../threadpool.h"
 #include "../client.h"
+#include "io.h"
 
 #define IOCTL_RUN_NMI_CALLBACKS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20001, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -57,15 +58,15 @@ enum APC_OPERATION_IDS
 
 class Driver
 {
-        HANDLE                          driver_handle;
-        LPCWSTR                         driver_name;
-        std::shared_ptr<global::Client> report_interface;
+        HANDLE                                       driver_handle;
+        LPCWSTR                                      driver_name;
+        std::shared_ptr<global::Client>              report_interface;
+        std::unique_ptr<kernelmode::completion_port> io_port;
 
         ULONG RequestTotalModuleSize();
         VOID  NotifyDriverOnProcessLaunch();
         VOID  CheckDriverHeartbeat();
         VOID  NotifyDriverOnProcessTermination();
-        // VOID GetKernelStructureOffsets();
 
         template <typename T>
         VOID ReportTypeFromReportQueue(CONST PVOID Buffer, PSIZE_T Offset, PVOID Report)

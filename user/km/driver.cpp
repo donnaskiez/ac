@@ -30,6 +30,7 @@ kernelmode::Driver::Driver(LPCWSTR DriverName, std::shared_ptr<global::Client> R
                 return;
         }
 
+        this->io_port = std::make_unique<completion_port>(this->driver_handle);
         this->NotifyDriverOnProcessLaunch();
 }
 
@@ -656,12 +657,19 @@ kernelmode::Driver::InitiateApcOperation(INT OperationId)
 VOID
 kernelmode::Driver::SendIrpForDriverToStore()
 {
-        BOOLEAN status = FALSE;
+        DWORD       status = 0;
+        OVERLAPPED* event  = io_port->get_event_object();
+
+        if (!event)
+        {
+                LOG_ERROR("failed to get event object");
+                return;
+        }
 
         status = DeviceIoControl(
-            this->driver_handle, IOCTL_INSERT_IRP_INTO_QUEUE, NULL, NULL, NULL, NULL, NULL, NULL);
+            this->driver_handle, IOCTL_INSERT_IRP_INTO_QUEUE, NULL, NULL, NULL, NULL, NULL, event);
 
-        if (status == NULL)
+        if (status != ERROR_IO_PENDING && status != FALSE)
                 LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
 }
 
