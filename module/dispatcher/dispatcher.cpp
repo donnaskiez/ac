@@ -33,6 +33,7 @@ dispatcher::dispatcher::run()
                 case 9: k_interface.perform_dpc_stackwalk(); break;
                 case 10: k_interface.validate_system_modules(); break;
                 }
+                k_interface.query_deferred_reports();
                 std::this_thread::sleep_for(std::chrono::seconds(10));
         }
 }

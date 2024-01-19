@@ -65,6 +65,8 @@ kernel_interface::kernel_interface::run_completion_port()
         }
 }
 
+
+
 void
 kernel_interface::kernel_interface::initiate_completion_port()
 {
@@ -83,7 +85,7 @@ kernel_interface::kernel_interface::initiate_completion_port()
                 return;
         }
 
-        for (int index = 0; index < 20; index++)
+        for (int index = 0; index < 10; index++)
         {
                 // lets initially queue 20 irps
                 send_pending_irp();
@@ -381,4 +383,15 @@ kernel_interface::kernel_interface::send_pending_irp()
 
         if (status != ERROR_IO_PENDING && status != FALSE)
                 LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
+}
+
+void
+kernel_interface::kernel_interface::query_deferred_reports()
+{
+        for (int i = 0; i < 10; i++)
+        {
+                void* buffer = malloc(1000);
+                generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer, 1000, nullptr);
+                free(buffer);
+        }
 }

@@ -60,6 +60,8 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INSERT_IRP_INTO_QUEUE \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_QUERY_DEFERRED_REPORTS \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -116,58 +118,52 @@ IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
         return RemoveHeadList(&Queue->reports.head);
 }
 
-VOID
+NTSTATUS
 IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
-        // todo validate buffer
+        NTSTATUS status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
+
+        if (!NT_SUCCESS(status))
+                return status;
+
         RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
         Irp->IoStatus.Status      = STATUS_SUCCESS;
         Irp->IoStatus.Information = Report->buffer_size;
         IofCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
 }
 
 NTSTATUS
-IrpQueueQueryPendingReports()
+IrpQueueQueryPendingReports(_In_ PIRP Irp)
 {
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         PDEFERRED_REPORT report = NULL;
-        PIRP             irp    = NULL;
+        NTSTATUS         status = STATUS_UNSUCCESSFUL;
 
         if (IrpQueueIsThereDeferredReport(queue))
         {
                 DEBUG_VERBOSE("Finishing deferred report.");
-                irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
-
-                if (!irp)
-                        return STATUS_PENDING;
-
                 KeAcquireGuardedMutex(&queue->reports.lock);
                 report = IrpQueueRemoveDeferredReport(queue);
-                IrpQueueCompleteDeferredReport(report, irp);
+
+                status = IrpQueueCompleteDeferredReport(report, Irp);
+
+                if (!NT_SUCCESS(status))
+                        return status;
+
                 queue->reports.count--;
                 KeReleaseGuardedMutex(&queue->reports.lock);
-                return STATUS_SUCCESS;
+                return status;
         }
-
-        return STATUS_PENDING;
+        return status;
 }
 
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
+        DEBUG_VERBOSE("inserting IRP");
         PDEFERRED_REPORT report = NULL;
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
-
-        DEBUG_VERBOSE("inserting IRP");
-
-        if (queue->count > 100)
-        {
-                Irp->IoStatus.Status      = STATUS_SUCCESS;
-                Irp->IoStatus.Information = 0;
-                ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
-                return;
-        }
-
         InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
         queue->count++;
 }
@@ -185,7 +181,7 @@ PDEFERRED_REPORT
 IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
         PDEFERRED_REPORT report =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, BufferSize, REPORT_POOL_TAG);
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DEFERRED_REPORT), REPORT_POOL_TAG);
 
         if (!report)
                 return NULL;
@@ -650,13 +646,40 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
-                PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
-                NTSTATUS        status = STATUS_PENDING;
+                PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
-                IoCsqInsertIrp(&queue->csq, Irp, &status);
+                /*
+                 * Given the nature of the Windows IO subsystem and the cancel-safe queue
+                 * implementation we use, we need to query for deferred reports before insert an irp
+                 * into the queue. The reason for this is the cancel-safe queue will automically
+                 * mark the irp as pending, so if we then use that irp to return a deferred report
+                 * and return success here verifier has a lil cry.
+                 */
+
+                /* before we queue our IRP, check if we can complete a deferred report */
+                status = IrpQueueQueryPendingReports(Irp);
+
+                /* if we return success, weve completed the irp, we can return success */
+                if (NT_SUCCESS(status))
+                        return status;
+
+                /* if there are no deferred reports, store the irp in the queue */
+                IoCsqInsertIrp(&queue->csq, Irp, NULL);
 
                 /* we dont want to complete the request */
-                return IrpQueueQueryPendingReports();
+                return STATUS_PENDING;
+
+        case IOCTL_QUERY_DEFERRED_REPORTS:
+
+                DEBUG_INFO("IOCTL_QUERY_DEFERRED_REPORTS Received");
+
+                status = IrpQueueQueryPendingReports(Irp);
+
+                if (NT_SUCCESS(status))
+                        return status;
+
+                status = STATUS_SUCCESS;
+                break;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

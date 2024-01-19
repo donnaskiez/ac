@@ -31,7 +31,8 @@ enum ioctl_code
         ScanForEptHooks =                       CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20018, METHOD_BUFFERED, FILE_ANY_ACCESS),
         InitiateDpcStackwalk =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS),
         ValidateSystemModules =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS),
-        InsertIrpIntoIrpQueue =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
+        InsertIrpIntoIrpQueue =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS),
+        QueryDeferredReports =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
 };
 // clang-format on
 
@@ -120,5 +121,6 @@ class kernel_interface
         void verify_process_module_executable_regions();
         void initiate_apc_stackwalk();
         void send_pending_irp();
+        void query_deferred_reports();
 };
 }
