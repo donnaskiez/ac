@@ -84,7 +84,7 @@ class kernel_interface
         std::vector<event_dispatcher> events;
 
         void              run_completion_port();
-        void              initiaite_completion_port();
+        void              initiate_completion_port();
         void              terminate_completion_port();
         event_dispatcher* get_free_event_entry();
         void              release_event_object(OVERLAPPED* event);

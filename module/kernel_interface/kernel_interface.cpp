@@ -66,7 +66,7 @@ kernel_interface::kernel_interface::run_completion_port()
 }
 
 void
-kernel_interface::kernel_interface::initiaite_completion_port()
+kernel_interface::kernel_interface::initiate_completion_port()
 {
         /* we probably dont need this many even objects */
         for (int index = 0; index < 10; index++)
@@ -146,7 +146,7 @@ kernel_interface::kernel_interface::kernel_interface(LPCWSTR                driv
         }
 
         this->notify_driver_on_process_launch();
-        this->initiaite_completion_port();
+        this->initiate_completion_port();
 }
 
 kernel_interface::kernel_interface::~kernel_interface()

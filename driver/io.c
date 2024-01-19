@@ -87,6 +87,12 @@ PIRP
 IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
         PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+
+        DEBUG_VERBOSE("irp queue entry count: %lx", queue->count);
+
+        if (queue->count == 0)
+                return NULL;
+
         return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
 }
 
@@ -94,13 +100,7 @@ VOID
 IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
         UNREFERENCED_PARAMETER(Csq);
-        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-
-        DEBUG_VERBOSE("irp queue entry count: %lx", queue->count);
-
-        if (queue->count == 0)
-                return;
-
+        GetIrpQueueHead()->count--;
         RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
 }
 
@@ -113,7 +113,43 @@ IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 PDEFERRED_REPORT
 IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
-        return RemoveEntryList(&Queue->reports.head);
+        return RemoveHeadList(&Queue->reports.head);
+}
+
+VOID
+IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
+{
+        // todo validate buffer
+        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
+        Irp->IoStatus.Status      = STATUS_SUCCESS;
+        Irp->IoStatus.Information = Report->buffer_size;
+        IofCompleteRequest(Irp, IO_NO_INCREMENT);
+}
+
+NTSTATUS
+IrpQueueQueryPendingReports()
+{
+        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        PDEFERRED_REPORT report = NULL;
+        PIRP             irp    = NULL;
+
+        if (IrpQueueIsThereDeferredReport(queue))
+        {
+                DEBUG_VERBOSE("Finishing deferred report.");
+                irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
+
+                if (!irp)
+                        return STATUS_PENDING;
+
+                KeAcquireGuardedMutex(&queue->reports.lock);
+                report = IrpQueueRemoveDeferredReport(queue);
+                IrpQueueCompleteDeferredReport(report, irp);
+                queue->reports.count--;
+                KeReleaseGuardedMutex(&queue->reports.lock);
+                return STATUS_SUCCESS;
+        }
+
+        return STATUS_PENDING;
 }
 
 VOID
@@ -122,20 +158,18 @@ IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
         PDEFERRED_REPORT report = NULL;
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
 
-        if (IrpQueueIsThereDeferredReport(queue))
+        DEBUG_VERBOSE("inserting IRP");
+
+        if (queue->count > 100)
         {
-                DEBUG_VERBOSE("Finishing deferred report.");
-                KeAcquireGuardedMutex(&queue->reports.lock);
-                report = IrpQueueRemoveDeferredReport(queue);
-                IrpQueueCompleteIrp(report->buffer, report->buffer_size);
-                queue->reports.count--;
-                KeReleaseGuardedMutex(&queue->reports.lock);
+                Irp->IoStatus.Status      = STATUS_SUCCESS;
+                Irp->IoStatus.Information = 0;
+                ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
                 return;
         }
 
-        queue->count++;
-        DEBUG_VERBOSE("irp queue entry count: %lx", queue->count);
         InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
+        queue->count++;
 }
 
 VOID
@@ -171,7 +205,6 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 B
                 return;
 
         DEBUG_VERBOSE("Deferring report!");
-
         KeAcquireGuardedMutex(&Queue->reports.lock);
         InsertTailList(&Queue->reports.head, &report->list_entry);
         Queue->reports.count++;
@@ -617,12 +650,13 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
-                PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+                PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
+                NTSTATUS        status = STATUS_PENDING;
 
-                IoCsqInsertIrp(&queue->csq, Irp, NULL);
+                IoCsqInsertIrp(&queue->csq, Irp, &status);
 
                 /* we dont want to complete the request */
-                return STATUS_PENDING;
+                return IrpQueueQueryPendingReports();
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

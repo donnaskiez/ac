@@ -1005,6 +1005,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 DrvUnloadFreeConfigStrings();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
                 DrvUnloadFreeTimerObject();
+                DrvUnloadFreeImportsStructure();
                 return STATUS_FAILED_DRIVER_ENTRY;
         }
 
