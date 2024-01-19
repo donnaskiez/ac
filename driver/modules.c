@@ -621,12 +621,11 @@ end:
 }
 
 NTSTATUS
-HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
+HandleValidateDriversIOCTL()
 {
         PAGED_CODE();
 
         NTSTATUS                         status         = STATUS_UNSUCCESSFUL;
-        PVOID                            buffer         = NULL;
         ULONG                            buffer_size    = 0;
         SYSTEM_MODULES                   system_modules = {0};
         MODULE_VALIDATION_FAILURE_HEADER header         = {0};
@@ -676,34 +675,6 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
         {
                 DEBUG_VERBOSE("System has an invalid driver count of: %i", head->count);
 
-                buffer_size =
-                    sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-                    MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof(MODULE_VALIDATION_FAILURE);
-
-                status = ValidateIrpOutputBuffer(Irp, buffer_size);
-
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("Failed to validate output buffer.");
-                        goto end;
-                }
-
-                buffer =
-                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, MODULES_REPORT_POOL_TAG);
-
-                if (!buffer)
-                {
-                        ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
-                        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-                        return STATUS_MEMORY_NOT_ALLOCATED;
-                }
-
-                Irp->IoStatus.Information =
-                    sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-                    MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT * sizeof(MODULE_VALIDATION_FAILURE);
-
-                RtlCopyMemory(buffer, &header, sizeof(MODULE_VALIDATION_FAILURE_HEADER));
-
                 for (INT index = 0; index < head->count; index++)
                 {
                         /* make sure we free any non reported modules */
@@ -713,16 +684,21 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                                 continue;
                         }
 
-                        MODULE_VALIDATION_FAILURE report = {0};
-                        report.report_code               = REPORT_MODULE_VALIDATION_FAILURE;
-                        report.report_type               = head->first_entry->reason;
-                        report.driver_base_address       = head->first_entry->driver->DriverStart;
-                        report.driver_size               = head->first_entry->driver->DriverSize;
+                        PMODULE_VALIDATION_FAILURE report = ImpExAllocatePool2(
+                            POOL_FLAG_PAGED, sizeof(MODULE_VALIDATION_FAILURE), POOL_TAG_INTEGRITY);
+
+                        if (!report)
+                                continue;
+
+                        report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
+                        report->report_type         = head->first_entry->reason;
+                        report->driver_base_address = head->first_entry->driver->DriverStart;
+                        report->driver_size         = head->first_entry->driver->DriverSize;
 
                         ANSI_STRING string   = {0};
                         string.Length        = 0;
                         string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
-                        string.Buffer        = &report.driver_name;
+                        string.Buffer        = &report->driver_name;
 
                         status = ImpRtlUnicodeStringToAnsiString(
                             &string, &head->first_entry->driver->DriverName, FALSE);
@@ -732,21 +708,16 @@ HandleValidateDriversIOCTL(_Inout_ PIRP Irp)
                                 DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
                                             status);
 
-                        RtlCopyMemory((UINT64)buffer + sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-                                          index * sizeof(MODULE_VALIDATION_FAILURE),
-                                      &report,
-                                      sizeof(MODULE_VALIDATION_FAILURE));
+                        status = IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
+
+                        if (!NT_SUCCESS(status))
+                        {
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
+                                continue;
+                        }
 
                         RemoveInvalidDriverFromList(head);
                 }
-
-                RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                              buffer,
-                              sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-                                  MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT *
-                                      sizeof(MODULE_VALIDATION_FAILURE));
-
-                ImpExFreePoolWithTag(buffer, MODULES_REPORT_POOL_TAG);
         }
         else
         {
@@ -906,7 +877,12 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                         RtlCopyMemory(
                             report->thread, NmiContext[core].kthread, sizeof(report->thread));
 
-                        InsertReportToQueue(report);
+                        if (!NT_SUCCESS(
+                                IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT))))
+                        {
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                                continue;
+                        }
                 }
                 else
                 {
@@ -1193,7 +1169,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                 if (flag == FALSE)
                 {
                         PAPC_STACKWALK_REPORT report = ImpExAllocatePool2(
-                            POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), POOL_TAG_APC);
+                            POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), REPORT_POOL_TAG);
 
                         if (!report)
                                 goto free;
@@ -1202,11 +1178,11 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                         report->kthread_address = (UINT64)KeGetCurrentThread();
                         report->invalid_rip     = stack_frame;
 
-                        RtlCopyMemory(&report->driver,
-                                      (UINT64)stack_frame - 0x500,
-                                      APC_STACKWALK_BUFFER_SIZE);
-
-                        InsertReportToQueue(report);
+                        if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(APC_STACKWALK_REPORT))))
+                        {
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                                continue;
+                        }
                 }
         }
 
@@ -1486,7 +1462,7 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
                         {
                                 report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                                                             sizeof(DPC_STACKWALK_REPORT),
-                                                            POOL_TAG_DPC);
+                                                            REPORT_POOL_TAG);
 
                                 if (!report)
                                         continue;
@@ -1495,11 +1471,16 @@ ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules, _In_ PDPC_CONTEXT Context
                                 report->kthread_address = PsGetCurrentThread();
                                 report->invalid_rip     = Context[core].stack_frame[frame];
 
-                                //RtlCopyMemory(report->driver,
-                                //              (UINT64)Context[core].stack_frame[frame] - 0x50,
-                                //              APC_STACKWALK_BUFFER_SIZE);
+                                // RtlCopyMemory(report->driver,
+                                //               (UINT64)Context[core].stack_frame[frame] - 0x50,
+                                //               APC_STACKWALK_BUFFER_SIZE);
 
-                                InsertReportToQueue(report);
+                                if (!NT_SUCCESS(
+                                        IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT))))
+                                {
+                                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                                        continue;
+                                }
                         }
                 }
         }
@@ -1806,7 +1787,7 @@ VOID
 ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
 {
         PDATA_TABLE_ROUTINE_REPORT report = ImpExAllocatePool2(
-            POOL_FLAG_NON_PAGED, sizeof(DATA_TABLE_ROUTINE_REPORT), POOL_TAG_INTEGRITY);
+            POOL_FLAG_NON_PAGED, sizeof(DATA_TABLE_ROUTINE_REPORT), REPORT_POOL_TAG);
 
         if (!report)
                 return;
@@ -1819,7 +1800,8 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
         report->id      = REPORT_DATA_TABLE_ROUTINE;
         RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
-        InsertReportToQueue(report);
+        if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(DATA_TABLE_ROUTINE_REPORT))))
+                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
 }
 
 NTSTATUS

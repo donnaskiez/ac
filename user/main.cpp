@@ -79,8 +79,9 @@ Init(HINSTANCE hinstDLL)
                 for (int i = 0; i < 10; i++)
                 {
                         kmanager.InsertIrpIntoIrpQueue();
-                        Sleep(1000);
                 }
+
+                std::this_thread::sleep_for(std::chrono::seconds(30));
         }
 
         srand(time(NULL));

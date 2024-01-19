@@ -64,9 +64,6 @@ GetDriverSymbolicLink();
 PSYSTEM_INFORMATION
 GetDriverConfigSystemInformation();
 
-PREPORT_QUEUE_HEAD
-GetDriverReportQueue();
-
 PTHREAD_LIST_HEAD
 GetThreadList();
 

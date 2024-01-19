@@ -43,10 +43,6 @@ DrvUnloadFreeSymbolicLink();
 
 STATIC
 VOID
-DrvUnloadFreeGlobalReportQueue();
-
-STATIC
-VOID
 DrvUnloadFreeThreadList();
 
 STATIC
@@ -84,7 +80,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, DrvUnloadUnregisterObCallbacks)
 #        pragma alloc_text(PAGE, DrvUnloadFreeConfigStrings)
 #        pragma alloc_text(PAGE, DrvUnloadFreeSymbolicLink)
-#        pragma alloc_text(PAGE, DrvUnloadFreeGlobalReportQueue)
 #        pragma alloc_text(PAGE, DrvUnloadFreeThreadList)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
@@ -115,7 +110,6 @@ typedef struct _DRIVER_CONFIG
         THREAD_LIST_HEAD       thread_list;
         DRIVER_LIST_HEAD       driver_list;
         PROCESS_LIST_HEAD      process_list;
-        REPORT_QUEUE_HEAD      report_queue;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -237,13 +231,6 @@ GetDriverConfigSystemInformation()
 {
         PAGED_CODE();
         return &g_DriverConfig->system_information;
-}
-
-PREPORT_QUEUE_HEAD
-GetDriverReportQueue()
-{
-        PAGED_CODE();
-        return &g_DriverConfig->report_queue;
 }
 
 PTHREAD_LIST_HEAD
@@ -392,14 +379,6 @@ DrvUnloadFreeSymbolicLink()
 
 STATIC
 VOID
-DrvUnloadFreeGlobalReportQueue()
-{
-        PAGED_CODE();
-        FreeGlobalReportQueueObjects();
-}
-
-STATIC
-VOID
 DrvUnloadFreeThreadList()
 {
         PAGED_CODE();
@@ -475,7 +454,6 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         DrvUnloadFreeDriverList();
 
         DrvUnloadFreeConfigStrings();
-        DrvUnloadFreeGlobalReportQueue();
         DrvUnloadFreeSymbolicLink();
 
         ImpIoDeleteDevice(DriverObject->DeviceObject);
@@ -564,14 +542,6 @@ DrvLoadSetupDriverLists()
         }
 
         return status;
-}
-
-STATIC
-VOID
-DrvLoadInitialiseReportQueue()
-{
-        PAGED_CODE();
-        InitialiseGlobalReportQueue(&g_DriverConfig->report_queue);
 }
 
 STATIC
@@ -1009,7 +979,11 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         status = ResolveDynamicImports(DriverObject);
 
         if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ResolveDynamicImports failed with status %x", status);
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return status;
+        }
 
         status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
 
@@ -1017,10 +991,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         {
                 DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x", status);
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
+                DrvUnloadFreeImportsStructure();
                 return status;
         }
 
-        DrvLoadInitialiseReportQueue();
         DrvLoadInitialiseProcessConfig();
 
         status = IoCreateSymbolicLink(&symbolic_link, &device_name);

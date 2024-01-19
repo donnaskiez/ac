@@ -30,4 +30,7 @@ ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize);
 NTSTATUS
 IrpQueueInitialise();
 
+NTSTATUS
+IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize);
+
 #endif

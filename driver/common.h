@@ -3,6 +3,9 @@
 
 #include <ntifs.h>
 #include <wdftypes.h>
+#include "io.h"
+
+#include "types/types.h"
 
 /*
  * For numbers < 32, these are equivalent to 0ul < x.
@@ -38,6 +41,8 @@
                    ##__VA_ARGS__)
 
 #define STATIC static
+
+#define MAX_MODULE_PATH 256
 
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx functions,
@@ -169,12 +174,29 @@ typedef struct _OB_CALLBACKS_CONFIG
 
 } OB_CALLBACKS_CONFIG, *POB_CALLBACKS_CONFIG;
 
+typedef struct _DEFERRED_REPORT
+{
+        LIST_ENTRY list_entry;
+        PVOID      buffer;
+        UINT32     buffer_size;
+
+} DEFERRED_REPORT, *PDEFERRED_REPORT;
+
+typedef struct _DEFERRED_REPORTS_HEAD
+{
+        LIST_ENTRY     head;
+        UINT32         count;
+        KGUARDED_MUTEX lock;
+
+} DEFERRED_REPORTS_HEAD, *PDEFERRED_REPORTS_HEAD;
+
 typedef struct _IRP_QUEUE_HEAD
 {
-        LIST_ENTRY     queue;
-        volatile INT   count;
-        IO_CSQ         csq;
-        KGUARDED_MUTEX lock;
+        LIST_ENTRY            queue;
+        volatile UINT32       count;
+        IO_CSQ                csq;
+        KGUARDED_MUTEX        lock;
+        DEFERRED_REPORTS_HEAD reports;
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 

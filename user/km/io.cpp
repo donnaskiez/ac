@@ -2,22 +2,37 @@
 
 #include "../common.h"
 
-std::pair<bool, OVERLAPPED>*
+kernelmode::event_dispatcher*
 kernelmode::completion_port::get_free_event_entry()
 {
         LOG_INFO("Retrieving first free event object");
+
         std::lock_guard<std::mutex> lock(this->lock);
-        for (std::vector<std::pair<bool, OVERLAPPED>>::iterator it = events.begin();
+        for (std::vector<kernelmode::event_dispatcher>::iterator it =
+                 events.begin();
              it != events.end();
              it++)
         {
-                if (it->first == false)
+                if (it->in_use == false)
                 {
-                        it->first = true;
+                        it->in_use = true;
                         return &(*it);
                 }
         }
+
         return nullptr;
+}
+
+kernelmode::completion_port::~completion_port()
+{
+        std::lock_guard<std::mutex> lock(this->lock);
+        for (std::vector<kernelmode::event_dispatcher>::iterator it = events.begin();
+             it != events.end();
+             it++)
+        {
+                free(it->buffer);
+                CloseHandle(it->overlapped.hEvent);
+        }
 }
 
 void
@@ -26,7 +41,7 @@ kernelmode::completion_port::run_completion_port()
         DWORD       bytes = 0;
         OVERLAPPED* io    = nullptr;
         ULONG_PTR   key   = 0;
-        LOG_INFO("Beginning IO Completeion port");
+
         while (true)
         {
                 BOOL result = GetQueuedCompletionStatus(this->port, &bytes, &key, &io, INFINITE);
@@ -34,7 +49,11 @@ kernelmode::completion_port::run_completion_port()
                 if (io == nullptr)
                         continue;
 
-                LOG_INFO("notification received at io port!");
+                void* buffer = get_buffer_from_event_object(io);
+
+                PUINT32 report_id = (PUINT32)buffer;
+                LOG_INFO("report id: %lx", *report_id);
+
                 release_event_object(io);
         }
 }
@@ -42,14 +61,14 @@ kernelmode::completion_port::run_completion_port()
 kernelmode::completion_port::completion_port(HANDLE driver)
 {
         this->driver = driver;
+
+        /* we probably dont need this many even objects */
         for (int index = 0; index < MAXIMUM_WAIT_OBJECTS; index++)
         {
-                OVERLAPPED io = {0};
-                io.hEvent     = CreateEvent(nullptr, true, false, nullptr);
-                bool flag     = false;
-                this->events.push_back(std::make_pair(flag, io));
+                void* buffer = malloc(1000);
+                this->events.push_back(kernelmode::event_dispatcher(buffer, 1000));
         }
-        LOG_INFO("Creating IO completion port");
+
         this->port = CreateIoCompletionPort(this->driver, nullptr, 0, 0);
 
         if (!this->port)
@@ -62,27 +81,41 @@ kernelmode::completion_port::completion_port(HANDLE driver)
         thread.detach();
 }
 
-OVERLAPPED*
+kernelmode::event_dispatcher*
 kernelmode::completion_port::get_event_object()
 {
-        std::pair<bool, OVERLAPPED>* event = get_free_event_entry();
-        return reinterpret_cast<OVERLAPPED*>(&event->second);
+        return get_free_event_entry();
 }
 
 void
 kernelmode::completion_port::release_event_object(OVERLAPPED* event)
 {
-        LOG_INFO("Releasing event object");
         std::lock_guard<std::mutex> lock(this->lock);
-        for (std::vector<std::pair<bool, OVERLAPPED>>::iterator it = events.begin();
+        for (std::vector<event_dispatcher>::iterator it = events.begin();
              it != events.end();
              it++)
         {
-                if (&it->second == event)
+                if (&it->overlapped == event)
                 {
-                        it->first = false;
-                        ResetEvent(it->second.hEvent);
-                        return;
+                        LOG_INFO("Freeing event: %llx  back to array.", (UINT64)event);
+                        memset(it->buffer, 0, it->buffer_size);
+                        it->in_use = false;
+                        ResetEvent(it->overlapped.hEvent);
                 }
         }
+}
+
+void*
+kernelmode::completion_port::get_buffer_from_event_object(OVERLAPPED* event)
+{
+        std::lock_guard<std::mutex> lock(this->lock);
+        for (std::vector<event_dispatcher>::iterator it = events.begin(); it != events.end(); it++)
+        {
+                if (&it->overlapped == event)
+                {
+                        LOG_INFO("Found event buffer: %llx", (UINT64)it->buffer);
+                        return it->buffer;
+                }
+        }
+        return nullptr;
 }

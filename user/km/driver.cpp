@@ -42,33 +42,14 @@ kernelmode::Driver::~Driver()
 VOID
 kernelmode::Driver::RunNmiCallbacks()
 {
-        BOOLEAN              status         = FALSE;
-        DWORD                bytes_returned = 0;
-        NMI_CALLBACK_FAILURE report         = {0};
-
-        status = DeviceIoControl(this->driver_handle,
-                                 IOCTL_RUN_NMI_CALLBACKS,
-                                 NULL,
-                                 NULL,
-                                 &report,
-                                 sizeof(NMI_CALLBACK_FAILURE),
-                                 &bytes_returned,
-                                 (LPOVERLAPPED)NULL);
+        BOOL status = DeviceIoControl(
+            this->driver_handle, IOCTL_RUN_NMI_CALLBACKS, NULL, NULL, NULL, NULL, NULL, NULL);
 
         if (status == NULL)
         {
                 LOG_ERROR("DeviceIoControl failed with status code 0x%x", GetLastError());
                 return;
         }
-
-        if (bytes_returned == NULL)
-        {
-                LOG_INFO("All threads valid, nmis fine.");
-                return;
-        }
-
-        /* else, report */
-        this->report_interface->ReportViolation(&report);
 }
 
 /*
@@ -79,71 +60,11 @@ kernelmode::Driver::RunNmiCallbacks()
 VOID
 kernelmode::Driver::VerifySystemModuleDriverObjects()
 {
-        BOOLEAN status         = FALSE;
-        DWORD   bytes_returned = 0;
-        PVOID   buffer         = NULL;
-        SIZE_T  buffer_size    = 0;
-        SIZE_T  header_size    = 0;
-
-        /*
-         * allocate enough to report 5 invalid driver objects + header. The reason we use a raw
-         * pointer here is so we can pass the address to DeviceIoControl. You are not able (atleast
-         * as far as im concerned) to pass a shared ptr to DeviceIoControl.
-         */
-        header_size = sizeof(MODULE_VALIDATION_FAILURE_HEADER);
-
-        buffer_size =
-            sizeof(MODULE_VALIDATION_FAILURE) * MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT +
-            header_size;
-
-        buffer = malloc(buffer_size);
-
-        if (!buffer)
-                return;
-
-        status = DeviceIoControl(this->driver_handle,
-                                 IOCTL_VALIDATE_DRIVER_OBJECTS,
-                                 NULL,
-                                 NULL,
-                                 buffer,
-                                 buffer_size,
-                                 &bytes_returned,
-                                 NULL);
+        BOOL status = DeviceIoControl(
+            this->driver_handle, IOCTL_VALIDATE_DRIVER_OBJECTS, NULL, NULL, NULL, NULL, NULL, NULL);
 
         if (status == NULL)
-        {
-                LOG_ERROR("DeviceIoControl failed with status code 0x%x", GetLastError());
-                free(buffer);
-                return;
-        }
-
-        if (bytes_returned == NULL)
-        {
-                LOG_INFO("All modules valid :)");
-                free(buffer);
-                return;
-        }
-
-        /*
-         * We are splitting up each packet here and passing them on one by one since
-         * if I am being honest it is just easier in c++ and that way the process
-         * is streamlined just like all other report packets.
-         */
-        MODULE_VALIDATION_FAILURE_HEADER* header = (MODULE_VALIDATION_FAILURE_HEADER*)buffer;
-
-        LOG_INFO("Module count: %lx", header->module_count);
-
-        for (int i = 0; i < header->module_count; i++)
-        {
-                MODULE_VALIDATION_FAILURE* report =
-                    (MODULE_VALIDATION_FAILURE*)((UINT64)buffer +
-                                                 sizeof(MODULE_VALIDATION_FAILURE_HEADER) +
-                                                 i * sizeof(MODULE_VALIDATION_FAILURE));
-
-                this->report_interface->ReportViolation(report);
-        }
-
-        free(buffer);
+                LOG_ERROR("Failed to verify system module driver objects 0x%x", GetLastError());
 }
 
 /*
@@ -313,22 +234,15 @@ kernelmode::Driver::DetectSystemVirtualization()
 VOID
 kernelmode::Driver::CheckHandleTableEntries()
 {
-        BOOLEAN status         = FALSE;
-        DWORD   bytes_returned = {0};
+        BOOLEAN status = FALSE;
 
         /*
          * Only pass the IOCTL code and nothing else since the reports are bundled
          * with the handle ObRegisterCallbacks report queue hence the QueryReportQueue
          * function will handle these reports.
          */
-        status = DeviceIoControl(this->driver_handle,
-                                 IOCTL_ENUMERATE_HANDLE_TABLES,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 &bytes_returned,
-                                 NULL);
+        status = DeviceIoControl(
+            this->driver_handle, IOCTL_ENUMERATE_HANDLE_TABLES, NULL, NULL, NULL, NULL, NULL, NULL);
 
         if (status == NULL)
                 LOG_ERROR("CheckHandleTableEntries failed with status %x", status);
@@ -389,17 +303,16 @@ end:
 VOID
 kernelmode::Driver::ScanForUnlinkedProcess()
 {
-        BOOLEAN                           status         = FALSE;
-        DWORD                             bytes_returned = 0;
-        INVALID_PROCESS_ALLOCATION_REPORT report         = {0};
+        BOOL  status         = FALSE;
+        DWORD bytes_returned = 0;
 
         status = DeviceIoControl(this->driver_handle,
                                  IOCTL_SCAN_FOR_UNLINKED_PROCESS,
                                  NULL,
                                  NULL,
-                                 &report,
-                                 sizeof(report),
-                                 &bytes_returned,
+                                 NULL,
+                                 NULL,
+                                 NULL,
                                  NULL);
 
         if (status == NULL)
@@ -633,7 +546,7 @@ kernelmode::Driver::SendClientHardwareInformation()
 BOOLEAN
 kernelmode::Driver::InitiateApcOperation(INT OperationId)
 {
-        BOOLEAN                   status    = FALSE;
+        BOOL                      status    = FALSE;
         APC_OPERATION_INFORMATION operation = {0};
 
         operation.operation_id = OperationId;
@@ -657,17 +570,23 @@ kernelmode::Driver::InitiateApcOperation(INT OperationId)
 VOID
 kernelmode::Driver::SendIrpForDriverToStore()
 {
-        DWORD       status = 0;
-        OVERLAPPED* event  = io_port->get_event_object();
+        DWORD             status = 0;
+        event_dispatcher* event  = io_port->get_event_object();
 
         if (!event)
         {
-                LOG_ERROR("failed to get event object");
+                LOG_ERROR("All event objects in use.");
                 return;
         }
 
-        status = DeviceIoControl(
-            this->driver_handle, IOCTL_INSERT_IRP_INTO_QUEUE, NULL, NULL, NULL, NULL, NULL, event);
+        status = DeviceIoControl(this->driver_handle,
+                                 IOCTL_INSERT_IRP_INTO_QUEUE,
+                                 NULL,
+                                 NULL,
+                                 event->buffer,
+                                 event->buffer_size,
+                                 NULL,
+                                 &event->overlapped);
 
         if (status != ERROR_IO_PENDING && status != FALSE)
                 LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());

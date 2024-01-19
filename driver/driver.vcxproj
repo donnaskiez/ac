@@ -272,6 +272,7 @@
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
     <ClInclude Include="thread.h" />
+    <ClInclude Include="types\types.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="arch.asm" />

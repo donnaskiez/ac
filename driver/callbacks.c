@@ -75,6 +75,7 @@ VOID
 CleanupProcessListOnDriverUnload()
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
+        DEBUG_VERBOSE("Freeing process list");
         for (;;)
         {
                 if (!LookasideListFreeFirstEntry(
@@ -90,6 +91,7 @@ VOID
 CleanupThreadListOnDriverUnload()
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
+        DEBUG_VERBOSE("Freeing thread list!");
         for (;;)
         {
                 if (!LookasideListFreeFirstEntry(
@@ -625,7 +627,12 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                                       process_creator_name,
                                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        InsertReportToQueue(report);
+                        if (!NT_SUCCESS(
+                                IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        {
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                                goto end;
+                        }
                 }
         }
 
@@ -799,7 +806,11 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 RtlCopyMemory(
                     &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                InsertReportToQueue(report);
+                if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        goto end;
+                }
         }
 
 end:
@@ -841,6 +852,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 }
 
 #define REPEAT_TIME_10_SEC 10000
+
+ULONG value = 10;
 
 VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)

@@ -97,6 +97,8 @@ class Client
         void ServerSend(PVOID Buffer, SIZE_T Size, INT RequestId);
 };
 
+#define MAX_REPORT_STRUCTURE_SIZE 1000
+
 namespace report_structures {
 struct PROCESS_MODULES_INTEGRITY_CHECK_FAILURE
 {
@@ -169,7 +171,7 @@ struct OPEN_HANDLE_FAILURE_REPORT
 struct INVALID_PROCESS_ALLOCATION_REPORT
 {
         INT  report_code;
-        CHAR process[4096];
+        CHAR process[500];
 };
 
 /*
@@ -183,7 +185,7 @@ struct HIDDEN_SYSTEM_THREAD_REPORT
         INT    found_in_pspcidtable;
         UINT64 thread_address;
         LONG   thread_id;
-        CHAR   thread[4096];
+        CHAR   thread[500];
 };
 
 struct ATTACH_PROCESS_REPORT
@@ -205,7 +207,7 @@ struct APC_STACKWALK_REPORT
         INT    report_code;
         UINT64 kthread_address;
         UINT64 invalid_rip;
-        CHAR   driver[4096];
+        CHAR   driver[500];
 };
 
 struct DPC_STACKWALK_REPORT
@@ -213,7 +215,7 @@ struct DPC_STACKWALK_REPORT
         UINT32 report_code;
         UINT64 kthread_address;
         UINT64 invalid_rip;
-        CHAR   driver[4096];
+        CHAR   driver[500];
 };
 
 enum TABLE_ID
