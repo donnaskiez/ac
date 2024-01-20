@@ -627,6 +627,8 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                                       process_creator_name,
                                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
+                        DEBUG_VERBOSE("REPORTING STRIPPED HANDLE");
+
                         if (!NT_SUCCESS(
                                 IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
                         {

@@ -238,10 +238,8 @@ void kernel_interface::kernel_interface::
 
   pRtlDosPathNameToNtPathName_U = (RtlDosPathNameToNtPathName_U)GetProcAddress(
       GetModuleHandle(L"ntdll.dll"), "RtlDosPathNameToNtPathName_U");
-
   handle = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
                                     GetCurrentProcessId());
-
   if (handle == INVALID_HANDLE_VALUE) {
     LOG_ERROR("CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with "
               "status 0x%x",
@@ -259,17 +257,13 @@ void kernel_interface::kernel_interface::
   do {
     module.module_base = module_entry.modBaseAddr;
     module.module_size = module_entry.modBaseSize;
-
     status = (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath,
                                               &nt_path_name, NULL, NULL);
-
     if (!status) {
       LOG_ERROR("RtlDosPathNameToNtPathName_U failed with no status.");
       continue;
     }
-
     memcpy(module.module_path, nt_path_name.Buffer, MAX_MODULE_PATH);
-
     this->generic_driver_call_input(ioctl_code::ValidateProcessLoadedModule,
                                     &module, sizeof(module), &bytes_returned);
 
@@ -284,7 +278,7 @@ void kernel_interface::kernel_interface::initiate_apc_stackwalk() {
 }
 
 void kernel_interface::kernel_interface::send_pending_irp() {
-  unsigned long status = 0;
+  DWORD status = 0;
   event_dispatcher *event = get_free_event_entry();
 
   if (!event) {
@@ -296,15 +290,21 @@ void kernel_interface::kernel_interface::send_pending_irp() {
       this->driver_handle, ioctl_code::InsertIrpIntoIrpQueue, NULL, NULL,
       event->buffer, event->buffer_size, NULL, &event->overlapped);
 
-  if (status != ERROR_IO_PENDING && status != FALSE)
-    LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
+  LOG_INFO("status: %lx, STATUS PENDING: %lx", status, ERROR_IO_PENDING);
+
+  if (status == ERROR_IO_PENDING || status == ERROR_SUCCESS)
+    return;
+
+  LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
 }
 
 void kernel_interface::kernel_interface::query_deferred_reports() {
-  for (int i = 0; i < 10; i++) {
-    void *buffer = malloc(1000);
-    generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer, 1000,
+  void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
+  for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
+    generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
+                               MAXIMUM_REPORT_BUFFER_SIZE,
                                nullptr);
-    free(buffer);
+    memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
   }
+  free(buffer);
 }

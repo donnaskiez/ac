@@ -9,6 +9,8 @@
 #define EVENT_COUNT 8
 #define MAXIMUM_REPORT_BUFFER_SIZE 1000
 
+#define QUERY_DEFERRED_REPORT_COUNT 10
+
 namespace kernel_interface {
 enum apc_operation { operation_stackwalk = 0x1 };
 
