@@ -5,7 +5,6 @@
 #include <Windows.h>
 
 namespace module {
-namespace application {
 void run(HINSTANCE hinstDLL);
-}
+void terminate();
 } // namespace module

@@ -4,14 +4,13 @@
 
 #include "../client/message_queue.h"
 
-#define MAX_MODULE_PATH 256
-
-#define EVENT_COUNT 8
-#define MAXIMUM_REPORT_BUFFER_SIZE 1000
-
-#define QUERY_DEFERRED_REPORT_COUNT 10
-
 namespace kernel_interface {
+
+static const int EVENT_COUNT = 5;
+static const int MAX_MODULE_PATH = 256;
+static const int MAXIMUM_REPORT_BUFFER_SIZE = 1000;
+static const int QUERY_DEFERRED_REPORT_COUNT = 10;
+
 enum apc_operation { operation_stackwalk = 0x1 };
 
 // clang-format off
@@ -79,7 +78,6 @@ class kernel_interface {
   std::mutex lock;
   std::vector<event_dispatcher> events;
 
-  void run_completion_port();
   void initiate_completion_port();
   void terminate_completion_port();
   event_dispatcher *get_free_event_entry();
@@ -101,6 +99,7 @@ public:
   kernel_interface(LPCWSTR driver_name, client::message_queue &queue);
   ~kernel_interface();
 
+  void run_completion_port();
   void run_nmi_callbacks();
   void validate_system_driver_objects();
   void detect_system_virtualization();

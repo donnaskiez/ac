@@ -5,7 +5,7 @@
 #include "client/message_queue.h"
 #include "dispatcher/dispatcher.h"
 
-void module::application::run(HINSTANCE hinstDLL) {
+void module::run(HINSTANCE hinstDLL) {
   AllocConsole();
   FILE *file;
   freopen_s(&file, "CONOUT$", "w", stdout);
@@ -23,4 +23,9 @@ void module::application::run(HINSTANCE hinstDLL) {
   FreeConsole();
 
   FreeLibraryAndExitThread(hinstDLL, 0);
+}
+
+void module::terminate()
+{
+
 }

@@ -88,9 +88,8 @@ IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 PIRP
 IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
+        UNREFERENCED_PARAMETER(Context);
         PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-
-        DEBUG_VERBOSE("irp queue entry count: %lx", queue->count);
 
         if (queue->count == 0)
                 return NULL;
@@ -144,24 +143,22 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
         {
                 KeAcquireGuardedMutex(&queue->reports.lock);
                 report = IrpQueueRemoveDeferredReport(queue);
-
                 status = IrpQueueCompleteDeferredReport(report, Irp);
 
                 if (!NT_SUCCESS(status))
                         return status;
 
                 queue->reports.count--;
-                DEBUG_VERBOSE("Finishing deferred report. Deferred report count: %lx", queue->reports.count);
                 KeReleaseGuardedMutex(&queue->reports.lock);
                 return status;
         }
+
         return status;
 }
 
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
-        DEBUG_VERBOSE("inserting IRP");
         PDEFERRED_REPORT report = NULL;
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
@@ -188,7 +185,6 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 
         report->buffer      = Buffer;
         report->buffer_size = BufferSize;
-
         return report;
 }
 
@@ -203,7 +199,6 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 B
         KeAcquireGuardedMutex(&Queue->reports.lock);
         InsertTailList(&Queue->reports.head, &report->list_entry);
         Queue->reports.count++;
-        DEBUG_VERBOSE("Deferring report. Deferred report count: %lx", Queue->reports.count);
         KeReleaseGuardedMutex(&Queue->reports.lock);
 }
 
@@ -655,9 +650,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 break;
 
-        case IOCTL_INSERT_IRP_INTO_QUEUE:
+        case IOCTL_INSERT_IRP_INTO_QUEUE:;
 
-                DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
+                //DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
                 PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
@@ -684,7 +679,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         case IOCTL_QUERY_DEFERRED_REPORTS:
 
-                DEBUG_INFO("IOCTL_QUERY_DEFERRED_REPORTS Received");
+                //DEBUG_INFO("IOCTL_QUERY_DEFERRED_REPORTS Received");
 
                 status = IrpQueueQueryPendingReports(Irp);
 

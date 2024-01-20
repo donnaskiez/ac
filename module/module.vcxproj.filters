@@ -33,10 +33,13 @@
     <ClCompile Include="client\pipe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="user_interface\user_interface.cpp">
+    <ClCompile Include="module.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="module.cpp">
+    <ClCompile Include="helper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="imports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -59,10 +62,13 @@
     <ClInclude Include="client\pipe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="user_interface\user_interface.h">
+    <ClInclude Include="module.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="module.h">
+    <ClInclude Include="helper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

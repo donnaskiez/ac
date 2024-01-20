@@ -14,8 +14,6 @@ typedef BOOLEAN(NTAPI *RtlDosPathNameToNtPathName_U)(PCWSTR DosPathName,
 
 kernel_interface::event_dispatcher *
 kernel_interface::kernel_interface::get_free_event_entry() {
-  LOG_INFO("Retrieving first free event object");
-
   std::lock_guard<std::mutex> lock(this->lock);
   for (std::vector<event_dispatcher>::iterator it = events.begin();
        it != events.end(); it++) {
@@ -40,43 +38,31 @@ void kernel_interface::kernel_interface::run_completion_port() {
   DWORD bytes = 0;
   OVERLAPPED *io = nullptr;
   ULONG_PTR key = 0;
-
   while (true) {
-    BOOL result =
-        GetQueuedCompletionStatus(this->port, &bytes, &key, &io, INFINITE);
-
+    GetQueuedCompletionStatus(this->port, &bytes, &key, &io, INFINITE);
     if (io == nullptr)
       continue;
-
     void *buffer = get_buffer_from_event_object(io);
-    PUINT32 report_id = (PUINT32)buffer;
-    LOG_INFO("report id: %lx", *report_id);
+    /* send report, create a function that prints it*/
     release_event_object(io);
     send_pending_irp();
   }
 }
 
 void kernel_interface::kernel_interface::initiate_completion_port() {
-  /* we probably dont need this many even objects */
   for (int index = 0; index < EVENT_COUNT; index++) {
     void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
     this->events.push_back(
         event_dispatcher(buffer, MAXIMUM_REPORT_BUFFER_SIZE));
   }
-
   this->port = CreateIoCompletionPort(this->driver_handle, nullptr, 0, 0);
-
   if (!this->port) {
     LOG_ERROR("CreateIoCompletePort failed with status %x", GetLastError());
     return;
   }
-
   for (int index = 0; index < EVENT_COUNT; index++) {
     send_pending_irp();
   }
-
-  std::thread thread([this] { run_completion_port(); });
-  thread.detach();
 }
 
 void kernel_interface::kernel_interface::release_event_object(
@@ -85,7 +71,7 @@ void kernel_interface::kernel_interface::release_event_object(
   for (std::vector<event_dispatcher>::iterator it = events.begin();
        it != events.end(); it++) {
     if (&it->overlapped == event) {
-      LOG_INFO("Freeing event: %llx  back to array.", (UINT64)event);
+      /* simply zero our the buffer, no need to free and realloc */
       memset(it->buffer, 0, it->buffer_size);
       it->in_use = false;
       ResetEvent(it->overlapped.hEvent);
@@ -99,7 +85,6 @@ void *kernel_interface::kernel_interface::get_buffer_from_event_object(
   for (std::vector<event_dispatcher>::iterator it = events.begin();
        it != events.end(); it++) {
     if (&it->overlapped == event) {
-      LOG_INFO("Found event buffer: %llx", (UINT64)it->buffer);
       return it->buffer;
     }
   }
@@ -109,21 +94,17 @@ void *kernel_interface::kernel_interface::get_buffer_from_event_object(
 kernel_interface::kernel_interface::kernel_interface(
     LPCWSTR driver_name, client::message_queue &queue)
     : message_queue(queue) {
-  LOG_INFO("Initialising kernel_interface");
-
   this->driver_name = driver_name;
+  this->port = INVALID_HANDLE_VALUE;
   this->driver_handle = CreateFileW(
       driver_name, GENERIC_WRITE | GENERIC_READ | GENERIC_EXECUTE, 0, 0,
       OPEN_EXISTING, FILE_ATTRIBUTE_SYSTEM | FILE_FLAG_OVERLAPPED, 0);
-
   if (this->driver_handle == INVALID_HANDLE_VALUE) {
     LOG_ERROR("Failed to open handle to driver with status 0x%x",
               GetLastError());
     return;
   }
-
   this->notify_driver_on_process_launch();
-  this->initiate_completion_port();
 }
 
 kernel_interface::kernel_interface::~kernel_interface() {
@@ -168,12 +149,10 @@ void kernel_interface::kernel_interface::detect_system_virtualization() {
   hv_detection_packet packet = {0};
   status = generic_driver_call_output(ioctl_code::PerformVirtualisationCheck,
                                       &packet, sizeof(packet), &bytes_returned);
-
   if (!status) {
     LOG_ERROR("Failed virtualization detection with status %x", GetLastError());
     return;
   }
-
   if (packet.aperf_msr_timing_check == true ||
       packet.invd_emulation_check == true)
     LOG_INFO("HYPERVISOR DETECTED!!!");
@@ -235,7 +214,6 @@ void kernel_interface::kernel_interface::
   unsigned long bytes_returned = 0;
   RtlDosPathNameToNtPathName_U pRtlDosPathNameToNtPathName_U = NULL;
   UNICODE_STRING nt_path_name = {0};
-
   pRtlDosPathNameToNtPathName_U = (RtlDosPathNameToNtPathName_U)GetProcAddress(
       GetModuleHandle(L"ntdll.dll"), "RtlDosPathNameToNtPathName_U");
   handle = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
@@ -246,14 +224,11 @@ void kernel_interface::kernel_interface::
               GetLastError());
     return;
   }
-
   module_entry.dwSize = sizeof(MODULEENTRY32);
-
   if (!Module32First(handle, &module_entry)) {
     LOG_ERROR("Module32First failed with status 0x%x", GetLastError());
     return;
   }
-
   do {
     module.module_base = module_entry.modBaseAddr;
     module.module_size = module_entry.modBaseSize;
@@ -266,9 +241,7 @@ void kernel_interface::kernel_interface::
     memcpy(module.module_path, nt_path_name.Buffer, MAX_MODULE_PATH);
     this->generic_driver_call_input(ioctl_code::ValidateProcessLoadedModule,
                                     &module, sizeof(module), &bytes_returned);
-
   } while (Module32Next(handle, &module_entry));
-
 end:
   CloseHandle(handle);
 }
@@ -280,31 +253,27 @@ void kernel_interface::kernel_interface::initiate_apc_stackwalk() {
 void kernel_interface::kernel_interface::send_pending_irp() {
   DWORD status = 0;
   event_dispatcher *event = get_free_event_entry();
-
   if (!event) {
     LOG_ERROR("All event objects in use.");
     return;
   }
-
   status = DeviceIoControl(
       this->driver_handle, ioctl_code::InsertIrpIntoIrpQueue, NULL, NULL,
       event->buffer, event->buffer_size, NULL, &event->overlapped);
-
-  LOG_INFO("status: %lx, STATUS PENDING: %lx", status, ERROR_IO_PENDING);
-
   if (status == ERROR_IO_PENDING || status == ERROR_SUCCESS)
     return;
-
   LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
 }
 
 void kernel_interface::kernel_interface::query_deferred_reports() {
   void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
+  if (!buffer)
+    return;
   for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
     generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
-                               MAXIMUM_REPORT_BUFFER_SIZE,
-                               nullptr);
+                               MAXIMUM_REPORT_BUFFER_SIZE, nullptr);
     memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
   }
   free(buffer);
 }
+

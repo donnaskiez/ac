@@ -140,6 +140,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="helper.cpp" />
+    <ClCompile Include="imports.cpp" />
     <ClCompile Include="module.cpp" />
     <ClCompile Include="client\message_queue.cpp" />
     <ClCompile Include="client\pipe.cpp" />
@@ -147,7 +149,6 @@
     <ClCompile Include="dispatcher\threadpool.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="kernel_interface\kernel_interface.cpp" />
-    <ClCompile Include="user_interface\user_interface.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="client\message_queue.h" />
@@ -155,9 +156,10 @@
     <ClInclude Include="dispatcher\dispatcher.h" />
     <ClInclude Include="dispatcher\threadpool.h" />
     <ClInclude Include="common.h" />
+    <ClInclude Include="helper.h" />
+    <ClInclude Include="imports.h" />
     <ClInclude Include="kernel_interface\kernel_interface.h" />
     <ClInclude Include="module.h" />
-    <ClInclude Include="user_interface\user_interface.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

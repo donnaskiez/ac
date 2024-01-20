@@ -608,33 +608,35 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
 
                         // DEBUG_LOG("handle stripped from: %s", process_creator_name);
 
-                        POPEN_HANDLE_FAILURE_REPORT report =
-                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                               REPORT_POOL_TAG);
+                        /* for now, lets not report stripped handles. */
 
-                        if (!report)
-                                goto end;
+                        //POPEN_HANDLE_FAILURE_REPORT report =
+                        //    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                        //                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                        //                       REPORT_POOL_TAG);
 
-                        report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                        report->is_kernel_handle = OperationInformation->KernelHandle;
-                        report->process_id       = process_creator_id;
-                        report->thread_id        = ImpPsGetCurrentThreadId();
-                        report->access =
-                            OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+                        //if (!report)
+                        //        goto end;
 
-                        RtlCopyMemory(report->process_name,
-                                      process_creator_name,
-                                      HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+                        //report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
+                        //report->is_kernel_handle = OperationInformation->KernelHandle;
+                        //report->process_id       = process_creator_id;
+                        //report->thread_id        = ImpPsGetCurrentThreadId();
+                        //report->access =
+                        //    OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
-                        DEBUG_VERBOSE("REPORTING STRIPPED HANDLE");
+                        //RtlCopyMemory(report->process_name,
+                        //              process_creator_name,
+                        //              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        if (!NT_SUCCESS(
-                                IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
-                        {
-                                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
-                                goto end;
-                        }
+                        //DEBUG_VERBOSE("REPORTING STRIPPED HANDLE");
+
+                        //if (!NT_SUCCESS(
+                        //        IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        //{
+                        //        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        //        goto end;
+                        //}
                 }
         }
 
