@@ -142,7 +142,6 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
 
         if (IrpQueueIsThereDeferredReport(queue))
         {
-                DEBUG_VERBOSE("Finishing deferred report.");
                 KeAcquireGuardedMutex(&queue->reports.lock);
                 report = IrpQueueRemoveDeferredReport(queue);
 
@@ -152,6 +151,7 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
                         return status;
 
                 queue->reports.count--;
+                DEBUG_VERBOSE("Finishing deferred report. Deferred report count: %lx", queue->reports.count);
                 KeReleaseGuardedMutex(&queue->reports.lock);
                 return status;
         }
@@ -200,10 +200,10 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 B
         if (!report)
                 return;
 
-        DEBUG_VERBOSE("Deferring report!");
         KeAcquireGuardedMutex(&Queue->reports.lock);
         InsertTailList(&Queue->reports.head, &report->list_entry);
         Queue->reports.count++;
+        DEBUG_VERBOSE("Deferring report. Deferred report count: %lx", Queue->reports.count);
         KeReleaseGuardedMutex(&Queue->reports.lock);
 }
 
@@ -239,6 +239,19 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
         RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
         ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
         ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
+}
+
+VOID
+IrpQueueFreeDeferredReports()
+{
+        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        PDEFERRED_REPORT report = NULL;
+
+        while (IrpQueueIsThereDeferredReport(queue))
+        {
+                report = IrpQueueRemoveDeferredReport(queue);
+                ExFreePoolWithTag(report, REPORT_POOL_TAG);
+        }
 }
 
 NTSTATUS

@@ -6,11 +6,11 @@
 
 #define MAX_MODULE_PATH 256
 
+#define EVENT_COUNT 8
+#define MAXIMUM_REPORT_BUFFER_SIZE 1000
+
 namespace kernel_interface {
-enum apc_operation
-{
-        operation_stackwalk = 0x1
-};
+enum apc_operation { operation_stackwalk = 0x1 };
 
 // clang-format off
 enum ioctl_code
@@ -36,91 +36,82 @@ enum ioctl_code
 };
 // clang-format on
 
-struct event_dispatcher
-{
-        bool          in_use;
-        OVERLAPPED    overlapped;
-        void*         buffer;
-        unsigned long buffer_size;
+struct event_dispatcher {
+  bool in_use;
+  OVERLAPPED overlapped;
+  void *buffer;
+  unsigned long buffer_size;
 
-        event_dispatcher(void* buffer, unsigned long buffer_size)
-        {
-                this->in_use            = false;
-                this->overlapped.hEvent = CreateEvent(nullptr, true, false, nullptr);
-                this->buffer            = buffer;
-                this->buffer_size       = buffer_size;
-        }
+  event_dispatcher(void *buffer, unsigned long buffer_size) {
+    this->in_use = false;
+    this->overlapped.hEvent = CreateEvent(nullptr, true, false, nullptr);
+    this->buffer = buffer;
+    this->buffer_size = buffer_size;
+  }
 };
 
-class kernel_interface
-{
-        struct process_load_packet
-        {
-                unsigned long protected_process_id;
-        };
+class kernel_interface {
+  struct process_load_packet {
+    unsigned long protected_process_id;
+  };
 
-        struct hv_detection_packet
-        {
-                unsigned long aperf_msr_timing_check;
-                unsigned long invd_emulation_check;
-        };
+  struct hv_detection_packet {
+    unsigned long aperf_msr_timing_check;
+    unsigned long invd_emulation_check;
+  };
 
-        struct process_module
-        {
-                void*   module_base;
-                size_t  module_size;
-                wchar_t module_path[MAX_MODULE_PATH];
-        };
+  struct process_module {
+    void *module_base;
+    size_t module_size;
+    wchar_t module_path[MAX_MODULE_PATH];
+  };
 
-        struct apc_operation_init
-        {
-                int operation_id;
-        };
+  struct apc_operation_init {
+    int operation_id;
+  };
 
-        HANDLE                        driver_handle;
-        LPCWSTR                       driver_name;
-        client::message_queue&        message_queue;
-        HANDLE                        port;
-        std::mutex                    lock;
-        std::vector<event_dispatcher> events;
+  HANDLE driver_handle;
+  LPCWSTR driver_name;
+  client::message_queue &message_queue;
+  HANDLE port;
+  std::mutex lock;
+  std::vector<event_dispatcher> events;
 
-        void              run_completion_port();
-        void              initiate_completion_port();
-        void              terminate_completion_port();
-        event_dispatcher* get_free_event_entry();
-        void              release_event_object(OVERLAPPED* event);
-        void*             get_buffer_from_event_object(OVERLAPPED* event);
+  void run_completion_port();
+  void initiate_completion_port();
+  void terminate_completion_port();
+  event_dispatcher *get_free_event_entry();
+  void release_event_object(OVERLAPPED *event);
+  void *get_buffer_from_event_object(OVERLAPPED *event);
 
-        void         notify_driver_on_process_launch();
-        void         notify_driver_on_process_termination();
-        void         generic_driver_call(ioctl_code ioctl);
-        unsigned int generic_driver_call_output(ioctl_code     ioctl,
-                                                void*          output_buffer,
-                                                size_t         buffer_size,
-                                                unsigned long* bytes_returned);
-        void         generic_driver_call_input(ioctl_code     ioctl,
-                                               void*          input_buffer,
-                                               size_t         buffer_size,
-                                               unsigned long* bytes_returned);
-        void         generic_driver_call_apc(apc_operation operation);
+  void notify_driver_on_process_launch();
+  void notify_driver_on_process_termination();
+  void generic_driver_call(ioctl_code ioctl);
+  unsigned int generic_driver_call_output(ioctl_code ioctl, void *output_buffer,
+                                          size_t buffer_size,
+                                          unsigned long *bytes_returned);
+  void generic_driver_call_input(ioctl_code ioctl, void *input_buffer,
+                                 size_t buffer_size,
+                                 unsigned long *bytes_returned);
+  void generic_driver_call_apc(apc_operation operation);
 
-    public:
-        kernel_interface(LPCWSTR driver_name, client::message_queue& queue);
-        ~kernel_interface();
+public:
+  kernel_interface(LPCWSTR driver_name, client::message_queue &queue);
+  ~kernel_interface();
 
-        void run_nmi_callbacks();
-        void validate_system_driver_objects();
-        void detect_system_virtualization();
-        void enumerate_handle_tables();
-        void scan_for_unlinked_processes();
-        void perform_integrity_check();
-        void scan_for_attached_threads();
-        void scan_for_ept_hooks();
-        void perform_dpc_stackwalk();
-        void validate_system_modules();
-        void verify_process_module_executable_regions();
-        void initiate_apc_stackwalk();
-        void send_pending_irp();
-        void query_deferred_reports();
+  void run_nmi_callbacks();
+  void validate_system_driver_objects();
+  void detect_system_virtualization();
+  void enumerate_handle_tables();
+  void scan_for_unlinked_processes();
+  void perform_integrity_check();
+  void scan_for_attached_threads();
+  void scan_for_ept_hooks();
+  void perform_dpc_stackwalk();
+  void validate_system_modules();
+  void verify_process_module_executable_regions();
+  void initiate_apc_stackwalk();
+  void send_pending_irp();
+  void query_deferred_reports();
 };
-}
+} // namespace kernel_interface

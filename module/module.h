@@ -6,7 +6,6 @@
 
 namespace module {
 namespace application {
-void
-run(HINSTANCE hinstDLL);
+void run(HINSTANCE hinstDLL);
 }
-}
+} // namespace module
