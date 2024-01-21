@@ -146,7 +146,10 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
                 status = IrpQueueCompleteDeferredReport(report, Irp);
 
                 if (!NT_SUCCESS(status))
+                {
+                        KeReleaseGuardedMutex(&queue->reports.lock);
                         return status;
+                }
 
                 queue->reports.count--;
                 KeReleaseGuardedMutex(&queue->reports.lock);
@@ -159,7 +162,6 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
-        PDEFERRED_REPORT report = NULL;
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
         queue->count++;
@@ -191,6 +193,12 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 VOID
 IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
+        if (Queue->reports.count > 100)
+        {
+                ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
+                return;
+        }
+
         PDEFERRED_REPORT report = IrpQueueAllocateDeferredReport(Buffer, BufferSize);
 
         if (!report)
@@ -202,7 +210,7 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 B
         KeReleaseGuardedMutex(&Queue->reports.lock);
 }
 
-/* takes ownership of the buffer and frees it regardless of status */
+/* takes ownership of the buffer, and regardless of the outcome will free it. */
 NTSTATUS
 IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {

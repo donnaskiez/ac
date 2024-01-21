@@ -7,7 +7,8 @@
 
 dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
                                    client::message_queue &message_queue)
-    : thread_pool(4), k_interface(driver_name, message_queue) {}
+    : thread_pool(DISPATCHER_THREAD_COUNT),
+      k_interface(driver_name, message_queue) {}
 
 void dispatcher::dispatcher::run() {
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });

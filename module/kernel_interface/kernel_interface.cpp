@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "../common.h"
+#include "../helper.h"
 
 #include <TlHelp32.h>
 #include <winternl.h>
@@ -43,7 +44,7 @@ void kernel_interface::kernel_interface::run_completion_port() {
     if (io == nullptr)
       continue;
     void *buffer = get_buffer_from_event_object(io);
-    /* send report, create a function that prints it*/
+    helper::print_kernel_report(buffer);
     release_event_object(io);
     send_pending_irp();
   }
@@ -105,6 +106,7 @@ kernel_interface::kernel_interface::kernel_interface(
     return;
   }
   this->notify_driver_on_process_launch();
+  this->initiate_completion_port();
 }
 
 kernel_interface::kernel_interface::~kernel_interface() {
@@ -276,4 +278,3 @@ void kernel_interface::kernel_interface::query_deferred_reports() {
   }
   free(buffer);
 }
-
