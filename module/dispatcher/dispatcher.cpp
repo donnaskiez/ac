@@ -15,7 +15,6 @@ void dispatcher::dispatcher::run() {
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
     this->issue_kernel_job();
-    this->k_interface.query_deferred_reports();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }

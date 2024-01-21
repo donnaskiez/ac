@@ -689,22 +689,6 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 }
 
                 return STATUS_SUCCESS;
-               
-
-        case IOCTL_QUERY_DEFERRED_REPORTS:
-
-                /*
-                * If we succesfully complete a deferred report, the Irp has already been marked complete and we can return STATUS_SUCCESS right away. If not, break out of the loop and complete the irp.
-                */
-                status = IrpQueueQueryPendingReports(Irp);
-
-                if (!NT_SUCCESS(status))
-                {
-                        status = STATUS_SUCCESS;
-                        break;
-                }
-
-                return STATUS_SUCCESS;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

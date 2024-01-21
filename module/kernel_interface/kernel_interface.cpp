@@ -273,18 +273,18 @@ void kernel_interface::kernel_interface::send_pending_irp() {
   LOG_ERROR("failed to insert irp into irp queue %x", status);
 }
 
-void kernel_interface::kernel_interface::query_deferred_reports() {
-  unsigned long bytes_returned = 0;
-  void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
-  if (!buffer)
-    return;
-  for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
-    unsigned int status =
-        generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
-                                   MAXIMUM_REPORT_BUFFER_SIZE, &bytes_returned);
-    if (status && bytes_returned > 0)
-      helper::print_kernel_report(buffer);
-    memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
-  }
-  free(buffer);
-}
+//void kernel_interface::kernel_interface::query_deferred_reports() {
+//  unsigned long bytes_returned = 0;
+//  void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
+//  if (!buffer)
+//    return;
+//  for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
+//    unsigned int status =
+//        generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
+//                                   MAXIMUM_REPORT_BUFFER_SIZE, &bytes_returned);
+//    if (status && bytes_returned > 0)
+//      helper::print_kernel_report(buffer);
+//    memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
+//  }
+//  free(buffer);
+//}
