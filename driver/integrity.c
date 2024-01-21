@@ -4,7 +4,7 @@
 #include "driver.h"
 #include "modules.h"
 #include "callbacks.h"
-#include "ioctl.h"
+#include "io.h"
 #include "imports.h"
 
 #include <bcrypt.h>
@@ -17,8 +17,6 @@ typedef struct _INTEGRITY_CHECK_HEADER
         LONG total_packet_size;
 
 } INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
-
-#define MAX_MODULE_PATH 256
 
 typedef struct _PROCESS_MODULE_INFORMATION
 {
@@ -933,27 +931,28 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                 goto end;
         }
 
-        /*
-         * Because each module is passed per IRP we don't need to send any reports
-         * to the queue we can simply pass it back to usermode via the same IRP.
-         * We also don't need to send any module information since usermode has everything
-         * needed to file the report.
-         */
-        validation_result.is_module_valid = CompareHashes(disk_hash, memory_hash, memory_hash_size);
-
-        status = ValidateIrpOutputBuffer(Irp, sizeof(PROCESS_MODULE_VALIDATION_RESULT));
-
-        if (!NT_SUCCESS(status))
+        if (!CompareHashes(disk_hash, memory_hash, memory_hash_size))
         {
-                DEBUG_ERROR("Failed to validate IRP output buffer");
-                goto end;
+                PPROCESS_MODULE_VALIDATION_REPORT report = ImpExAllocatePool2(
+                    POOL_FLAG_NON_PAGED, sizeof(PROCESS_MODULE_VALIDATION_REPORT), REPORT_POOL_TAG);
+
+                if (!report)
+                        goto end;
+
+                report->report_code = REPORT_INVALID_PROCESS_MODULE;
+                report->image_base = module_info->module_base;
+                report->image_size = module_info->module_size;
+                RtlCopyMemory(report->module_path, module_info->module_path,
+                              sizeof(report->module_path));
+                        
+                status = IrpQueueCompleteIrp(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
+                        goto end;
+                }
         }
-
-        Irp->IoStatus.Information = sizeof(PROCESS_MODULE_VALIDATION_RESULT);
-
-        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                      &validation_result,
-                      sizeof(PROCESS_MODULE_VALIDATION_RESULT));
 
 end:
 

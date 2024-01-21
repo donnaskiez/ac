@@ -75,6 +75,7 @@ VOID
 CleanupProcessListOnDriverUnload()
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
+        DEBUG_VERBOSE("Freeing process list");
         for (;;)
         {
                 if (!LookasideListFreeFirstEntry(
@@ -90,6 +91,7 @@ VOID
 CleanupThreadListOnDriverUnload()
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
+        DEBUG_VERBOSE("Freeing thread list!");
         for (;;)
         {
                 if (!LookasideListFreeFirstEntry(
@@ -575,7 +577,9 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                  */
                 if (!strcmp(process_creator_name, "lsass.exe") ||
                     !strcmp(process_creator_name, "csrss.exe") ||
-                    !strcmp(process_creator_name, "WerFault.exe"))
+                    !strcmp(process_creator_name, "WerFault.exe") ||
+                    !strcmp(process_creator_name, "MsMpEng.exe") ||
+                    !strcmp(process_creator_name, target_process_name))
                 {
                         /* We will downgrade these handles later */
                         // DEBUG_LOG("Handles created by CSRSS, LSASS and WerFault are allowed for
@@ -604,28 +608,31 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                             !strcmp(process_creator_name, "explorer.exe"))
                                 goto end;
 
-                        // DEBUG_LOG("handle stripped from: %s", process_creator_name);
+                        //POPEN_HANDLE_FAILURE_REPORT report =
+                        //    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                        //                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                        //                       REPORT_POOL_TAG);
 
-                        POPEN_HANDLE_FAILURE_REPORT report =
-                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                               REPORT_POOL_TAG);
+                        //if (!report)
+                        //        goto end;
 
-                        if (!report)
-                                goto end;
+                        //report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
+                        //report->is_kernel_handle = OperationInformation->KernelHandle;
+                        //report->process_id       = process_creator_id;
+                        //report->thread_id        = ImpPsGetCurrentThreadId();
+                        //report->access =
+                        //    OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
-                        report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                        report->is_kernel_handle = OperationInformation->KernelHandle;
-                        report->process_id       = process_creator_id;
-                        report->thread_id        = ImpPsGetCurrentThreadId();
-                        report->access =
-                            OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+                        //RtlCopyMemory(report->process_name,
+                        //              process_creator_name,
+                        //              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        RtlCopyMemory(report->process_name,
-                                      process_creator_name,
-                                      HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
-
-                        InsertReportToQueue(report);
+                        //if (!NT_SUCCESS(
+                        //        IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        //{
+                        //        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        //        goto end;
+                        //}
                 }
         }
 
@@ -799,7 +806,11 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 RtlCopyMemory(
                     &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                InsertReportToQueue(report);
+                if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        goto end;
+                }
         }
 
 end:
@@ -841,6 +852,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 }
 
 #define REPEAT_TIME_10_SEC 10000
+
+ULONG value = 10;
 
 VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)

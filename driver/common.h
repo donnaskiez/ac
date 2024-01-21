@@ -3,6 +3,9 @@
 
 #include <ntifs.h>
 #include <wdftypes.h>
+#include "io.h"
+
+#include "types/types.h"
 
 /*
  * For numbers < 32, these are equivalent to 0ul < x.
@@ -38,6 +41,8 @@
                    ##__VA_ARGS__)
 
 #define STATIC static
+
+#define MAX_MODULE_PATH 256
 
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx functions,
@@ -169,11 +174,29 @@ typedef struct _OB_CALLBACKS_CONFIG
 
 } OB_CALLBACKS_CONFIG, *POB_CALLBACKS_CONFIG;
 
+typedef struct _DEFERRED_REPORT
+{
+        LIST_ENTRY list_entry;
+        PVOID      buffer;
+        UINT32     buffer_size;
+
+} DEFERRED_REPORT, *PDEFERRED_REPORT;
+
+typedef struct _DEFERRED_REPORTS_HEAD
+{
+        LIST_ENTRY     head;
+        UINT32         count;
+        KGUARDED_MUTEX lock;
+
+} DEFERRED_REPORTS_HEAD, *PDEFERRED_REPORTS_HEAD;
+
 typedef struct _IRP_QUEUE_HEAD
 {
-        SINGLE_LIST_ENTRY start;
-        volatile INT      count;
-        KGUARDED_MUTEX    lock;
+        LIST_ENTRY            queue;
+        volatile UINT32       count;
+        IO_CSQ                csq;
+        KGUARDED_MUTEX        lock;
+        DEFERRED_REPORTS_HEAD reports;
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 
@@ -282,15 +305,6 @@ typedef struct _PROCESS_CONFIG
 #define KPRCB_OFFSET_FROM_GS_BASE 0x180
 
 #define MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT 20
-#define REPORT_NMI_CALLBACK_FAILURE                50
-#define REPORT_MODULE_VALIDATION_FAILURE           60
-#define REPORT_ILLEGAL_HANDLE_OPERATION            70
-#define REPORT_INVALID_PROCESS_ALLOCATION          80
-#define REPORT_HIDDEN_SYSTEM_THREAD                90
-#define REPORT_ILLEGAL_ATTACH_PROCESS              100
-#define REPORT_APC_STACKWALK                       110
-#define REPORT_DPC_STACKWALK                       120
-#define REPORT_DATA_TABLE_ROUTINE                  130
 
 #define IMAGE_DIRECTORY_ENTRY_EXPORT         0
 #define IMAGE_DIRECTORY_ENTRY_IMPORT         1

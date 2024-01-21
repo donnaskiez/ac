@@ -250,7 +250,7 @@
     <ClCompile Include="hv.c" />
     <ClCompile Include="imports.c" />
     <ClCompile Include="integrity.c" />
-    <ClCompile Include="ioctl.c" />
+    <ClCompile Include="io.c" />
     <ClCompile Include="list.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="pool.c" />
@@ -266,12 +266,13 @@
     <ClInclude Include="ia32.h" />
     <ClInclude Include="imports.h" />
     <ClInclude Include="integrity.h" />
-    <ClInclude Include="ioctl.h" />
+    <ClInclude Include="io.h" />
     <ClInclude Include="list.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
     <ClInclude Include="thread.h" />
+    <ClInclude Include="types\types.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="arch.asm" />

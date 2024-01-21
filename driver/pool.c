@@ -701,14 +701,19 @@ FindUnlinkedProcesses()
                     POOL_FLAG_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
 
                 if (!report_buffer)
-                        goto end;
+                        continue;
 
                 report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
 
                 RtlCopyMemory(
                     report_buffer->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
-                InsertReportToQueue(report_buffer);
+                if (!NT_SUCCESS(IrpQueueCompleteIrp(report_buffer,
+                                                    sizeof(INVALID_PROCESS_ALLOCATION_REPORT))))
+                {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        continue;
+                }
         }
 
 end:

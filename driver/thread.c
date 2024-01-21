@@ -89,7 +89,7 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 
         /*
          * We don't care if a thread owned by our protected process is attached
-         * 
+         *
          * todo: this is filterless and will just report anything, need to have a look into what
          * processes actually attach to real games
          */
@@ -109,7 +109,8 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                 report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
                 report->thread_address = ThreadListEntry->thread;
 
-                InsertReportToQueue(report);
+                if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(ATTACH_PROCESS_REPORT))))
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
         }
 }
 
