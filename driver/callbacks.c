@@ -608,31 +608,31 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                             !strcmp(process_creator_name, "explorer.exe"))
                                 goto end;
 
-                        POPEN_HANDLE_FAILURE_REPORT report =
-                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                               REPORT_POOL_TAG);
+                        //POPEN_HANDLE_FAILURE_REPORT report =
+                        //    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                        //                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                        //                       REPORT_POOL_TAG);
 
-                        if (!report)
-                                goto end;
+                        //if (!report)
+                        //        goto end;
 
-                        report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                        report->is_kernel_handle = OperationInformation->KernelHandle;
-                        report->process_id       = process_creator_id;
-                        report->thread_id        = ImpPsGetCurrentThreadId();
-                        report->access =
-                            OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+                        //report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
+                        //report->is_kernel_handle = OperationInformation->KernelHandle;
+                        //report->process_id       = process_creator_id;
+                        //report->thread_id        = ImpPsGetCurrentThreadId();
+                        //report->access =
+                        //    OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
-                        RtlCopyMemory(report->process_name,
-                                      process_creator_name,
-                                      HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+                        //RtlCopyMemory(report->process_name,
+                        //              process_creator_name,
+                        //              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        if (!NT_SUCCESS(
-                                IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
-                        {
-                                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
-                                goto end;
-                        }
+                        //if (!NT_SUCCESS(
+                        //        IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        //{
+                        //        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        //        goto end;
+                        //}
                 }
         }
 
