@@ -309,7 +309,7 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation)
         default: DEBUG_WARNING("Invalid operation ID passed"); return STATUS_INVALID_PARAMETER;
         }
 
-        return status;
+        return STATUS_SUCCESS;
 }
 
 /*
@@ -640,7 +640,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
 
                 status = SystemModuleVerificationDispatcher();
-
+                
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
 
@@ -670,32 +670,41 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                  * into the queue. The reason for this is the cancel-safe queue will automically
                  * mark the irp as pending, so if we then use that irp to return a deferred report
                  * and return success here verifier has a lil cry.
+                 * 
+                 * TODO: some issue with using an incoming irp meant for the queue and finishing a deferred report.
                  */
 
                 /* before we queue our IRP, check if we can complete a deferred report */
                 status = IrpQueueQueryPendingReports(Irp);
 
                 /* if we return success, weve completed the irp, we can return success */
-                if (NT_SUCCESS(status))
-                        return status;
+                if (!NT_SUCCESS(status))
+                {
+                        /* if there are no deferred reports, store the irp in
+                         * the queue */
+                        IoCsqInsertIrp(&queue->csq, Irp, NULL);
 
-                /* if there are no deferred reports, store the irp in the queue */
-                IoCsqInsertIrp(&queue->csq, Irp, NULL);
+                        /* we dont want to complete the request */
+                        return STATUS_PENDING;
+                }
 
-                /* we dont want to complete the request */
-                return STATUS_PENDING;
+                return STATUS_SUCCESS;
+               
 
         case IOCTL_QUERY_DEFERRED_REPORTS:
 
-                //DEBUG_INFO("IOCTL_QUERY_DEFERRED_REPORTS Received");
-
+                /*
+                * If we succesfully complete a deferred report, the Irp has already been marked complete and we can return STATUS_SUCCESS right away. If not, break out of the loop and complete the irp.
+                */
                 status = IrpQueueQueryPendingReports(Irp);
 
-                if (NT_SUCCESS(status))
-                        return status;
+                if (!NT_SUCCESS(status))
+                {
+                        status = STATUS_SUCCESS;
+                        break;
+                }
 
-                status = STATUS_SUCCESS;
-                break;
+                return STATUS_SUCCESS;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",

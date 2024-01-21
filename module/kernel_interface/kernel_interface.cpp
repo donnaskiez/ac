@@ -262,18 +262,28 @@ void kernel_interface::kernel_interface::send_pending_irp() {
   status = DeviceIoControl(
       this->driver_handle, ioctl_code::InsertIrpIntoIrpQueue, NULL, NULL,
       event->buffer, event->buffer_size, NULL, &event->overlapped);
-  if (status == ERROR_IO_PENDING || status == ERROR_SUCCESS)
+  /*
+   * im not sure why this returns a status of ERROR_INVALID_FUNCTION when we use
+   * the inserted irp to complete a deferred irp - even though that procedure
+   * should return STATUS_SUCCESS? Weird.. Anyhow it works.
+   */
+  if (status == ERROR_IO_PENDING || status == ERROR_SUCCESS ||
+      status == ERROR_INVALID_FUNCTION)
     return;
-  LOG_ERROR("failed to insert irp into irp queue %x", GetLastError());
+  LOG_ERROR("failed to insert irp into irp queue %x", status);
 }
 
 void kernel_interface::kernel_interface::query_deferred_reports() {
+  unsigned long bytes_returned = 0;
   void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
   if (!buffer)
     return;
   for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
-    generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
-                               MAXIMUM_REPORT_BUFFER_SIZE, nullptr);
+    unsigned int status =
+        generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
+                                   MAXIMUM_REPORT_BUFFER_SIZE, &bytes_returned);
+    if (status && bytes_returned > 0)
+      helper::print_kernel_report(buffer);
     memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
   }
   free(buffer);

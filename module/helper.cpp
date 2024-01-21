@@ -150,6 +150,18 @@ void helper::print_kernel_report(void *buffer) {
     LOG_INFO("********************************");
     break;
   }
+  case kernel_interface::report_id::report_module_validation_failure: {
+    kernel_interface::module_validation_failure *r10 =
+        reinterpret_cast<kernel_interface::module_validation_failure *>(buffer);
+    LOG_INFO("report type: module_validation_failure");
+    LOG_INFO("report code: %lx", r10->report_code);
+    LOG_INFO("report type: %lx", r10->report_type);
+    LOG_INFO("driver_base_address: %llx", r10->driver_base_address);
+    LOG_INFO("driver_size: %llx", r10->driver_size);
+    LOG_INFO("driver_name: %s", r10->driver_name);
+    LOG_INFO("********************************");
+    break;
+  }
   default:
     LOG_INFO("Invalid report type.");
     break;

@@ -11,9 +11,11 @@ dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
       k_interface(driver_name, message_queue) {}
 
 void dispatcher::dispatcher::run() {
+  helper::generate_rand_seed();
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
     this->issue_kernel_job();
+    this->k_interface.query_deferred_reports();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }
