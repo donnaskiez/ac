@@ -167,3 +167,11 @@ void helper::print_kernel_report(void *buffer) {
     break;
   }
 }
+
+unsigned __int64 helper::seconds_to_nanoseconds(int seconds) {
+  return ABSOLUTE(SECONDS(seconds));
+}
+
+unsigned __int32 helper::seconds_to_milliseconds(int seconds) {
+  return seconds * 1000;
+}

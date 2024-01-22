@@ -216,6 +216,5 @@ public:
   void verify_process_module_executable_regions();
   void initiate_apc_stackwalk();
   void send_pending_irp();
-  void query_deferred_reports();
 };
 } // namespace kernel_interface
