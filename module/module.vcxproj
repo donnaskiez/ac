@@ -140,10 +140,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-um-rewrite-final
     <ClCompile Include="dispatcher\timer.cpp" />
-=======
-master
     <ClCompile Include="helper.cpp" />
     <ClCompile Include="imports.cpp" />
     <ClCompile Include="module.cpp" />
@@ -160,10 +157,7 @@ master
     <ClInclude Include="dispatcher\dispatcher.h" />
     <ClInclude Include="dispatcher\threadpool.h" />
     <ClInclude Include="common.h" />
-um-rewrite-final
     <ClInclude Include="dispatcher\timer.h" />
-=======
-master
     <ClInclude Include="helper.h" />
     <ClInclude Include="imports.h" />
     <ClInclude Include="kernel_interface\kernel_interface.h" />

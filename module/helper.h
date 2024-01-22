@@ -9,9 +9,6 @@ void sleep_thread(int seconds);
 kernel_interface::report_id get_kernel_report_type(void *buffer);
 int get_report_id_from_buffer(void *buffer);
 void print_kernel_report(void *buffer);
-um-rewrite-final
 unsigned __int64 seconds_to_nanoseconds(int seconds);
 unsigned __int32 seconds_to_milliseconds(int seconds);
-=======
-master
 } // namespace helper
