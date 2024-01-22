@@ -42,6 +42,12 @@
     <ClCompile Include="imports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+um-rewrite-final
+    <ClCompile Include="dispatcher\timer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+=======
+master
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h">
@@ -71,5 +77,11 @@
     <ClInclude Include="imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+um-rewrite-final
+    <ClInclude Include="dispatcher\timer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+=======
+master
   </ItemGroup>
 </Project>
