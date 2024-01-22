@@ -166,6 +166,7 @@ void helper::print_kernel_report(void *buffer) {
     LOG_INFO("Invalid report type.");
     break;
   }
+um-rewrite-final
 }
 
 unsigned __int64 helper::seconds_to_nanoseconds(int seconds) {
@@ -175,3 +176,6 @@ unsigned __int64 helper::seconds_to_nanoseconds(int seconds) {
 unsigned __int32 helper::seconds_to_milliseconds(int seconds) {
   return seconds * 1000;
 }
+=======
+}
+master

@@ -10,6 +10,7 @@ dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
     : thread_pool(DISPATCHER_THREAD_COUNT),
       k_interface(driver_name, message_queue) {}
 
+um-rewrite-final
 void dispatcher::dispatcher::timer_test_callback() {
   LOG_INFO("Timer callback invoked from dispatcher class!!");
 }
@@ -32,6 +33,11 @@ void dispatcher::dispatcher::run() {
   this->init_timer_callbacks();
   this->run_timer_thread();
   this->run_io_port_thread();
+=======
+void dispatcher::dispatcher::run() {
+  helper::generate_rand_seed();
+  thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
+master
   while (true) {
     this->issue_kernel_job();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
