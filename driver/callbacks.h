@@ -12,19 +12,6 @@ typedef void (*THREADLIST_CALLBACK_ROUTINE)(_In_ PTHREAD_LIST_ENTRY ThreadListEn
 typedef void (*PROCESSLIST_CALLBACK_ROUTINE)(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
                                              _In_opt_ PVOID           Context);
 
-#define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
-
-typedef struct _OPEN_HANDLE_FAILURE_REPORT
-{
-        INT  report_code;
-        INT  is_kernel_handle;
-        LONG process_id;
-        LONG thread_id;
-        LONG access;
-        CHAR process_name[HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH];
-
-} OPEN_HANDLE_FAILURE_REPORT, *POPEN_HANDLE_FAILURE_REPORT;
-
 #define DRIVER_PATH_LENGTH  0x100
 #define SHA_256_HASH_LENGTH 32
 

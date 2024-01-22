@@ -27,9 +27,6 @@
     <ClCompile Include="driver.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ioctl.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="modules.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -60,15 +57,15 @@
     <ClCompile Include="list.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="io.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="common.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ioctl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="modules.h">
@@ -102,6 +99,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="list.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="io.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="types\types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

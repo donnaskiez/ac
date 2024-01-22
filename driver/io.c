@@ -1,4 +1,4 @@
-#include "ioctl.h"
+#include "io.h"
 
 #include "modules.h"
 #include "driver.h"
@@ -60,49 +60,226 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INSERT_IRP_INTO_QUEUE \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_QUERY_DEFERRED_REPORTS \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
+/*
+ * Basic cancel-safe IRP queue implementation. Stores pending IRPs in a list, allowing us to dequeue
+ * entries to send data back to user mode without being invoked by the user mode module via an io
+ * completion port.
+ *
+ * user mode program will automatically queue another irp when an irp completes, ensuring queue has
+ * a sufficient supply.
+ */
 VOID
-IrpQueueMarkIrpCompleteCallback(_In_ PIRP_QUEUE_ENTRY Entry)
+IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
-        ImpIofCompleteRequest(Entry->irp, IO_NO_INCREMENT);
+        KeAcquireGuardedMutex(&GetIrpQueueHead()->lock);
 }
 
 VOID
-IrpQueueDequeue(PVOID Callback)
+IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
+        KeReleaseGuardedMutex(&GetIrpQueueHead()->lock);
+}
+
+PIRP
+IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
+{
+        UNREFERENCED_PARAMETER(Context);
         PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-        ListFreeFirstEntry(&queue->start, &queue->lock, Callback);
+
+        if (queue->count == 0)
+                return NULL;
+
+        return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
 }
 
 VOID
-IrpQueueInitialise()
+IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
-        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-        queue->count          = 0;
-        ImpKeInitializeGuardedMutex(&queue->lock);
-        ListInit(&queue->start, &queue->lock);
+        UNREFERENCED_PARAMETER(Csq);
+        GetIrpQueueHead()->count--;
+        RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
+}
+
+BOOLEAN
+IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
+{
+        return Queue->reports.count > 0 ? TRUE : FALSE;
+}
+
+PDEFERRED_REPORT
+IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
+{
+        return RemoveHeadList(&Queue->reports.head);
+}
+
+NTSTATUS
+IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
+{
+        NTSTATUS status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
+
+        if (!NT_SUCCESS(status))
+                return status;
+
+        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
+        Irp->IoStatus.Status      = STATUS_SUCCESS;
+        Irp->IoStatus.Information = Report->buffer_size;
+        IofCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+}
+
+NTSTATUS
+IrpQueueQueryPendingReports(_In_ PIRP Irp)
+{
+        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        PDEFERRED_REPORT report = NULL;
+        NTSTATUS         status = STATUS_UNSUCCESSFUL;
+
+        if (IrpQueueIsThereDeferredReport(queue))
+        {
+                KeAcquireGuardedMutex(&queue->reports.lock);
+                report = IrpQueueRemoveDeferredReport(queue);
+                status = IrpQueueCompleteDeferredReport(report, Irp);
+
+                if (!NT_SUCCESS(status))
+                {
+                        KeReleaseGuardedMutex(&queue->reports.lock);
+                        return status;
+                }
+
+                queue->reports.count--;
+                KeReleaseGuardedMutex(&queue->reports.lock);
+                return status;
+        }
+
+        return status;
 }
 
 VOID
-IrpQueueInsert(PIRP Irp)
+IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
-        PIRP_QUEUE_HEAD  queue = GetIrpQueueHead();
-        PIRP_QUEUE_ENTRY entry = NULL;
+        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
+        queue->count++;
+}
 
-        entry = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(IRP_QUEUE_ENTRY), POOL_TAG_IRP_QUEUE);
+VOID
+IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
+{
+        UNREFERENCED_PARAMETER(Csq);
+        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Status = 0;
+        ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
+}
 
-        if (!entry)
+PDEFERRED_REPORT
+IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
+{
+        PDEFERRED_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DEFERRED_REPORT), REPORT_POOL_TAG);
+
+        if (!report)
+                return NULL;
+
+        report->buffer      = Buffer;
+        report->buffer_size = BufferSize;
+        return report;
+}
+
+VOID
+IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
+{
+        if (Queue->reports.count > 100)
+        {
+                ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
+                return;
+        }
+
+        PDEFERRED_REPORT report = IrpQueueAllocateDeferredReport(Buffer, BufferSize);
+
+        if (!report)
                 return;
 
-        Irp->IoStatus.Status = STATUS_PENDING;
-        IoMarkIrpPending(Irp);
-        entry->irp = Irp;
-        queue->count++;
+        KeAcquireGuardedMutex(&Queue->reports.lock);
+        InsertTailList(&Queue->reports.head, &report->list_entry);
+        Queue->reports.count++;
+        KeReleaseGuardedMutex(&Queue->reports.lock);
+}
 
-        ListInsert(&queue->start, &entry->entry, &queue->lock);
-        IrpQueueDequeue(IrpQueueMarkIrpCompleteCallback);
+/* takes ownership of the buffer, and regardless of the outcome will free it. */
+NTSTATUS
+IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
+{
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
+
+        PIRP irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
+
+        /*
+         * If no irps are available in our queue, lets store it in a deferred reports list which
+         * should be checked each time we insert a new irp into the queue.
+         */
+        if (!irp)
+        {
+                IrpQueueDeferReport(queue, Buffer, BufferSize);
+                return STATUS_SUCCESS;
+        }
+
+        status = ValidateIrpOutputBuffer(irp, BufferSize);
+
+        if (!NT_SUCCESS(status))
+        {
+                ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
+                return status;
+        }
+
+        irp->IoStatus.Status      = STATUS_SUCCESS;
+        irp->IoStatus.Information = BufferSize;
+        RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
+        ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
+        ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
+}
+
+VOID
+IrpQueueFreeDeferredReports()
+{
+        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        PDEFERRED_REPORT report = NULL;
+
+        while (IrpQueueIsThereDeferredReport(queue))
+        {
+                report = IrpQueueRemoveDeferredReport(queue);
+                ExFreePoolWithTag(report, REPORT_POOL_TAG);
+        }
+}
+
+NTSTATUS
+IrpQueueInitialise()
+{
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
+
+        KeInitializeGuardedMutex(&queue->lock);
+        KeInitializeGuardedMutex(&queue->reports.lock);
+        InitializeListHead(&queue->queue);
+        InitializeListHead(&queue->reports.head);
+
+        status = IoCsqInitialize(&queue->csq,
+                                 IrpQueueInsert,
+                                 IrpQueueRemove,
+                                 IrpQueuePeekNextEntry,
+                                 IrpQueueAcquireLock,
+                                 IrpQueueReleaseLock,
+                                 IrpQueueCompleteCancelledIrp);
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("IoCsqInitialize failed with status %x", status);
+
+        return status;
 }
 
 STATIC
@@ -132,7 +309,7 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation)
         default: DEBUG_WARNING("Invalid operation ID passed"); return STATUS_INVALID_PARAMETER;
         }
 
-        return status;
+        return STATUS_SUCCESS;
 }
 
 /*
@@ -241,8 +418,13 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                  * it will issue a bug check under windows driver verifier.
                  */
 
-                status = ImpPsCreateSystemThread(
-                    &handle, PROCESS_ALL_ACCESS, NULL, NULL, NULL, HandleValidateDriversIOCTL, Irp);
+                status = ImpPsCreateSystemThread(&handle,
+                                                 PROCESS_ALL_ACCESS,
+                                                 NULL,
+                                                 NULL,
+                                                 NULL,
+                                                 HandleValidateDriversIOCTL,
+                                                 NULL);
 
                 if (!NT_SUCCESS(status))
                 {
@@ -250,27 +432,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                         goto end;
                 }
 
-                /*
-                 * Thread objects are a type of dispatcher object, meaning when they are freed
-                 * its set to the signal state and any waiters will be signalled. This allows
-                 * us to wait til our threads terminated and the IRP buffer has been either filled
-                 * or left empty and then from there we can complete the IRP and return.
-                 */
-                status = ImpObReferenceObjectByHandle(
-                    handle, THREAD_ALL_ACCESS, *PsThreadType, KernelMode, &thread, NULL);
-
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("ObReferenceObjectByHandle failed with status %lx", status);
-                        ImpZwClose(handle);
-                        goto end;
-                }
-
-                ImpKeWaitForSingleObject(thread, Executive, KernelMode, FALSE, NULL);
-
                 ImpZwClose(handle);
-                ImpObDereferenceObject(thread);
-
                 break;
 
         case IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH:;
@@ -302,11 +464,11 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                         DEBUG_ERROR("QueryActiveApcContextsForCompletion failed with status %x",
                                     status);
 
-                status = HandlePeriodicGlobalReportQueueQuery(Irp);
+                // status = HandlePeriodicGlobalReportQueueQuery(Irp);
 
-                if (!NT_SUCCESS(status))
-                        DEBUG_ERROR("HandlePeriodicGlobalReportQueueQuery failed with status %x",
-                                    status);
+                // if (!NT_SUCCESS(status))
+                //         DEBUG_ERROR("HandlePeriodicGlobalReportQueueQuery failed with status %x",
+                //                     status);
 
                 break;
 
@@ -478,7 +640,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
 
                 status = SystemModuleVerificationDispatcher();
-
+                
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
 
@@ -496,13 +658,36 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 break;
 
-        case IOCTL_INSERT_IRP_INTO_QUEUE:
+        case IOCTL_INSERT_IRP_INTO_QUEUE:;
 
-                DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
+                //DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
-                IrpQueueInsert(Irp);
+                PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
-                /* we dont want to complete the request */
+                /*
+                 * Given the nature of the Windows IO subsystem and the cancel-safe queue
+                 * implementation we use, we need to query for deferred reports before insert an irp
+                 * into the queue. The reason for this is the cancel-safe queue will automically
+                 * mark the irp as pending, so if we then use that irp to return a deferred report
+                 * and return success here verifier has a lil cry.
+                 * 
+                 * TODO: some issue with using an incoming irp meant for the queue and finishing a deferred report.
+                 */
+
+                /* before we queue our IRP, check if we can complete a deferred report */
+                status = IrpQueueQueryPendingReports(Irp);
+
+                /* if we return success, weve completed the irp, we can return success */
+                if (!NT_SUCCESS(status))
+                {
+                        /* if there are no deferred reports, store the irp in
+                         * the queue */
+                        IoCsqInsertIrp(&queue->csq, Irp, NULL);
+
+                        /* we dont want to complete the request */
+                        return STATUS_PENDING;
+                }
+
                 return STATUS_SUCCESS;
 
         default:
@@ -529,7 +714,6 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         DEBUG_INFO("Handle to driver closed.");
 
         /* we also lose reports here, so sohuld pass em into the irp before freeing */
-        FreeGlobalReportQueueObjects();
         ProcCloseClearProcessConfiguration();
         UnregisterProcessObCallbacks();
 

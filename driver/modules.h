@@ -7,62 +7,6 @@
 #include "common.h"
 #include "queue.h"
 
-typedef enum _TABLE_ID
-{
-        HalDispatch = 0,
-        HalPrivateDispatch
-} TABLE_ID;
-
-#define DATA_TABLE_ROUTINE_BUF_SIZE 256
-
-typedef struct _DATA_TABLE_ROUTINE_REPORT
-{
-        UINT32   report_code;
-        TABLE_ID id;
-        UINT64   address;
-        CHAR     routine[DATA_TABLE_ROUTINE_BUF_SIZE];
-
-} DATA_TABLE_ROUTINE_REPORT, *PDATA_TABLE_ROUTINE_REPORT;
-
-typedef struct _NMI_CALLBACK_FAILURE
-{
-        INT    report_code;
-        INT    were_nmis_disabled;
-        UINT64 kthread_address;
-        UINT64 invalid_rip;
-
-} NMI_CALLBACK_FAILURE, *PNMI_CALLBACK_FAILURE;
-
-#define APC_STACKWALK_BUFFER_SIZE 0x50
-
-typedef struct _DPC_STACKWALK_REPORT
-{
-        UINT32 report_code;
-        UINT64 kthread_address;
-        UINT64 invalid_rip;
-        CHAR   driver[APC_STACKWALK_BUFFER_SIZE];
-
-} DPC_STACKWALK_REPORT, *PDPC_STACKWALK_REPORT;
-
-typedef struct _MODULE_VALIDATION_FAILURE
-{
-        INT    report_code;
-        INT    report_type;
-        UINT64 driver_base_address;
-        UINT64 driver_size;
-        CHAR   driver_name[128];
-
-} MODULE_VALIDATION_FAILURE, *PMODULE_VALIDATION_FAILURE;
-
-typedef struct _APC_STACKWALK_REPORT
-{
-        INT    report_code;
-        UINT64 kthread_address;
-        UINT64 invalid_rip;
-        CHAR   driver[APC_STACKWALK_BUFFER_SIZE];
-
-} APC_STACKWALK_REPORT, *PAPC_STACKWALK_REPORT;
-
 typedef struct _APC_OPERATION_ID
 {
         int operation_id;
@@ -99,7 +43,7 @@ NTSTATUS
 GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation);
 
 NTSTATUS
-HandleValidateDriversIOCTL(_Inout_ PIRP Irp);
+HandleValidateDriversIOCTL();
 
 PRTL_MODULE_EXTENDED_INFO
 FindSystemModuleByName(_In_ LPCSTR ModuleName, _In_ PSYSTEM_MODULES SystemModules);

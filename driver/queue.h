@@ -56,19 +56,4 @@ QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data);
 PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head);
 
-VOID
-InitialiseGlobalReportQueue();
-
-VOID
-InsertReportToQueue(_In_ PVOID Report);
-
-NTSTATUS
-HandlePeriodicGlobalReportQueueQuery(_Out_ PIRP Irp);
-
-NTSTATUS
-HandlePeriodicGlobalReportQueueQuery(_Out_ PIRP Irp);
-
-VOID
-FreeGlobalReportQueueObjects();
-
 #endif

@@ -18,28 +18,28 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\umanager.cpp">
+    <ClCompile Include="kernel_interface\kernel_interface.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="km\kmanager.cpp">
+    <ClCompile Include="dispatcher\dispatcher.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\process.cpp">
+    <ClCompile Include="dispatcher\threadpool.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="threadpool.cpp">
+    <ClCompile Include="client\message_queue.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="um\imports.cpp">
+    <ClCompile Include="client\pipe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="km\driver.cpp">
+    <ClCompile Include="module.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="client.cpp">
+    <ClCompile Include="helper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="pipe.cpp">
+    <ClCompile Include="imports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -47,28 +47,28 @@
     <ClInclude Include="common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\umanager.h">
+    <ClInclude Include="kernel_interface\kernel_interface.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="km\kmanager.h">
+    <ClInclude Include="dispatcher\dispatcher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\process.h">
+    <ClInclude Include="dispatcher\threadpool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="threadpool.h">
+    <ClInclude Include="client\message_queue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="um\imports.h">
+    <ClInclude Include="client\pipe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="km\driver.h">
+    <ClInclude Include="module.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="client.h">
+    <ClInclude Include="helper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="pipe.h">
+    <ClInclude Include="imports.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

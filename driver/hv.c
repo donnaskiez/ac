@@ -3,7 +3,7 @@
 #include <intrin.h>
 #include "imports.h"
 #include "common.h"
-#include "ioctl.h"
+#include "io.h"
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(PAGE, PerformVirtualizationDetection)
