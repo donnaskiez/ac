@@ -3,7 +3,7 @@
 #include "../common.h"
 #include "../helper.h"
 
-dispatcher::timer::timer() { LOG_INFO("constructor"); }
+dispatcher::timer::timer() { this->active_callbacks = 0; }
 
 dispatcher::timer::~timer() {}
 
