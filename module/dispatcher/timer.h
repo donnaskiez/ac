@@ -7,6 +7,8 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+#include <unordered_map>
+#include <queue>
 
 /*
  * array of handles which we pass to WaitForMultipleEvents
@@ -38,28 +40,34 @@ class timer {
     std::function<void()> callback_routine;
     LARGE_INTEGER due_time;
     unsigned long period;
+
+    callback(std::function<void()> routine, int due_time_seconds,
+             int period_seconds);
   };
 
-  std::optional<int> find_free_handle_index();
+  std::optional<HANDLE *> find_free_handle();
   void close_handle_entry(HANDLE handle);
   void dispatch_callback_for_index(unsigned long index);
   HANDLE create_timer_object();
   bool set_timer_object(HANDLE handle, LARGE_INTEGER *due_time,
                         unsigned long period);
-  void set_callback_inactive(int index);
+  void query_removal_queue();
+  void insert_handle(HANDLE handle);
 
 public:
   std::mutex lock;
   std::array<HANDLE, MAXIMUM_WAIT_OBJECTS> handles;
-  std::array<callback, MAXIMUM_WAIT_OBJECTS> callbacks;
+  std::unordered_map<HANDLE, callback> callbacks;
+  std::queue<HANDLE> callbacks_to_remove;
 
   int active_callbacks;
 
   timer();
   ~timer();
 
-  bool insert_callback(std::function<void()> routine, int due_time_seconds,
+  std::optional<HANDLE> insert_callback(std::function<void()> routine, int due_time_seconds,
                        int period_seconds);
+  void remove_callback(HANDLE handle);
   void run_timer_thread();
 };
 } // namespace dispatcher

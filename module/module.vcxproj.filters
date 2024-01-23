@@ -1,87 +1,27 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
-    </Filter>
+    <ClCompile Include="dispatcher\timer.cpp" />
+    <ClCompile Include="helper.cpp" />
+    <ClCompile Include="imports.cpp" />
+    <ClCompile Include="module.cpp" />
+    <ClCompile Include="client\message_queue.cpp" />
+    <ClCompile Include="client\pipe.cpp" />
+    <ClCompile Include="dispatcher\dispatcher.cpp" />
+    <ClCompile Include="dispatcher\threadpool.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="kernel_interface\kernel_interface.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="kernel_interface\kernel_interface.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="dispatcher\dispatcher.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="dispatcher\threadpool.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="client\message_queue.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="client\pipe.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="module.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="helper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="imports.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-um-rewrite-final
-    <ClCompile Include="dispatcher\timer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-=======
-master
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="common.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="kernel_interface\kernel_interface.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dispatcher\dispatcher.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dispatcher\threadpool.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="client\message_queue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="client\pipe.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="module.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="helper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="imports.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-um-rewrite-final
-    <ClInclude Include="dispatcher\timer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-=======
-master
+    <ClInclude Include="client\message_queue.h" />
+    <ClInclude Include="client\pipe.h" />
+    <ClInclude Include="dispatcher\dispatcher.h" />
+    <ClInclude Include="dispatcher\threadpool.h" />
+    <ClInclude Include="common.h" />
+    <ClInclude Include="dispatcher\timer.h" />
+    <ClInclude Include="helper.h" />
+    <ClInclude Include="imports.h" />
+    <ClInclude Include="kernel_interface\kernel_interface.h" />
+    <ClInclude Include="module.h" />
   </ItemGroup>
 </Project>

@@ -2,7 +2,10 @@
 
 #include "module.h"
 
-DWORD WINAPI Init(HINSTANCE hinstDLL) { module::run(hinstDLL); }
+DWORD WINAPI Init(HINSTANCE hinstDLL) {
+  module::run(hinstDLL);
+  return 0;
+}
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call,
                       LPVOID lpReserved) {

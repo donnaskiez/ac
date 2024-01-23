@@ -15,8 +15,14 @@ void dispatcher::dispatcher::timer_test_callback() {
 }
 
 void dispatcher::dispatcher::init_timer_callbacks() {
+  std::optional<HANDLE> result = this->timers.insert_callback(
+      std::bind(&dispatcher::dispatcher::timer_test_callback, this), 5, 5);
+  this->timers.insert_callback(
+      std::bind(&dispatcher::dispatcher::timer_test_callback, this), 7, 7);
   this->timers.insert_callback(
       std::bind(&dispatcher::dispatcher::timer_test_callback, this), 10, 10);
+
+  this->timers.remove_callback(result.value());
 }
 
 void dispatcher::dispatcher::run_timer_thread() {
@@ -32,10 +38,10 @@ void dispatcher::dispatcher::run() {
   this->init_timer_callbacks();
   this->run_timer_thread();
   this->run_io_port_thread();
-  thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
+  //thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
-    this->issue_kernel_job();
-    helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
+    //this->issue_kernel_job();
+    //helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }
 
