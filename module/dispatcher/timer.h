@@ -6,9 +6,9 @@
 #include <functional>
 #include <mutex>
 #include <optional>
-#include <vector>
-#include <unordered_map>
 #include <queue>
+#include <unordered_map>
+#include <vector>
 
 /*
  * array of handles which we pass to WaitForMultipleEvents
@@ -17,16 +17,11 @@
  * cos u cant just take a pointer to a member function for some reason lol like
  * tf
  *
- * this returns an index into the array
- *
- * setup a vector containing the job routine for the associated handle, then
- * call that job.
- *
- * If we activate another handle in the handles array, the next time the current
- * event is signalled and we are invoked, only then should we insert new
- * requests. This means we should implement some queue where new timer objects
- * are inserted into the queue, then when the current even is invoked, we can
- * recall WaitForMultipleObjects with the updated array count.
+ * map maps a handle to a callback object, this object contains various
+ * information bust most important the callback routine. When the event is
+ * signaled, it returns a handle, use that handle to index the map and run the
+ * callback routine. This has to be done as the handles needs to be in a
+ * contiguous array, so we can use an array of callback objects.
  */
 namespace dispatcher {
 
@@ -65,8 +60,9 @@ public:
   timer();
   ~timer();
 
-  std::optional<HANDLE> insert_callback(std::function<void()> routine, int due_time_seconds,
-                       int period_seconds);
+  std::optional<HANDLE> insert_callback(std::function<void()> routine,
+                                        int due_time_seconds,
+                                        int period_seconds);
   void remove_callback(HANDLE handle);
   void run_timer_thread();
 };

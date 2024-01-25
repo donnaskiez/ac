@@ -136,8 +136,25 @@ enum ioctl_code
         InitiateDpcStackwalk =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20019, METHOD_BUFFERED, FILE_ANY_ACCESS),
         ValidateSystemModules =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS),
         InsertIrpIntoIrpQueue =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS),
-        QueryDeferredReports =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
+        QueryDeferredReports =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS),
+        InitiateSharedMapping =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
 };
+
+constexpr int SHARED_STATE_OPERATION_COUNT = 9;
+
+enum shared_state_operation_id
+{
+        ssRunNmiCallbacks = 0,
+        ssValidateDriverObjects,
+        ssEnumerateHandleTables,
+        ssScanForUnlinkedProcesses,
+        ssPerformModuleIntegrityCheck,
+        ssScanForAttachedThreads,
+        ssScanForEptHooks,
+        ssInitiateDpcStackwalk,
+        ssValidateSystemModules,
+};
+
 // clang-format on
 
 struct event_dispatcher {
@@ -181,6 +198,18 @@ class kernel_interface {
   std::mutex lock;
   std::vector<event_dispatcher> events;
 
+  struct shared_data {
+    unsigned __int32 status;
+    unsigned __int16 operation_id;
+  };
+
+  struct shared_mapping {
+    shared_data *buffer;
+    size_t size;
+  };
+
+  shared_mapping mapping;
+
   void initiate_completion_port();
   void terminate_completion_port();
   event_dispatcher *get_free_event_entry();
@@ -216,6 +245,7 @@ public:
   void verify_process_module_executable_regions();
   void initiate_apc_stackwalk();
   void send_pending_irp();
-  void query_deferred_reports();
+  void write_shared_mapping_operation(shared_state_operation_id operation_id);
+  void initiate_shared_mapping();
 };
 } // namespace kernel_interface

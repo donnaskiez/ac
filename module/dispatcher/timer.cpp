@@ -85,8 +85,8 @@ void dispatcher::timer::close_handle_entry(HANDLE handle) {
     if (this->handles[entry] == handle) {
       CloseHandle(handle);
       this->handles[entry] = INVALID_HANDLE_VALUE;
-      /* ordering doesnt matter, aslong as the valid handles are at the front of
-       * the array and are contiguous */
+      /* ordering doesnt matter, as long as the valid handles are at the front
+       * of the array and are contiguous */
       std::sort(this->handles.begin(), this->handles.end());
       this->active_callbacks--;
       return;
@@ -110,10 +110,14 @@ void dispatcher::timer::query_removal_queue() {
     HANDLE entry = callbacks_to_remove.front();
     this->close_handle_entry(entry);
     this->callbacks_to_remove.pop();
+    this->active_callbacks--;
   }
 }
 
+/* todo: maybe have an event object that we can wait on whilst no events are queued, then when we do insert an event alert the event object ? though this isnt urgent for our use case...*/
 void dispatcher::timer::run_timer_thread() {
+  if (this->active_callbacks == 0)
+    return;
   while (true) {
     unsigned long index = WaitForMultipleObjects(
         this->active_callbacks, reinterpret_cast<HANDLE *>(&handles), false,
@@ -122,6 +126,9 @@ void dispatcher::timer::run_timer_thread() {
       std::lock_guard<std::mutex> lock(this->lock);
       this->dispatch_callback_for_index(index);
       this->query_removal_queue();
+      /* maybe we should have some default event ? */
+      if (this->active_callbacks == 0)
+        return;
     }
   }
 }

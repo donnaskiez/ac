@@ -273,18 +273,38 @@ void kernel_interface::kernel_interface::send_pending_irp() {
   LOG_ERROR("failed to insert irp into irp queue %x", status);
 }
 
-//void kernel_interface::kernel_interface::query_deferred_reports() {
-//  unsigned long bytes_returned = 0;
-//  void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
-//  if (!buffer)
-//    return;
-//  for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
-//    unsigned int status =
-//        generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
-//                                   MAXIMUM_REPORT_BUFFER_SIZE, &bytes_returned);
-//    if (status && bytes_returned > 0)
-//      helper::print_kernel_report(buffer);
-//    memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
-//  }
-//  free(buffer);
-//}
+// void kernel_interface::kernel_interface::query_deferred_reports() {
+//   unsigned long bytes_returned = 0;
+//   void *buffer = malloc(MAXIMUM_REPORT_BUFFER_SIZE);
+//   if (!buffer)
+//     return;
+//   for (int i = 0; i < QUERY_DEFERRED_REPORT_COUNT; i++) {
+//     unsigned int status =
+//         generic_driver_call_output(ioctl_code::QueryDeferredReports, buffer,
+//                                    MAXIMUM_REPORT_BUFFER_SIZE,
+//                                    &bytes_returned);
+//     if (status && bytes_returned > 0)
+//       helper::print_kernel_report(buffer);
+//     memset(buffer, 0, MAXIMUM_REPORT_BUFFER_SIZE);
+//   }
+//   free(buffer);
+// }
+
+void kernel_interface::kernel_interface::write_shared_mapping_operation(
+    shared_state_operation_id operation_id) {
+  InterlockedExchange16(
+      reinterpret_cast<SHORT *>(&this->mapping.buffer->operation_id),
+      operation_id);
+}
+
+void kernel_interface::kernel_interface::initiate_shared_mapping() {
+  LOG_INFO("Initialising shared memory buffer!");
+  unsigned long bytes_returned = 0;
+  unsigned long result = this->generic_driver_call_output(
+      ioctl_code::InitiateSharedMapping, &this->mapping,
+      sizeof(kernel_interface::shared_mapping), &bytes_returned);
+  if (!result) {
+    LOG_ERROR("DeviceIoControl failed with status %x", GetLastError());
+    return;
+  }
+}

@@ -243,6 +243,13 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
          */
         dos_header = (PIMAGE_DOS_HEADER)ModuleBase;
 
+        if (!MmIsAddressValid(dos_header))
+        {
+                ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+                *Buffer = NULL;
+                return STATUS_INVALID_ADDRESS;
+        }
+
         /*
          * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the IMAGE_NT_HEADER from the base
          * of the image.

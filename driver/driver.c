@@ -91,6 +91,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
 typedef struct _DRIVER_CONFIG
 {
+        volatile LONG          nmi_status;
         UNICODE_STRING         unicode_driver_name;
         ANSI_STRING            ansi_driver_name;
         UNICODE_STRING         device_name;
@@ -110,6 +111,7 @@ typedef struct _DRIVER_CONFIG
         THREAD_LIST_HEAD       thread_list;
         DRIVER_LIST_HEAD       driver_list;
         PROCESS_LIST_HEAD      process_list;
+        SHARED_MAPPING         mapping;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -124,6 +126,26 @@ typedef struct _DRIVER_CONFIG
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
+
+VOID
+UnsetNmiInProgressFlag()
+{
+        InterlockedDecrement(&g_DriverConfig->nmi_status);
+}
+
+BOOLEAN
+IsNmiInProgress()
+{
+        /* if the initial value is true, we dont own the lock hence return false */
+        return InterlockedCompareExchange(&g_DriverConfig->nmi_status, TRUE, FALSE) == 0 ? FALSE
+                                                                                         : TRUE;
+}
+
+PSHARED_MAPPING
+GetSharedMappingConfig()
+{
+        return &g_DriverConfig->mapping;
+}
 
 VOID
 AcquireDriverConfigLock()
@@ -899,6 +921,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
                 return status;
         }
 
+        /* when this function failed, we bugcheck in freeconfigstrings todo: fix */
         status = DrvLoadGatherSystemEnvironmentSettings();
 
         if (!NT_SUCCESS(status))
@@ -981,7 +1004,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ResolveDynamicImports failed with status %x", status);
-                ImpIoDeleteDevice(DriverObject->DeviceObject);
+                // ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return status;
         }
 

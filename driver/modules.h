@@ -49,7 +49,7 @@ PRTL_MODULE_EXTENDED_INFO
 FindSystemModuleByName(_In_ LPCSTR ModuleName, _In_ PSYSTEM_MODULES SystemModules);
 
 NTSTATUS
-HandleNmiIOCTL(_Inout_ PIRP Irp);
+HandleNmiIOCTL();
 
 BOOLEAN
 FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context);

@@ -62,6 +62,8 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_QUERY_DEFERRED_REPORTS \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_INITIATE_SHARED_MAPPING \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -162,7 +164,7 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
-        PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+        PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
         InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
         queue->count++;
 }
@@ -278,6 +280,263 @@ IrpQueueInitialise()
 
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("IoCsqInitialize failed with status %x", status);
+
+        return status;
+}
+
+VOID
+SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        HANDLE          handle = NULL;
+        PSHARED_MAPPING state  = (PSHARED_MAPPING)Context;
+
+        InterlockedIncrement(&state->work_item_status);
+
+        DEBUG_VERBOSE("SharedMapping work routine called. OperationId: %lx",
+                      state->kernel_buffer->operation_id);
+
+        switch (state->kernel_buffer->operation_id)
+        {
+        case ssRunNmiCallbacks:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: RunNmiCallbacks Received.");
+
+                status = HandleNmiIOCTL();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("RunNmiCallbacks failed with status %lx", status);
+
+                break;
+
+        case ssValidateDriverObjects:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: ValidateDriverObjects Received.");
+
+                status = ImpPsCreateSystemThread(&handle,
+                                                 PROCESS_ALL_ACCESS,
+                                                 NULL,
+                                                 NULL,
+                                                 NULL,
+                                                 HandleValidateDriversIOCTL,
+                                                 NULL);
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
+                        goto end;
+                }
+
+                ImpZwClose(handle);
+                break;
+
+        case ssEnumerateHandleTables:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: EnumerateHandleTables Received");
+
+                /* can maybe implement this better so we can extract a status value */
+                EnumerateProcessListWithCallbackRoutine(EnumerateProcessHandles, NULL);
+
+                break;
+
+        case ssScanForUnlinkedProcesses:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: ScanForUnlinkedProcesses Received");
+
+                status = FindUnlinkedProcesses();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("FindUnlinkedProcesses failed with status %x", status);
+
+                break;
+
+        case ssPerformModuleIntegrityCheck:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: PerformIntegrityCheck Received");
+
+                status = ValidateOurDriverImage();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("VerifyInMemoryImageVsDiskImage failed with status %x", status);
+
+                break;
+
+        case ssScanForAttachedThreads:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: ScanForAttachedThreads Received");
+
+                DetectThreadsAttachedToProtectedProcess();
+
+                break;
+
+        case ssScanForEptHooks:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: ScanForEptHooks Received");
+
+                status = DetectEptHooksInKeyFunctions();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x", status);
+
+                break;
+
+        case ssInitiateDpcStackwalk:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID Received");
+
+                status = DispatchStackwalkToEachCpuViaDpc();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("DispatchStackwalkToEachCpuViaDpc failed with status %x",
+                                    status);
+
+                break;
+
+        case ssValidateSystemModules:
+
+                DEBUG_INFO("SHARED_STATE_OPERATION_ID: ValidateSystemModules Received");
+
+                status = SystemModuleVerificationDispatcher();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
+
+                break;
+
+        default: DEBUG_ERROR("Invalid SHARED_STATE_OPERATION_ID Received");
+        }
+
+end:
+        InterlockedDecrement(&state->work_item_status);
+}
+
+/* again, we want to run our routine at apc level not dispatch level */
+VOID
+SharedMappingDpcRoutine(_In_ PKDPC     Dpc,
+                        _In_opt_ PVOID DeferredContext,
+                        _In_opt_ PVOID SystemArgument1,
+                        _In_opt_ PVOID SystemArgument2)
+{
+        PSHARED_MAPPING mapping = (PSHARED_MAPPING)DeferredContext;
+
+        if (!mapping->active || mapping->work_item_status)
+                return;
+
+        IoQueueWorkItem(mapping->work_item, SharedMappingWorkRoutine, NormalWorkQueue, mapping);
+}
+
+#define REPEAT_TIME_15_SEC 30000
+
+VOID
+SharedMappingTerminate()
+{
+        PSHARED_MAPPING mapping = GetSharedMappingConfig();
+
+        while (mapping->work_item_status)
+                YieldProcessor();
+
+        mapping->active      = FALSE;
+        mapping->user_buffer = NULL;
+        mapping->size        = 0;
+
+        KeCancelTimer(&mapping->timer);
+        IoFreeWorkItem(mapping->work_item);
+        IoFreeMdl(mapping->mdl);
+        ExFreePoolWithTag(mapping->kernel_buffer, POOL_TAG_INTEGRITY);
+
+        RtlZeroMemory(mapping, sizeof(SHARED_MAPPING));
+}
+
+STATIC
+NTSTATUS
+SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
+{
+        LARGE_INTEGER due_time = {0};
+        LONG          period   = 0;
+
+        due_time.QuadPart = ABSOLUTE(SECONDS(30));
+
+        Mapping->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
+
+        if (!Mapping->work_item)
+        {
+                DEBUG_ERROR("IoAllocateWorkItem failed with no status.");
+                return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        KeInitializeDpc(&Mapping->timer_dpc, SharedMappingDpcRoutine, Mapping);
+        KeInitializeTimer(&Mapping->timer);
+        KeSetTimerEx(&Mapping->timer, due_time, REPEAT_TIME_15_SEC, &Mapping->timer_dpc);
+
+        DEBUG_VERBOSE("Initialised shared mapping event timer.");
+        return STATUS_SUCCESS;
+}
+
+STATIC
+NTSTATUS
+SharedMappingInitialise(_In_ PIRP Irp)
+{
+        NTSTATUS             status       = STATUS_UNSUCCESSFUL;
+        PMDL                 mdl          = NULL;
+        PSHARED_MAPPING      mapping      = NULL;
+        PSHARED_MAPPING_INIT mapping_init = NULL;
+        PEPROCESS            process      = NULL;
+        PVOID                buffer       = NULL;
+        PVOID                user_buffer  = NULL;
+
+        mapping = GetSharedMappingConfig();
+
+        status = ValidateIrpOutputBuffer(Irp, sizeof(SHARED_MAPPING_INIT));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
+                return status;
+        }
+
+        /* remember that ExAllocatePool2 zeroes the allocation, so no need to zero */
+        buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, PAGE_SIZE, POOL_TAG_INTEGRITY);
+
+        if (!buffer)
+                return STATUS_INSUFFICIENT_RESOURCES;
+
+        mdl = IoAllocateMdl(buffer, PAGE_SIZE, FALSE, FALSE, NULL);
+
+        if (!mdl)
+        {
+                DEBUG_ERROR("IoAllocateMdl failed with no status");
+                ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
+                return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        MmBuildMdlForNonPagedPool(mdl);
+
+        __try
+        {
+                user_buffer = MmMapLockedPagesSpecifyCache(
+                    mdl, UserMode, MmCached, NULL, FALSE, NormalPagePriority | MdlMappingNoExecute);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+                status = GetExceptionCode();
+                DEBUG_ERROR("MmMapLockedPagesSpecifyCache failed with status %x", status);
+                IoFreeMdl(mdl);
+                ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
+                return status;
+        }
+
+        mapping->kernel_buffer    = (PSHARED_STATE)buffer;
+        mapping->user_buffer      = user_buffer;
+        mapping->mdl              = mdl;
+        mapping->size             = PAGE_SIZE;
+        mapping->active           = TRUE;
+        mapping->work_item_status = FALSE;
+
+        SharedMappingInitialiseTimer(mapping);
+
+        mapping_init         = (PSHARED_MAPPING_INIT)Irp->AssociatedIrp.SystemBuffer;
+        mapping_init->buffer = user_buffer;
+        mapping_init->size   = PAGE_SIZE;
 
         return status;
 }
@@ -640,7 +899,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 DEBUG_INFO("IOCTL_VALIDATE_SYSTEM_MODULES Received");
 
                 status = SystemModuleVerificationDispatcher();
-                
+
                 if (!NT_SUCCESS(status))
                         DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
 
@@ -660,7 +919,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         case IOCTL_INSERT_IRP_INTO_QUEUE:;
 
-                //DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
+                // DEBUG_INFO("IOCTL_INSERT_IRP_INTO_QUEUE Received");
 
                 PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
@@ -670,8 +929,6 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                  * into the queue. The reason for this is the cancel-safe queue will automically
                  * mark the irp as pending, so if we then use that irp to return a deferred report
                  * and return success here verifier has a lil cry.
-                 * 
-                 * TODO: some issue with using an incoming irp meant for the queue and finishing a deferred report.
                  */
 
                 /* before we queue our IRP, check if we can complete a deferred report */
@@ -689,6 +946,15 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 }
 
                 return STATUS_SUCCESS;
+
+        case IOCTL_INITIATE_SHARED_MAPPING:
+
+                status = SharedMappingInitialise(Irp);
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("SharedMappingInitialise failed with status %x", status);
+
+                break;
 
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
@@ -716,6 +982,7 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         /* we also lose reports here, so sohuld pass em into the irp before freeing */
         ProcCloseClearProcessConfiguration();
         UnregisterProcessObCallbacks();
+        SharedMappingTerminate();
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;

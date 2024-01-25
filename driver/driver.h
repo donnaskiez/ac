@@ -88,4 +88,13 @@ IsDriverUnloading();
 PPROCESS_CONFIG
 GetProcessConfig();
 
+PSHARED_MAPPING
+GetSharedMappingConfig();
+
+VOID
+UnsetNmiInProgressFlag();
+
+BOOLEAN
+IsNmiInProgress();
+
 #endif

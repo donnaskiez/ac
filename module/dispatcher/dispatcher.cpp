@@ -10,19 +10,23 @@ dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
     : thread_pool(DISPATCHER_THREAD_COUNT),
       k_interface(driver_name, message_queue) {}
 
-void dispatcher::dispatcher::timer_test_callback() {
-  LOG_INFO("Timer callback invoked from dispatcher class!!");
+void dispatcher::dispatcher::write_shared_mapping_operation() {
+  int operation =
+      helper::generate_rand_int(kernel_interface::SHARED_STATE_OPERATION_COUNT);
+  LOG_INFO("Shared mapping operation callback received. operation: %lx",
+           operation);
+  this->k_interface.write_shared_mapping_operation(
+      *reinterpret_cast<kernel_interface::shared_state_operation_id *>(
+          &operation));
 }
 
 void dispatcher::dispatcher::init_timer_callbacks() {
+  /* we want to offset when our driver routines are called */
+  this->k_interface.initiate_shared_mapping();
   std::optional<HANDLE> result = this->timers.insert_callback(
-      std::bind(&dispatcher::dispatcher::timer_test_callback, this), 5, 5);
-  this->timers.insert_callback(
-      std::bind(&dispatcher::dispatcher::timer_test_callback, this), 7, 7);
-  this->timers.insert_callback(
-      std::bind(&dispatcher::dispatcher::timer_test_callback, this), 10, 10);
-
-  this->timers.remove_callback(result.value());
+      std::bind(&dispatcher::dispatcher::write_shared_mapping_operation, this),
+      WRITE_SHARED_MAPPING_DUE_TIME, WRITE_SHARED_MAPPING_PERIOD);
+  helper::sleep_thread(TIMER_CALLBACK_DELAY);
 }
 
 void dispatcher::dispatcher::run_timer_thread() {
@@ -38,10 +42,10 @@ void dispatcher::dispatcher::run() {
   this->init_timer_callbacks();
   this->run_timer_thread();
   this->run_io_port_thread();
-  //thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
+  thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
-    //this->issue_kernel_job();
-    //helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
+    this->issue_kernel_job();
+    helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }
 

@@ -7,9 +7,12 @@
 
 namespace dispatcher {
 
-static const int DISPATCH_LOOP_SLEEP_TIME = 10;
-static const int KERNEL_DISPATCH_FUNCTION_COUNT = 11;
-static const int DISPATCHER_THREAD_COUNT = 4;
+constexpr int DISPATCH_LOOP_SLEEP_TIME = 30;
+constexpr int KERNEL_DISPATCH_FUNCTION_COUNT = 11;
+constexpr int DISPATCHER_THREAD_COUNT = 4;
+constexpr int TIMER_CALLBACK_DELAY = 15;
+constexpr int WRITE_SHARED_MAPPING_PERIOD = 30;
+constexpr int WRITE_SHARED_MAPPING_DUE_TIME = 30;
 
 class dispatcher {
   timer timers;
@@ -17,7 +20,7 @@ class dispatcher {
   kernel_interface::kernel_interface k_interface;
 
   void issue_kernel_job();
-  void timer_test_callback();
+  void write_shared_mapping_operation();
   void init_timer_callbacks();
   void run_timer_thread();
   void run_io_port_thread();

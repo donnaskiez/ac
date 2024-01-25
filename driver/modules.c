@@ -135,7 +135,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
 
 STATIC
 NTSTATUS
-AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules, _Inout_ PIRP Irp);
+AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules);
 
 STATIC
 NTSTATUS
@@ -795,7 +795,7 @@ IsInstructionPointerInsideModule(_In_ UINT64                    Rip,
  */
 STATIC
 NTSTATUS
-AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules, _Inout_ PIRP Irp)
+AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
 {
         PAGED_CODE();
 
@@ -810,26 +810,24 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
                 /* Make sure our NMIs were run  */
                 if (!NmiContext[core].callback_count)
                 {
-                        NTSTATUS status =
-                            ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
+                        PNMI_CALLBACK_FAILURE report = ImpExAllocatePool2(
+                            POOL_FLAG_NON_PAGED, sizeof(NMI_CALLBACK_FAILURE), REPORT_POOL_TAG);
+
+                        if (!report)
+                                return STATUS_INSUFFICIENT_RESOURCES;
+
+                        report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+                        report->kthread_address    = NULL;
+                        report->invalid_rip        = NULL;
+                        report->were_nmis_disabled = TRUE;
+
+                        status = IrpQueueCompleteIrp(report, sizeof(NMI_CALLBACK_FAILURE));
 
                         if (!NT_SUCCESS(status))
                         {
-                                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
-                                            status);
-                                continue;
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
+                                return status;
                         }
-
-                        NMI_CALLBACK_FAILURE report = {0};
-                        report.report_code          = REPORT_NMI_CALLBACK_FAILURE;
-                        report.kthread_address      = NULL;
-                        report.invalid_rip          = NULL;
-                        report.were_nmis_disabled   = TRUE;
-
-                        Irp->IoStatus.Information = sizeof(NMI_CALLBACK_FAILURE);
-
-                        RtlCopyMemory(
-                            Irp->AssociatedIrp.SystemBuffer, &report, sizeof(NMI_CALLBACK_FAILURE));
 
                         return STATUS_SUCCESS;
                 }
@@ -905,35 +903,23 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules,
 
                 if (!flag)
                 {
-                        status = ValidateIrpOutputBuffer(Irp, sizeof(NMI_CALLBACK_FAILURE));
+                        PNMI_CALLBACK_FAILURE report =
+                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                               sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
+                                               REPORT_POOL_TAG);
+
+                        report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+                        report->kthread_address    = NmiContext[core].kthread;
+                        report->invalid_rip        = NmiContext[core].interrupted_rip;
+                        report->were_nmis_disabled = FALSE;
+
+                        status = IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
 
                         if (!NT_SUCCESS(status))
                         {
-                                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
-                                            status);
+                                DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
                                 return status;
                         }
-
-                        /*
-                         * Note: for now, we only handle 1 report at a time so we stop the
-                         * analysis once we receive a report since we only send a buffer
-                         * large enough for 1 report. In the future this should be changed
-                         * to a buffer that can hold atleast 4 reports (since the chance we
-                         * get 4 reports with a single NMI would be impossible) so we can
-                         * continue parsing the rest of the stack frames after receiving a
-                         * single report.
-                         */
-
-                        NMI_CALLBACK_FAILURE report = {0};
-                        report.report_code          = REPORT_NMI_CALLBACK_FAILURE;
-                        report.kthread_address      = NmiContext[core].kthread;
-                        report.invalid_rip          = NmiContext[core].interrupted_rip;
-                        report.were_nmis_disabled   = FALSE;
-
-                        Irp->IoStatus.Information = sizeof(NMI_CALLBACK_FAILURE);
-
-                        RtlCopyMemory(
-                            Irp->AssociatedIrp.SystemBuffer, &report, sizeof(NMI_CALLBACK_FAILURE));
 
                         return STATUS_SUCCESS;
                 }
@@ -1024,7 +1010,7 @@ LaunchNonMaskableInterrupt()
 }
 
 NTSTATUS
-HandleNmiIOCTL(_Inout_ PIRP Irp)
+HandleNmiIOCTL()
 {
         PAGED_CODE();
 
@@ -1032,6 +1018,9 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         PVOID          callback_handle = NULL;
         SYSTEM_MODULES system_modules  = {0};
         PNMI_CONTEXT   nmi_context     = NULL;
+
+        if (IsNmiInProgress())
+                return STATUS_ALREADY_COMMITTED;
 
         status = ValidateHalDispatchTables();
 
@@ -1084,7 +1073,7 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
                 return status;
         }
 
-        status = AnalyseNmiData(nmi_context, &system_modules, Irp);
+        status = AnalyseNmiData(nmi_context, &system_modules);
 
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("Error analysing nmi data");
@@ -1093,6 +1082,7 @@ HandleNmiIOCTL(_Inout_ PIRP Irp)
         ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
         ImpKeDeregisterNmiCallback(callback_handle);
 
+        UnsetNmiInProgressFlag();
         return status;
 }
 
