@@ -947,11 +947,11 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                         goto end;
 
                 report->report_code = REPORT_INVALID_PROCESS_MODULE;
-                report->image_base = module_info->module_base;
-                report->image_size = module_info->module_size;
-                RtlCopyMemory(report->module_path, module_info->module_path,
-                              sizeof(report->module_path));
-                        
+                report->image_base  = module_info->module_base;
+                report->image_size  = module_info->module_size;
+                RtlCopyMemory(
+                    report->module_path, module_info->module_path, sizeof(report->module_path));
+
                 status = IrpQueueCompleteIrp(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
 
                 if (!NT_SUCCESS(status))

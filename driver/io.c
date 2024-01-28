@@ -119,6 +119,14 @@ IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
         return RemoveHeadList(&Queue->reports.head);
 }
 
+STATIC
+VOID
+IrpQueueFreeDeferredReport(_In_ PDEFERRED_REPORT Report)
+{
+        ImpExFreePoolWithTag(Report->buffer, REPORT_POOL_TAG);
+        ImpExFreePoolWithTag(Report, REPORT_POOL_TAG);
+}
+
 NTSTATUS
 IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
@@ -131,6 +139,7 @@ IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
         Irp->IoStatus.Status      = STATUS_SUCCESS;
         Irp->IoStatus.Information = Report->buffer_size;
         IofCompleteRequest(Irp, IO_NO_INCREMENT);
+        IrpQueueFreeDeferredReport(Report);
         return STATUS_SUCCESS;
 }
 
@@ -141,14 +150,22 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
         PDEFERRED_REPORT report = NULL;
         NTSTATUS         status = STATUS_UNSUCCESSFUL;
 
+        /*
+         * Important we hold the lock before we call IsThereDeferredReport to prevent the race
+         * condition where in the period between when we get a TRUE result and another thread
+         * removes the last entry from the list. We then request a deferred report and will receive
+         * a null value leading to a bugcheck in the subsequent call to CompleteDeferredReport.
+         */
+        KeAcquireGuardedMutex(&queue->reports.lock);
+
         if (IrpQueueIsThereDeferredReport(queue))
         {
-                KeAcquireGuardedMutex(&queue->reports.lock);
                 report = IrpQueueRemoveDeferredReport(queue);
                 status = IrpQueueCompleteDeferredReport(report, Irp);
 
                 if (!NT_SUCCESS(status))
                 {
+                        IrpQueueFreeDeferredReport(report);
                         KeReleaseGuardedMutex(&queue->reports.lock);
                         return status;
                 }
@@ -158,6 +175,7 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
                 return status;
         }
 
+        KeReleaseGuardedMutex(&queue->reports.lock);
         return status;
 }
 

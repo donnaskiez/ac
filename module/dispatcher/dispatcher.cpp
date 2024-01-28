@@ -3,12 +3,21 @@
 #include "../client/message_queue.h"
 #include "../helper.h"
 
+#include <bcrypt.h>
 #include <chrono>
 
 dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
                                    client::message_queue &message_queue)
     : thread_pool(DISPATCHER_THREAD_COUNT),
       k_interface(driver_name, message_queue) {}
+
+void dispatcher::dispatcher::request_session_pk() {
+#ifdef NO_SERVER
+  LOG_INFO("NO_SERVER Build used. Generating local session key pair.");
+#else
+  LOG_INFO("Requesting session key pair.");
+#endif
+}
 
 void dispatcher::dispatcher::write_shared_mapping_operation() {
   int operation =

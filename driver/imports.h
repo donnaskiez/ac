@@ -4,10 +4,7 @@
 #include "common.h"
 
 PVOID
-FindNtExport(PCZPSTR ExportName);
-
-VOID
-FreeDriverImportsStructure();
+FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName);
 
 NTSTATUS
 ResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject);
@@ -629,91 +626,91 @@ typedef struct _DRIVER_IMPORTS
         pPsGetProcessImageFileName         DrvImpPsGetProcessImageFileName;
 } DRIVER_IMPORTS, *PDRIVER_IMPORTS;
 
-extern PDRIVER_IMPORTS driver_imports;
+extern DRIVER_IMPORTS driver_imports;
 
 #define DRVIMPORTS driver_imports
 
-#define ImpIoGetCurrentIrpStackLocation      DRVIMPORTS->DrvImpIoGetCurrentIrpStackLocation
-#define ImpObDereferenceObject               DRVIMPORTS->DrvImpObDereferenceObject
-#define ImpPsLookupThreadByThreadId          DRVIMPORTS->DrvImpPsLookupThreadByThreadId
-#define ImpMmIsAddressValid                  DRVIMPORTS->DrvImpMmIsAddressValid
-#define ImpPsSetCreateProcessNotifyRoutine   DRVIMPORTS->DrvImpPsSetCreateProcessNotifyRoutine
-#define ImpPsRemoveCreateThreadNotifyRoutine DRVIMPORTS->DrvImpPsRemoveCreateThreadNotifyRoutine
-#define ImpPsGetCurrentThreadId              DRVIMPORTS->DrvImpPsGetCurrentThreadId
-#define ImpPsGetProcessId                    DRVIMPORTS->DrvImpPsGetProcessId
-#define ImpPsLookupProcessByProcessId        DRVIMPORTS->DrvImpPsLookupProcessByProcessId
-#define ImpExEnumHandleTable                 DRVIMPORTS->DrvImpExEnumHandleTable
-#define ImpObGetObjectType                   DRVIMPORTS->DrvImpObGetObjectType
-#define ImpExfUnblockPushLock                DRVIMPORTS->DrvImpExfUnblockPushLock
-#define ImpPsGetProcessImageFileName         DRVIMPORTS->DrvImpPsGetProcessImageFileName
-#define Impstrstr                            DRVIMPORTS->DrvImpstrstr
-#define ImpRtlInitUnicodeString              DRVIMPORTS->DrvImpRtlInitUnicodeString
-#define ImpRtlQueryRegistryValues            DRVIMPORTS->DrvImpRtlQueryRegistryValues
-#define ImpMmGetSystemRoutineAddress         DRVIMPORTS->DrvImpMmGetSystemRoutineAddress
-#define ImpRtlUnicodeStringToAnsiString      DRVIMPORTS->DrvImpRtlUnicodeStringToAnsiString
-#define ImpRtlCopyUnicodeString              DRVIMPORTS->DrvImpRtlCopyUnicodeString
-#define ImpRtlFreeAnsiString                 DRVIMPORTS->DrvImpRtlFreeAnsiString
-#define ImpKeInitializeGuardedMutex          DRVIMPORTS->DrvImpKeInitializeGuardedMutex
-#define ImpIoCreateDevice                    DRVIMPORTS->DrvImpIoCreateDevice
-#define ImpIoCreateSymbolicLink              DRVIMPORTS->DrvImpIoCreateSymbolicLink
-#define ImpIoDeleteDevice                    DRVIMPORTS->DrvImpIoDeleteDevice
-#define ImpIoDeleteSymbolicLink              DRVIMPORTS->DrvImpIoDeleteSymbolicLink
-#define ImpObRegisterCallbacks               DRVIMPORTS->DrvImpObRegisterCallbacks
-#define ImpObUnRegisterCallbacks             DRVIMPORTS->DrvImpObUnRegisterCallbacks
-#define ImpPsSetCreateThreadNotifyRoutine    DRVIMPORTS->DrvImpPsSetCreateThreadNotifyRoutine
-#define ImpPsProcessType                     DRVIMPORTS->DrvImpPsProcessType
-#define ImpKeRevertToUserAffinityThreadEx    DRVIMPORTS->DrvImpKeRevertToUserAffinityThreadEx
-#define ImpKeSetSystemAffinityThreadEx       DRVIMPORTS->DrvImpKeSetSystemAffinityThreadEx
-#define Impstrnlen                           DRVIMPORTS->DrvImpstrnlen
-#define ImpRtlInitAnsiString                 DRVIMPORTS->DrvImpRtlInitAnsiString
-#define ImpRtlAnsiStringToUnicodeString      DRVIMPORTS->DrvImpRtlAnsiStringToUnicodeString
-#define ImpIoGetCurrentProcess               DRVIMPORTS->DrvImpIoGetCurrentProcess
-#define ImpRtlGetVersion                     DRVIMPORTS->DrvImpRtlGetVersion
-#define ImpRtlCompareMemory                  DRVIMPORTS->DrvImpRtlCompareMemory
-#define ImpExGetSystemFirmwareTable          DRVIMPORTS->DrvImpExGetSystemFirmwareTable
-#define ImpIoAllocateWorkItem                DRVIMPORTS->DrvImpIoAllocateWorkItem
-#define ImpIoFreeWorkItem                    DRVIMPORTS->DrvImpIoFreeWorkItem
-#define ImpIoQueueWorkItem                   DRVIMPORTS->DrvImpIoQueueWorkItem
-#define ImpZwOpenFile                        DRVIMPORTS->DrvImpZwOpenFile
-#define ImpZwClose                           DRVIMPORTS->DrvImpZwClose
-#define ImpZwCreateSection                   DRVIMPORTS->DrvImpZwCreateSection
-#define ImpZwMapViewOfSection                DRVIMPORTS->DrvImpZwMapViewOfSection
-#define ImpZwUnmapViewOfSection              DRVIMPORTS->DrvImpZwUnmapViewOfSection
-#define ImpMmCopyMemory                      DRVIMPORTS->DrvImpMmCopyMemory
-#define ImpZwDeviceIoControlFile             DRVIMPORTS->DrvImpZwDeviceIoControlFile
-#define ImpKeStackAttachProcess              DRVIMPORTS->DrvImpKeStackAttachProcess
-#define ImpKeUnstackDetachProcess            DRVIMPORTS->DrvImpKeUnstackDetachProcess
-#define ImpKeWaitForSingleObject             DRVIMPORTS->DrvImpKeWaitForSingleObject
-#define ImpPsCreateSystemThread              DRVIMPORTS->DrvImpPsCreateSystemThread
-#define ImpIofCompleteRequest                DRVIMPORTS->DrvImpIofCompleteRequest
-#define ImpObReferenceObjectByHandle         DRVIMPORTS->DrvImpObReferenceObjectByHandle
-#define ImpPsThreadType                      DRVIMPORTS->DrvImpPsThreadType
-#define ImpKeDelayExecutionThread            DRVIMPORTS->DrvImpKeDelayExecutionThread
-#define ImpKeRegisterNmiCallback             DRVIMPORTS->DrvImpKeRegisterNmiCallback
-#define ImpKeDeregisterNmiCallback           DRVIMPORTS->DrvImpKeDeregisterNmiCallback
-#define ImpKeQueryActiveProcessorCount       DRVIMPORTS->DrvImpKeQueryActiveProcessorCount
-#define ImpExAcquirePushLockExclusiveEx      DRVIMPORTS->DrvImpExAcquirePushLockExclusiveEx
-#define ImpExReleasePushLockExclusiveEx      DRVIMPORTS->DrvImpExReleasePushLockExclusiveEx
-#define ImpPsGetThreadId                     DRVIMPORTS->DrvImpPsGetThreadId
-#define ImpRtlCaptureStackBackTrace          DRVIMPORTS->DrvImpRtlCaptureStackBackTrace
-#define ImpZwOpenDirectoryObject             DRVIMPORTS->DrvImpZwOpenDirectoryObject
-#define ImpKeInitializeAffinityEx            DRVIMPORTS->DrvImpKeInitializeAffinityEx
-#define ImpKeAddProcessorAffinityEx          DRVIMPORTS->DrvImpKeAddProcessorAffinityEx
-#define ImpRtlQueryModuleInformation         DRVIMPORTS->DrvImpRtlQueryModuleInformation
-#define ImpKeInitializeApc                   DRVIMPORTS->DrvImpKeInitializeApc
-#define ImpKeInsertQueueApc                  DRVIMPORTS->DrvImpKeInsertQueueApc
-#define ImpKeGenericCallDpc                  DRVIMPORTS->DrvImpKeGenericCallDpc
-#define ImpKeSignalCallDpcDone               DRVIMPORTS->DrvImpKeSignalCallDpcDone
-#define ImpMmGetPhysicalMemoryRangesEx2      DRVIMPORTS->DrvImpMmGetPhysicalMemoryRangesEx2
-#define ImpMmGetVirtualForPhysical           DRVIMPORTS->DrvImpMmGetVirtualForPhysical
-#define ImpObfReferenceObject                DRVIMPORTS->DrvImpObfReferenceObject
-#define ImpExFreePoolWithTag                 DRVIMPORTS->DrvImpExFreePoolWithTag
-#define ImpExAllocatePool2                   DRVIMPORTS->DrvImpExAllocatePool2
-#define ImpKeReleaseGuardedMutex             DRVIMPORTS->DrvImpKeReleaseGuardedMutex
-#define ImpKeAcquireGuardedMutex             DRVIMPORTS->DrvImpKeAcquireGuardedMutex
-#define ImpDbgPrintEx                        DRVIMPORTS->DrvImpDbgPrintEx
-#define ImpRtlCompareUnicodeString           DRVIMPORTS->DrvImpRtlCompareUnicodeString
-#define ImpRtlFreeUnicodeString              DRVIMPORTS->DrvImpRtlFreeUnicodeString
-#define ImpPsGetProcessImageFileName         DRVIMPORTS->DrvImpPsGetProcessImageFileName
+#define ImpIoGetCurrentIrpStackLocation      DRVIMPORTS.DrvImpIoGetCurrentIrpStackLocation
+#define ImpObDereferenceObject               DRVIMPORTS.DrvImpObDereferenceObject
+#define ImpPsLookupThreadByThreadId          DRVIMPORTS.DrvImpPsLookupThreadByThreadId
+#define ImpMmIsAddressValid                  DRVIMPORTS.DrvImpMmIsAddressValid
+#define ImpPsSetCreateProcessNotifyRoutine   DRVIMPORTS.DrvImpPsSetCreateProcessNotifyRoutine
+#define ImpPsRemoveCreateThreadNotifyRoutine DRVIMPORTS.DrvImpPsRemoveCreateThreadNotifyRoutine
+#define ImpPsGetCurrentThreadId              DRVIMPORTS.DrvImpPsGetCurrentThreadId
+#define ImpPsGetProcessId                    DRVIMPORTS.DrvImpPsGetProcessId
+#define ImpPsLookupProcessByProcessId        DRVIMPORTS.DrvImpPsLookupProcessByProcessId
+#define ImpExEnumHandleTable                 DRVIMPORTS.DrvImpExEnumHandleTable
+#define ImpObGetObjectType                   DRVIMPORTS.DrvImpObGetObjectType
+#define ImpExfUnblockPushLock                DRVIMPORTS.DrvImpExfUnblockPushLock
+#define ImpPsGetProcessImageFileName         DRVIMPORTS.DrvImpPsGetProcessImageFileName
+#define Impstrstr                            DRVIMPORTS.DrvImpstrstr
+#define ImpRtlInitUnicodeString              DRVIMPORTS.DrvImpRtlInitUnicodeString
+#define ImpRtlQueryRegistryValues            DRVIMPORTS.DrvImpRtlQueryRegistryValues
+#define ImpMmGetSystemRoutineAddress         DRVIMPORTS.DrvImpMmGetSystemRoutineAddress
+#define ImpRtlUnicodeStringToAnsiString      DRVIMPORTS.DrvImpRtlUnicodeStringToAnsiString
+#define ImpRtlCopyUnicodeString              DRVIMPORTS.DrvImpRtlCopyUnicodeString
+#define ImpRtlFreeAnsiString                 DRVIMPORTS.DrvImpRtlFreeAnsiString
+#define ImpKeInitializeGuardedMutex          DRVIMPORTS.DrvImpKeInitializeGuardedMutex
+#define ImpIoCreateDevice                    DRVIMPORTS.DrvImpIoCreateDevice
+#define ImpIoCreateSymbolicLink              DRVIMPORTS.DrvImpIoCreateSymbolicLink
+#define ImpIoDeleteDevice                    DRVIMPORTS.DrvImpIoDeleteDevice
+#define ImpIoDeleteSymbolicLink              DRVIMPORTS.DrvImpIoDeleteSymbolicLink
+#define ImpObRegisterCallbacks               DRVIMPORTS.DrvImpObRegisterCallbacks
+#define ImpObUnRegisterCallbacks             DRVIMPORTS.DrvImpObUnRegisterCallbacks
+#define ImpPsSetCreateThreadNotifyRoutine    DRVIMPORTS.DrvImpPsSetCreateThreadNotifyRoutine
+#define ImpPsProcessType                     DRVIMPORTS.DrvImpPsProcessType
+#define ImpKeRevertToUserAffinityThreadEx    DRVIMPORTS.DrvImpKeRevertToUserAffinityThreadEx
+#define ImpKeSetSystemAffinityThreadEx       DRVIMPORTS.DrvImpKeSetSystemAffinityThreadEx
+#define Impstrnlen                           DRVIMPORTS.DrvImpstrnlen
+#define ImpRtlInitAnsiString                 DRVIMPORTS.DrvImpRtlInitAnsiString
+#define ImpRtlAnsiStringToUnicodeString      DRVIMPORTS.DrvImpRtlAnsiStringToUnicodeString
+#define ImpIoGetCurrentProcess               DRVIMPORTS.DrvImpIoGetCurrentProcess
+#define ImpRtlGetVersion                     DRVIMPORTS.DrvImpRtlGetVersion
+#define ImpRtlCompareMemory                  DRVIMPORTS.DrvImpRtlCompareMemory
+#define ImpExGetSystemFirmwareTable          DRVIMPORTS.DrvImpExGetSystemFirmwareTable
+#define ImpIoAllocateWorkItem                DRVIMPORTS.DrvImpIoAllocateWorkItem
+#define ImpIoFreeWorkItem                    DRVIMPORTS.DrvImpIoFreeWorkItem
+#define ImpIoQueueWorkItem                   DRVIMPORTS.DrvImpIoQueueWorkItem
+#define ImpZwOpenFile                        DRVIMPORTS.DrvImpZwOpenFile
+#define ImpZwClose                           DRVIMPORTS.DrvImpZwClose
+#define ImpZwCreateSection                   DRVIMPORTS.DrvImpZwCreateSection
+#define ImpZwMapViewOfSection                DRVIMPORTS.DrvImpZwMapViewOfSection
+#define ImpZwUnmapViewOfSection              DRVIMPORTS.DrvImpZwUnmapViewOfSection
+#define ImpMmCopyMemory                      DRVIMPORTS.DrvImpMmCopyMemory
+#define ImpZwDeviceIoControlFile             DRVIMPORTS.DrvImpZwDeviceIoControlFile
+#define ImpKeStackAttachProcess              DRVIMPORTS.DrvImpKeStackAttachProcess
+#define ImpKeUnstackDetachProcess            DRVIMPORTS.DrvImpKeUnstackDetachProcess
+#define ImpKeWaitForSingleObject             DRVIMPORTS.DrvImpKeWaitForSingleObject
+#define ImpPsCreateSystemThread              DRVIMPORTS.DrvImpPsCreateSystemThread
+#define ImpIofCompleteRequest                DRVIMPORTS.DrvImpIofCompleteRequest
+#define ImpObReferenceObjectByHandle         DRVIMPORTS.DrvImpObReferenceObjectByHandle
+#define ImpPsThreadType                      DRVIMPORTS.DrvImpPsThreadType
+#define ImpKeDelayExecutionThread            DRVIMPORTS.DrvImpKeDelayExecutionThread
+#define ImpKeRegisterNmiCallback             DRVIMPORTS.DrvImpKeRegisterNmiCallback
+#define ImpKeDeregisterNmiCallback           DRVIMPORTS.DrvImpKeDeregisterNmiCallback
+#define ImpKeQueryActiveProcessorCount       DRVIMPORTS.DrvImpKeQueryActiveProcessorCount
+#define ImpExAcquirePushLockExclusiveEx      DRVIMPORTS.DrvImpExAcquirePushLockExclusiveEx
+#define ImpExReleasePushLockExclusiveEx      DRVIMPORTS.DrvImpExReleasePushLockExclusiveEx
+#define ImpPsGetThreadId                     DRVIMPORTS.DrvImpPsGetThreadId
+#define ImpRtlCaptureStackBackTrace          DRVIMPORTS.DrvImpRtlCaptureStackBackTrace
+#define ImpZwOpenDirectoryObject             DRVIMPORTS.DrvImpZwOpenDirectoryObject
+#define ImpKeInitializeAffinityEx            DRVIMPORTS.DrvImpKeInitializeAffinityEx
+#define ImpKeAddProcessorAffinityEx          DRVIMPORTS.DrvImpKeAddProcessorAffinityEx
+#define ImpRtlQueryModuleInformation         DRVIMPORTS.DrvImpRtlQueryModuleInformation
+#define ImpKeInitializeApc                   DRVIMPORTS.DrvImpKeInitializeApc
+#define ImpKeInsertQueueApc                  DRVIMPORTS.DrvImpKeInsertQueueApc
+#define ImpKeGenericCallDpc                  DRVIMPORTS.DrvImpKeGenericCallDpc
+#define ImpKeSignalCallDpcDone               DRVIMPORTS.DrvImpKeSignalCallDpcDone
+#define ImpMmGetPhysicalMemoryRangesEx2      DRVIMPORTS.DrvImpMmGetPhysicalMemoryRangesEx2
+#define ImpMmGetVirtualForPhysical           DRVIMPORTS.DrvImpMmGetVirtualForPhysical
+#define ImpObfReferenceObject                DRVIMPORTS.DrvImpObfReferenceObject
+#define ImpExFreePoolWithTag                 DRVIMPORTS.DrvImpExFreePoolWithTag
+#define ImpExAllocatePool2                   DRVIMPORTS.DrvImpExAllocatePool2
+#define ImpKeReleaseGuardedMutex             DRVIMPORTS.DrvImpKeReleaseGuardedMutex
+#define ImpKeAcquireGuardedMutex             DRVIMPORTS.DrvImpKeAcquireGuardedMutex
+#define ImpDbgPrintEx                        DRVIMPORTS.DrvImpDbgPrintEx
+#define ImpRtlCompareUnicodeString           DRVIMPORTS.DrvImpRtlCompareUnicodeString
+#define ImpRtlFreeUnicodeString              DRVIMPORTS.DrvImpRtlFreeUnicodeString
+#define ImpPsGetProcessImageFileName         DRVIMPORTS.DrvImpPsGetProcessImageFileName
 
 #endif

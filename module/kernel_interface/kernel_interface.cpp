@@ -209,43 +209,43 @@ void kernel_interface::kernel_interface::validate_system_modules() {
 
 void kernel_interface::kernel_interface::
     verify_process_module_executable_regions() {
-  HANDLE handle = INVALID_HANDLE_VALUE;
-  MODULEENTRY32 module_entry = {0};
-  BOOLEAN status = FALSE;
-  process_module module = {0};
-  unsigned long bytes_returned = 0;
-  RtlDosPathNameToNtPathName_U pRtlDosPathNameToNtPathName_U = NULL;
-  UNICODE_STRING nt_path_name = {0};
-  pRtlDosPathNameToNtPathName_U = (RtlDosPathNameToNtPathName_U)GetProcAddress(
-      GetModuleHandle(L"ntdll.dll"), "RtlDosPathNameToNtPathName_U");
-  handle = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
-                                    GetCurrentProcessId());
-  if (handle == INVALID_HANDLE_VALUE) {
-    LOG_ERROR("CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with "
-              "status 0x%x",
-              GetLastError());
-    return;
-  }
-  module_entry.dwSize = sizeof(MODULEENTRY32);
-  if (!Module32First(handle, &module_entry)) {
-    LOG_ERROR("Module32First failed with status 0x%x", GetLastError());
-    return;
-  }
-  do {
-    module.module_base = module_entry.modBaseAddr;
-    module.module_size = module_entry.modBaseSize;
-    status = (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath,
-                                              &nt_path_name, NULL, NULL);
-    if (!status) {
-      LOG_ERROR("RtlDosPathNameToNtPathName_U failed with no status.");
-      continue;
-    }
-    memcpy(module.module_path, nt_path_name.Buffer, MAX_MODULE_PATH);
-    this->generic_driver_call_input(ioctl_code::ValidateProcessLoadedModule,
-                                    &module, sizeof(module), &bytes_returned);
-  } while (Module32Next(handle, &module_entry));
-end:
-  CloseHandle(handle);
+//  HANDLE handle = INVALID_HANDLE_VALUE;
+//  MODULEENTRY32 module_entry = {0};
+//  BOOLEAN status = FALSE;
+//  process_module module = {0};
+//  unsigned long bytes_returned = 0;
+//  RtlDosPathNameToNtPathName_U pRtlDosPathNameToNtPathName_U = NULL;
+//  UNICODE_STRING nt_path_name = {0};
+//  pRtlDosPathNameToNtPathName_U = (RtlDosPathNameToNtPathName_U)GetProcAddress(
+//      GetModuleHandle("ntdll.dll"), "RtlDosPathNameToNtPathName_U");
+//  handle = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
+//                                    GetCurrentProcessId());
+//  if (handle == INVALID_HANDLE_VALUE) {
+//    LOG_ERROR("CreateToolHelp32Snapshot with TH32CS_SNAPMODULE failed with "
+//              "status 0x%x",
+//              GetLastError());
+//    return;
+//  }
+//  module_entry.dwSize = sizeof(MODULEENTRY32);
+//  if (!Module32First(handle, &module_entry)) {
+//    LOG_ERROR("Module32First failed with status 0x%x", GetLastError());
+//    return;
+//  }
+//  do {
+//    module.module_base = module_entry.modBaseAddr;
+//    module.module_size = module_entry.modBaseSize;
+//    status = (*pRtlDosPathNameToNtPathName_U)(module_entry.szExePath,
+//                                              &nt_path_name, NULL, NULL);
+//    if (!status) {
+//      LOG_ERROR("RtlDosPathNameToNtPathName_U failed with no status.");
+//      continue;
+//    }
+//    memcpy(module.module_path, nt_path_name.Buffer, MAX_MODULE_PATH);
+//    this->generic_driver_call_input(ioctl_code::ValidateProcessLoadedModule,
+//                                    &module, sizeof(module), &bytes_returned);
+//  } while (Module32Next(handle, &module_entry));
+//end:
+//  CloseHandle(handle);
 }
 
 void kernel_interface::kernel_interface::initiate_apc_stackwalk() {

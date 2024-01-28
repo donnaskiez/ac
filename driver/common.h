@@ -119,8 +119,8 @@ typedef struct _TIMER_OBJECT
          */
         volatile LONG state;
 
-        PKTIMER      timer;
-        PKDPC        dpc;
+        KTIMER       timer;
+        KDPC         dpc;
         PIO_WORKITEM work_item;
 
 } TIMER_OBJECT, *PTIMER_OBJECT;

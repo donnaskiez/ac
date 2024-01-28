@@ -39,10 +39,6 @@ DrvUnloadFreeConfigStrings();
 
 STATIC
 VOID
-DrvUnloadFreeSymbolicLink();
-
-STATIC
-VOID
 DrvUnloadFreeThreadList();
 
 STATIC
@@ -79,7 +75,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
 #        pragma alloc_text(PAGE, DrvUnloadUnregisterObCallbacks)
 #        pragma alloc_text(PAGE, DrvUnloadFreeConfigStrings)
-#        pragma alloc_text(PAGE, DrvUnloadFreeSymbolicLink)
 #        pragma alloc_text(PAGE, DrvUnloadFreeThreadList)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
@@ -94,8 +89,8 @@ typedef struct _DRIVER_CONFIG
         volatile LONG          nmi_status;
         UNICODE_STRING         unicode_driver_name;
         ANSI_STRING            ansi_driver_name;
-        UNICODE_STRING         device_name;
-        UNICODE_STRING         device_symbolic_link;
+        PUNICODE_STRING        device_name;
+        PUNICODE_STRING        device_symbolic_link;
         UNICODE_STRING         driver_path;
         UNICODE_STRING         registry_path;
         SYSTEM_INFORMATION     system_information;
@@ -114,6 +109,9 @@ typedef struct _DRIVER_CONFIG
         SHARED_MAPPING         mapping;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
+
+UNICODE_STRING g_DeviceName         = RTL_CONSTANT_STRING(L"\\Device\\DonnaAC");
+UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 
 /*
  * Rather then getting the driver state from the device object passed to our IOCTL handlers, store a
@@ -393,10 +391,10 @@ DrvUnloadFreeConfigStrings()
 
 STATIC
 VOID
-DrvUnloadFreeSymbolicLink()
+DrvUnloadDeleteSymbolicLink()
 {
-        PAGED_CODE();
-        ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
+        if (g_DriverConfig->device_symbolic_link)
+                ImpIoDeleteSymbolicLink(g_DriverConfig->device_symbolic_link);
 }
 
 STATIC
@@ -441,14 +439,6 @@ DrvUnloadFreeModuleValidationContext()
 
 STATIC
 VOID
-DrvUnloadFreeImportsStructure()
-{
-        PAGED_CODE();
-        FreeDriverImportsStructure();
-}
-
-STATIC
-VOID
 DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
         DEBUG_VERBOSE("Unloading...");
@@ -476,12 +466,10 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         DrvUnloadFreeDriverList();
 
         DrvUnloadFreeConfigStrings();
-        DrvUnloadFreeSymbolicLink();
-
+        DrvUnloadDeleteSymbolicLink();
         ImpIoDeleteDevice(DriverObject->DeviceObject);
 
         DEBUG_INFO("Driver successfully unloaded.");
-        DrvUnloadFreeImportsStructure();
 }
 
 STATIC
@@ -549,6 +537,7 @@ DrvLoadSetupDriverLists()
                 DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
+                CleanupDriverListOnDriverUnload();
                 return status;
         }
 
@@ -560,6 +549,8 @@ DrvLoadSetupDriverLists()
                 UnregisterProcessCreateNotifyRoutine();
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
+                CleanupDriverListOnDriverUnload();
+                CleanupThreadListOnDriverUnload();
                 return status;
         }
 
@@ -821,7 +812,6 @@ DrvLoadGatherSystemEnvironmentSettings()
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("ParseSmbiosForGivenSystemEnvironment failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -832,7 +822,6 @@ DrvLoadGatherSystemEnvironmentSettings()
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GetHardDiskDriverSerialNumber failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -917,7 +906,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("DrvLoadRetrieveDriverNameFromRegistry failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -927,7 +915,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GatherSystemEnvironmentSettings failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -936,7 +923,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("AllocateCallbackStructure failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -945,7 +931,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("InitialiseTimerObject failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -954,7 +939,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("IrpQueueInitialise failed with status %x", status);
-                DrvUnloadFreeConfigStrings();
                 return status;
         }
 
@@ -965,25 +949,28 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 NTSTATUS
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
-        BOOLEAN        flag          = FALSE;
-        NTSTATUS       status        = STATUS_UNSUCCESSFUL;
-        UNICODE_STRING device_name   = RTL_CONSTANT_STRING(L"\\Device\\DonnaAC");
-        UNICODE_STRING symbolic_link = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
+        BOOLEAN  flag   = FALSE;
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
 
         DriverObject->MajorFunction[IRP_MJ_CREATE]         = DeviceCreate;
         DriverObject->MajorFunction[IRP_MJ_CLOSE]          = DeviceClose;
         DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceControl;
         DriverObject->DriverUnload                         = DriverUnload;
 
+        status = ResolveDynamicImports(DriverObject);
+
+        if (!NT_SUCCESS(status))
+                return STATUS_FAILED_DRIVER_ENTRY;
+
         DEBUG_VERBOSE("Beginning driver entry routine...");
 
-        status = IoCreateDevice(DriverObject,
-                                sizeof(DRIVER_CONFIG),
-                                &device_name,
-                                FILE_DEVICE_UNKNOWN,
-                                FILE_DEVICE_SECURE_OPEN,
-                                FALSE,
-                                &DriverObject->DeviceObject);
+        status = ImpIoCreateDevice(DriverObject,
+                                   sizeof(DRIVER_CONFIG),
+                                   &g_DeviceName,
+                                   FILE_DEVICE_UNKNOWN,
+                                   FILE_DEVICE_SECURE_OPEN,
+                                   FALSE,
+                                   &DriverObject->DeviceObject);
 
         if (!NT_SUCCESS(status))
         {
@@ -991,45 +978,34 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return status;
         }
 
-        g_DriverConfig                = DriverObject->DeviceObject->DeviceExtension;
-        g_DriverConfig->driver_object = DriverObject;
-        g_DriverConfig->device_object = DriverObject->DeviceObject;
-
-        RtlCopyUnicodeString(&g_DriverConfig->device_name, &device_name);
-        RtlCopyUnicodeString(&g_DriverConfig->device_symbolic_link, &symbolic_link);
-
-        /* this needs to be restructured since we leak device object */
-        status = ResolveDynamicImports(DriverObject);
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ResolveDynamicImports failed with status %x", status);
-                // ImpIoDeleteDevice(DriverObject->DeviceObject);
-                return status;
-        }
+        g_DriverConfig                       = DriverObject->DeviceObject->DeviceExtension;
+        g_DriverConfig->device_object        = DriverObject->DeviceObject;
+        g_DriverConfig->driver_object        = DriverObject;
+        g_DriverConfig->device_name          = &g_DeviceName;
+        g_DriverConfig->device_symbolic_link = &g_DeviceSymbolicLink;
 
         status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x", status);
+                DrvUnloadFreeConfigStrings();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
-                DrvUnloadFreeImportsStructure();
                 return status;
         }
 
         DrvLoadInitialiseProcessConfig();
 
-        status = IoCreateSymbolicLink(&symbolic_link, &device_name);
+        status =
+            IoCreateSymbolicLink(g_DriverConfig->device_symbolic_link, g_DriverConfig->device_name);
 
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
-                ImpIoDeleteDevice(DriverObject->DeviceObject);
                 DrvUnloadFreeTimerObject();
-                DrvUnloadFreeImportsStructure();
-                return STATUS_FAILED_DRIVER_ENTRY;
+                ImpIoDeleteDevice(DriverObject->DeviceObject);
+                return status;
         }
 
         status = DrvLoadEnableNotifyRoutines();
@@ -1039,10 +1015,9 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 DEBUG_ERROR("EnablenotifyRoutines failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 DrvUnloadFreeTimerObject();
-                ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
+                DrvUnloadDeleteSymbolicLink();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
-                DrvUnloadFreeImportsStructure();
-                return STATUS_FAILED_DRIVER_ENTRY;
+                return status;
         }
 
         status = DrvLoadSetupDriverLists();
@@ -1052,9 +1027,9 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x", status);
                 DrvUnloadFreeConfigStrings();
                 DrvUnloadFreeTimerObject();
-                ImpIoDeleteSymbolicLink(&g_DriverConfig->device_symbolic_link);
+                DrvUnloadDeleteSymbolicLink();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
-                DrvUnloadFreeImportsStructure();
+                return status;
         }
 
         DEBUG_VERBOSE("Driver Entry Complete.");

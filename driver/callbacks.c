@@ -910,31 +910,14 @@ InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
 
         due_time.QuadPart = ABSOLUTE(SECONDS(5));
 
-        Timer->timer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KTIMER), POOL_TAG_TIMER);
-
-        if (!Timer->timer)
-                return STATUS_MEMORY_NOT_ALLOCATED;
-
-        Timer->dpc = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KDPC), POOL_TAG_DPC);
-
-        if (!Timer->dpc)
-        {
-                ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
-                return STATUS_MEMORY_NOT_ALLOCATED;
-        }
-
         Timer->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 
         if (!Timer->work_item)
-        {
-                ExFreePoolWithTag(Timer->dpc, POOL_TAG_DPC);
-                ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
                 return STATUS_MEMORY_NOT_ALLOCATED;
-        }
 
-        KeInitializeDpc(Timer->dpc, TimerObjectCallbackRoutine, Timer);
-        KeInitializeTimer(Timer->timer);
-        KeSetTimerEx(Timer->timer, due_time, REPEAT_TIME_10_SEC, Timer->dpc);
+        KeInitializeDpc(&Timer->dpc, TimerObjectCallbackRoutine, Timer);
+        KeInitializeTimer(&Timer->timer);
+        KeSetTimerEx(&Timer->timer, due_time, REPEAT_TIME_10_SEC, &Timer->dpc);
 
         DEBUG_VERBOSE("Successfully initialised global timer callback.");
         return STATUS_SUCCESS;
@@ -951,10 +934,8 @@ CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer)
                 YieldProcessor();
 
         /* now its safe to free and cancel our timers, pools etc. */
-        KeCancelTimer(Timer->timer);
+        KeCancelTimer(&Timer->timer);
         IoFreeWorkItem(Timer->work_item);
-        ExFreePoolWithTag(Timer->timer, POOL_TAG_TIMER);
-        ExFreePoolWithTag(Timer->dpc, POOL_TAG_DPC);
 
         DEBUG_VERBOSE("Freed timer objects.");
 }

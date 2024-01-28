@@ -75,6 +75,6 @@ NTSTATUS
 ValidateHalDispatchTables();
 
 PVOID
-FindDriverBaseNoApi(_In_ PWCH Name);
+FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name);
 
 #endif

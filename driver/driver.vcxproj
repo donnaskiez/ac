@@ -246,6 +246,7 @@
   <ItemGroup>
     <ClCompile Include="apc.c" />
     <ClCompile Include="callbacks.c" />
+    <ClCompile Include="crypt.c" />
     <ClCompile Include="driver.c" />
     <ClCompile Include="hv.c" />
     <ClCompile Include="imports.c" />
@@ -261,6 +262,7 @@
     <ClInclude Include="apc.h" />
     <ClInclude Include="callbacks.h" />
     <ClInclude Include="common.h" />
+    <ClInclude Include="crypt.h" />
     <ClInclude Include="driver.h" />
     <ClInclude Include="hv.h" />
     <ClInclude Include="ia32.h" />

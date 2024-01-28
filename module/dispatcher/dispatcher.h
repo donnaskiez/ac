@@ -24,6 +24,7 @@ class dispatcher {
   void init_timer_callbacks();
   void run_timer_thread();
   void run_io_port_thread();
+  void request_session_pk();
 
 public:
   dispatcher(LPCWSTR driver_name, client::message_queue &queue);

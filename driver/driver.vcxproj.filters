@@ -60,6 +60,9 @@
     <ClCompile Include="io.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="crypt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -105,6 +108,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="types\types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="crypt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
