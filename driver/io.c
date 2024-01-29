@@ -270,11 +270,16 @@ IrpQueueFreeDeferredReports()
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         PDEFERRED_REPORT report = NULL;
 
+        /* just in case... */
+        KeAcquireGuardedMutex(&queue->reports.lock);
+
         while (IrpQueueIsThereDeferredReport(queue))
         {
                 report = IrpQueueRemoveDeferredReport(queue);
-                ExFreePoolWithTag(report, REPORT_POOL_TAG);
+                IrpQueueFreeDeferredReport(report);
         }
+
+        KeReleaseGuardedMutex(&queue->reports.lock);
 }
 
 NTSTATUS
@@ -449,6 +454,9 @@ VOID
 SharedMappingTerminate()
 {
         PSHARED_MAPPING mapping = GetSharedMappingConfig();
+
+        if (!mapping->active)
+                return;
 
         while (mapping->work_item_status)
                 YieldProcessor();

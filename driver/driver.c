@@ -11,6 +11,7 @@
 #include "integrity.h"
 #include "imports.h"
 #include "apc.h"
+#include "crypt.h"
 
 STATIC
 VOID
@@ -50,7 +51,7 @@ NTSTATUS
 DrvLoadEnableNotifyRoutines();
 
 STATIC
-NTSTATUS
+VOID
 DrvLoadInitialiseObCbConfig();
 
 STATIC
@@ -525,6 +526,8 @@ DrvLoadSetupDriverLists()
 
         if (!NT_SUCCESS(status))
         {
+                UnregisterProcessCreateNotifyRoutine();
+                UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
                 DEBUG_ERROR("InitialiseDriverList failed with status %x", status);
                 return status;
@@ -535,6 +538,7 @@ DrvLoadSetupDriverLists()
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
+                UnregisterProcessCreateNotifyRoutine();
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
                 CleanupDriverListOnDriverUnload();
@@ -566,7 +570,7 @@ DrvLoadInitialiseProcessConfig()
 }
 
 STATIC
-NTSTATUS
+VOID
 DrvLoadInitialiseObCbConfig()
 {
         PAGED_CODE();
@@ -895,7 +899,9 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
         ImpKeInitializeGuardedMutex(&g_DriverConfig->lock);
+
         IrpQueueInitialise();
+        DrvLoadInitialiseObCbConfig();
 
         g_DriverConfig->unload_in_progress                         = FALSE;
         g_DriverConfig->system_information.virtualised_environment = FALSE;
@@ -915,14 +921,6 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         if (!NT_SUCCESS(status))
         {
                 DEBUG_ERROR("GatherSystemEnvironmentSettings failed with status %x", status);
-                return status;
-        }
-
-        status = DrvLoadInitialiseObCbConfig();
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("AllocateCallbackStructure failed with status %x", status);
                 return status;
         }
 

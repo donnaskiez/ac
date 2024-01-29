@@ -7,3 +7,4 @@
 #define _In_
 #define STATIC
 #define VOID
+#define INLINE

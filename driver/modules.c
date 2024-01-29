@@ -1033,7 +1033,10 @@ HandleNmiIOCTL()
                                          NMI_CONTEXT_POOL);
 
         if (!nmi_context)
+        {
+                UnsetNmiInProgressFlag();
                 return STATUS_MEMORY_NOT_ALLOCATED;
+        }
 
         /*
          * We want to register and unregister our callback each time so it becomes harder
@@ -1045,6 +1048,7 @@ HandleNmiIOCTL()
         {
                 DEBUG_ERROR("KeRegisterNmiCallback failed with no status.");
                 ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                UnsetNmiInProgressFlag();
                 return STATUS_UNSUCCESSFUL;
         }
 
@@ -1059,6 +1063,7 @@ HandleNmiIOCTL()
                 ImpKeDeregisterNmiCallback(callback_handle);
                 ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
                 DEBUG_ERROR("Error retriving system module information");
+                UnsetNmiInProgressFlag();
                 return status;
         }
 
@@ -1070,6 +1075,7 @@ HandleNmiIOCTL()
                 ImpKeDeregisterNmiCallback(callback_handle);
                 ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
                 ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
+                UnsetNmiInProgressFlag();
                 return status;
         }
 

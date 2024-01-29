@@ -4,9 +4,9 @@
 #include "common.h"
 
 VOID
-CryptEncryptBufferInPlace(_In_ PVOID Buffer, _In_ UINT32 Size);
+CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries);
 
-VOID
-CryptDecryptBufferInPlace(_In_ PVOID Buffer, _In_ UINT32 Size);
+UINT64
+CryptDecryptImportsArrayEntry(_In_ PUINT64 Array, _In_ UINT32 Entries, _In_ UINT32 EntryIndex);
 
 #endif

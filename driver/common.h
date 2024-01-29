@@ -41,6 +41,7 @@
                    ##__VA_ARGS__)
 
 #define STATIC static
+#define INLINE inline
 
 #define MAX_MODULE_PATH 256
 
