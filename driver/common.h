@@ -212,17 +212,23 @@ typedef struct _IRP_QUEUE_ENTRY
  * This structure can change at anytime based on whether
  * the target process to protect is open / closed / changes etc.
  */
-typedef struct _PROCESS_CONFIG
+
+#define AES_128_KEY_SIZE 16
+
+typedef struct _ACTIVE_SESSION
 {
-        BOOLEAN             initialised;
-        ULONG               um_handle;
+        BOOLEAN             is_session_active;
+        PVOID               um_handle;
         PVOID               km_handle;
         PEPROCESS           process;
-        OB_CALLBACKS_CONFIG callback_info;
-        UINT16              cookie;
-        KGUARDED_MUTEX      lock;
+        OB_CALLBACKS_CONFIG callback_configuration;
 
-} PROCESS_CONFIG, *PPROCESS_CONFIG;
+        UINT32 session_cookie;
+        CHAR   session_aes_key[AES_128_KEY_SIZE];
+
+        KGUARDED_MUTEX lock;
+
+} ACTIVE_SESSION, *PACTIVE_SESSION;
 
 #define NMI_CONTEXT_POOL               '7331'
 #define STACK_FRAMES_POOL              'loop'

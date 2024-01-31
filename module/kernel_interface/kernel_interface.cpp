@@ -139,10 +139,10 @@ void kernel_interface::kernel_interface::generic_driver_call_apc(
 
 void kernel_interface::kernel_interface::notify_driver_on_process_launch() {
   unsigned long bytes_returned = 0;
-  process_load_packet packet = {0};
-  packet.protected_process_id = GetCurrentProcessId();
+  session_initiation_packet packet = {0};
+  packet.protected_process_id = reinterpret_cast<void *>(GetCurrentProcessId());
   generic_driver_call_input(ioctl_code::NotifyDriverOnProcessLaunch, &packet,
-                            sizeof(packet), &bytes_returned);
+                            sizeof(session_initiation_packet), &bytes_returned);
 }
 
 void kernel_interface::kernel_interface::detect_system_virtualization() {

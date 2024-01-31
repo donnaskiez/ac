@@ -3,6 +3,8 @@
 #include <immintrin.h>
 #include "imports.h"
 
+#include <bcrypt.h>
+
 #define XOR_KEY_1 0x1122334455667788
 #define XOR_KEY_2 0x0011223344556677
 #define XOR_KEY_3 0x5566778899AABBCC
@@ -124,3 +126,18 @@ CryptDecryptImportsArrayEntry(_In_ PUINT64 Array, _In_ UINT32 Entries, _In_ UINT
 
         return pointer;
 }
+
+/*
+* simple for now.. just to get it working
+*/
+VOID
+CryptDecryptBufferWithCookie(_In_ PVOID Buffer, _In_ UINT32 BufferSize, _In_ UINT32 Cookie)
+{
+        PCHAR buffer = (PCHAR)Buffer;
+
+        for (UINT32 index = 0; index < BufferSize; index++)
+        {
+                buffer[index] ^= Cookie;
+        }
+}
+

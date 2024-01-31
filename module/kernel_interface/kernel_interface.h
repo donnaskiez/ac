@@ -10,6 +10,7 @@ static constexpr int EVENT_COUNT = 5;
 static constexpr int MAX_MODULE_PATH = 256;
 static constexpr int MAXIMUM_REPORT_BUFFER_SIZE = 1000;
 static constexpr int QUERY_DEFERRED_REPORT_COUNT = 10;
+static constexpr int AES_128_KEY_SIZE = 16;
 
 enum report_id {
   report_nmi_callback_failure = 50,
@@ -172,9 +173,13 @@ struct event_dispatcher {
 };
 
 class kernel_interface {
-  struct process_load_packet {
-    unsigned long protected_process_id;
+  struct session_initiation_packet {
+    unsigned __int32 session_cookie;
+    char session_aes_key[AES_128_KEY_SIZE];
+    void *protected_process_id;
   };
+
+  int test = sizeof(session_initiation_packet);
 
   struct hv_detection_packet {
     unsigned long aperf_msr_timing_check;

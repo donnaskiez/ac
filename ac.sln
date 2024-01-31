@@ -201,8 +201,8 @@ Global
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Debug|x64.Build.0 = Debug|x64
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Debug|x86.ActiveCfg = Debug|Win32
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Debug|x86.Build.0 = Debug|Win32
-		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|Any CPU.ActiveCfg = test|x64
-		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|Any CPU.Build.0 = test|x64
+		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|Any CPU.ActiveCfg = Release - No Server|x64
+		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|Any CPU.Build.0 = Release - No Server|x64
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|ARM64.ActiveCfg = Release - No Server|x64
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|ARM64.Build.0 = Release - No Server|x64
 		{3B18467A-4358-45EF-81B1-5C6F9B0B6728}.Release - No Server - Win10|x64.ActiveCfg = Release - No Server|x64

@@ -6,12 +6,6 @@
 #include <wdf.h>
 #include "common.h"
 
-typedef struct _DRIVER_INITIATION_INFORMATION
-{
-        ULONG protected_process_id;
-
-} DRIVER_INITIATION_INFORMATION, *PDRIVER_INITIATION_INFORMATION;
-
 typedef struct _SHARED_MAPPING_INIT
 {
         PVOID  buffer;

@@ -12,6 +12,7 @@
 #include "imports.h"
 #include "apc.h"
 #include "crypt.h"
+#include "session.h"
 
 STATIC
 VOID
@@ -51,21 +52,11 @@ NTSTATUS
 DrvLoadEnableNotifyRoutines();
 
 STATIC
-VOID
-DrvLoadInitialiseObCbConfig();
-
-STATIC
-VOID
-DrvLoadInitialiseProcessConfig();
-
-STATIC
 NTSTATUS
 DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(INIT, DriverEntry)
-#        pragma alloc_text(PAGE, GetProtectedProcessEProcess)
-#        pragma alloc_text(PAGE, GetProtectedProcessId)
 #        pragma alloc_text(PAGE, GetDriverName)
 #        pragma alloc_text(PAGE, GetDriverPath)
 #        pragma alloc_text(PAGE, GetDriverRegistryPath)
@@ -73,16 +64,12 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, GetDriverSymbolicLink)
 #        pragma alloc_text(PAGE, GetDriverConfigSystemInformation)
 #        pragma alloc_text(PAGE, RegistryPathQueryCallbackRoutine)
-#        pragma alloc_text(PAGE, TerminateProtectedProcessOnViolation)
 #        pragma alloc_text(PAGE, DrvUnloadUnregisterObCallbacks)
 #        pragma alloc_text(PAGE, DrvUnloadFreeConfigStrings)
 #        pragma alloc_text(PAGE, DrvUnloadFreeThreadList)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
 #        pragma alloc_text(PAGE, DrvLoadEnableNotifyRoutines)
-#        pragma alloc_text(PAGE, DrvLoadInitialiseObCbConfig)
-#        pragma alloc_text(PAGE, DrvLoadInitialiseProcessConfig)
 #        pragma alloc_text(PAGE, DrvLoadInitialiseDriverConfig)
-#        pragma alloc_text(PAGE, ReadProcessInitialisedConfigFlag)
 #endif
 
 typedef struct _DRIVER_CONFIG
@@ -103,11 +90,12 @@ typedef struct _DRIVER_CONFIG
         SYS_MODULE_VAL_CONTEXT sys_val_context;
         IRP_QUEUE_HEAD         irp_queue;
         TIMER_OBJECT           timer;
-        PROCESS_CONFIG         process_config;
+        ACTIVE_SESSION         active_session;
         THREAD_LIST_HEAD       thread_list;
         DRIVER_LIST_HEAD       driver_list;
         PROCESS_LIST_HEAD      process_list;
         SHARED_MAPPING         mapping;
+        BOOLEAN                has_driver_loaded;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -125,6 +113,12 @@ UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
+
+BOOLEAN
+HasDriverLoaded()
+{
+        return g_DriverConfig->has_driver_loaded;
+}
 
 VOID
 UnsetNmiInProgressFlag()
@@ -171,18 +165,10 @@ IsDriverUnloading()
                                    g_DriverConfig->unload_in_progress);
 }
 
-PPROCESS_CONFIG
-GetProcessConfig()
+PACTIVE_SESSION
+GetActiveSession()
 {
-        return &g_DriverConfig->process_config;
-}
-
-VOID
-GetCallbackConfigStructure(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
-{
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-        *CallbackConfiguration = &g_DriverConfig->process_config.callback_info;
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
+        return &g_DriverConfig->active_session;
 }
 
 LPCSTR
@@ -273,88 +259,6 @@ GetProcessList()
 {
         PAGED_CODE();
         return &g_DriverConfig->process_list;
-}
-
-VOID
-ReadProcessInitialisedConfigFlag(_Out_ PBOOLEAN Flag)
-{
-        PAGED_CODE();
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-        *Flag = g_DriverConfig->process_config.initialised;
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-VOID
-GetProtectedProcessEProcess(_Out_ PEPROCESS* Process)
-{
-        PAGED_CODE();
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-        *Process = g_DriverConfig->process_config.process;
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-VOID
-GetProtectedProcessId(_Out_ PLONG ProcessId)
-{
-        PAGED_CODE();
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-        *ProcessId = g_DriverConfig->process_config.km_handle;
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-VOID
-ProcCloseClearProcessConfiguration()
-{
-        PAGED_CODE();
-        DEBUG_INFO("Protected process closed. Clearing process configuration.");
-
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-        g_DriverConfig->process_config.km_handle   = NULL;
-        g_DriverConfig->process_config.um_handle   = NULL;
-        g_DriverConfig->process_config.process     = NULL;
-        g_DriverConfig->process_config.initialised = FALSE;
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-NTSTATUS
-ProcLoadInitialiseProcessConfig(_In_ PIRP Irp)
-{
-        PAGED_CODE();
-
-        NTSTATUS                       status      = STATUS_UNSUCCESSFUL;
-        PEPROCESS                      process     = NULL;
-        PDRIVER_INITIATION_INFORMATION information = NULL;
-
-        status = ValidateIrpInputBuffer(Irp, sizeof(DRIVER_INITIATION_INFORMATION));
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
-                return status;
-        }
-
-        information = (PDRIVER_INITIATION_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
-
-        ImpKeAcquireGuardedMutex(&g_DriverConfig->process_config.lock);
-
-        g_DriverConfig->process_config.um_handle = information->protected_process_id;
-
-        /* What if we pass an invalid handle here? not good. */
-        status = ImpPsLookupProcessByProcessId(g_DriverConfig->process_config.um_handle, &process);
-
-        if (!NT_SUCCESS(status))
-        {
-                status = STATUS_INVALID_PARAMETER;
-                goto end;
-        }
-
-        g_DriverConfig->process_config.km_handle   = ImpPsGetProcessId(process);
-        g_DriverConfig->process_config.process     = process;
-        g_DriverConfig->process_config.initialised = TRUE;
-
-end:
-        ImpKeReleaseGuardedMutex(&g_DriverConfig->process_config.lock);
-        return status;
 }
 
 /*
@@ -561,57 +465,9 @@ DrvLoadSetupDriverLists()
         return status;
 }
 
-STATIC
-VOID
-DrvLoadInitialiseProcessConfig()
-{
-        PAGED_CODE();
-        ImpKeInitializeGuardedMutex(&g_DriverConfig->process_config.lock);
-}
-
-STATIC
-VOID
-DrvLoadInitialiseObCbConfig()
-{
-        PAGED_CODE();
-        InitialiseObCallbacksConfiguration(&g_DriverConfig->process_config);
-}
-
 /*
  * Regular routines
  */
-
-VOID
-TerminateProtectedProcessOnViolation()
-{
-        PAGED_CODE();
-
-        NTSTATUS status     = STATUS_UNSUCCESSFUL;
-        ULONG    process_id = 0;
-
-        GetProtectedProcessId(&process_id);
-
-        if (!process_id)
-        {
-                DEBUG_ERROR("Failed to terminate process as process id is null");
-                return;
-        }
-
-        /* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle. */
-        status = ZwTerminateProcess(process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
-
-        if (!NT_SUCCESS(status))
-        {
-                /*
-                 * We don't want to clear the process config if ZwTerminateProcess fails
-                 * so we can try again.
-                 */
-                DEBUG_ERROR("ZwTerminateProcess failed with status %x", status);
-                return;
-        }
-        /* this wont be needed when procloadstuff is implemented */
-        ProcCloseClearProcessConfiguration();
-}
 
 STATIC
 NTSTATUS
@@ -901,7 +757,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
         ImpKeInitializeGuardedMutex(&g_DriverConfig->lock);
 
         IrpQueueInitialise();
-        DrvLoadInitialiseObCbConfig();
+        SessionInitialiseCallbackConfiguration();
 
         g_DriverConfig->unload_in_progress                         = FALSE;
         g_DriverConfig->system_information.virtualised_environment = FALSE;
@@ -955,7 +811,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceControl;
         DriverObject->DriverUnload                         = DriverUnload;
 
-        status = ResolveDynamicImports(DriverObject);
+        status = ImpResolveDynamicImports(DriverObject);
 
         if (!NT_SUCCESS(status))
                 return STATUS_FAILED_DRIVER_ENTRY;
@@ -992,7 +848,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return status;
         }
 
-        DrvLoadInitialiseProcessConfig();
+        SessionInitialiseStructure();
 
         status =
             IoCreateSymbolicLink(g_DriverConfig->device_symbolic_link, g_DriverConfig->device_name);
@@ -1029,6 +885,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return status;
         }
+
+        g_DriverConfig->has_driver_loaded = TRUE;
 
         DEBUG_VERBOSE("Driver Entry Complete.");
         return STATUS_SUCCESS;

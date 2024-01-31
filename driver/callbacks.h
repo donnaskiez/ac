@@ -108,6 +108,6 @@ NTSTATUS
 RegisterProcessObCallbacks();
 
 VOID
-InitialiseObCallbacksConfiguration(_Out_ PPROCESS_CONFIG ProcessConfig);
+InitialiseObCallbacksConfiguration(_Out_ PACTIVE_SESSION ProcessConfig);
 
 #endif

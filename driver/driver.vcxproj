@@ -256,6 +256,7 @@
     <ClCompile Include="modules.c" />
     <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
+    <ClCompile Include="session.c" />
     <ClCompile Include="thread.c" />
   </ItemGroup>
   <ItemGroup>
@@ -273,6 +274,7 @@
     <ClInclude Include="modules.h" />
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
+    <ClInclude Include="session.h" />
     <ClInclude Include="thread.h" />
     <ClInclude Include="types\types.h" />
   </ItemGroup>

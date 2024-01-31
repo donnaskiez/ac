@@ -5,8 +5,6 @@
 #include "crypt.h"
 #include <stdarg.h>
 
-DRIVER_IMPORTS driver_imports = {0};
-
 PVOID
 FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
 {
@@ -32,7 +30,7 @@ FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
 }
 
 PVOID
-FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
+ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
 {
         PVOID                    image_base           = NULL;
         PIMAGE_DOS_HEADER        dos_header           = NULL;
@@ -47,9 +45,6 @@ FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
         UINT32                   ordinal              = 0;
         PVOID                    target_function_addr = 0;
         UINT32                   export_offset        = 0;
-
-        if (!ExportName)
-                return NULL;
 
         image_base = FindDriverBaseNoApi(DriverObject, L"ntoskrnl.exe");
 
@@ -81,8 +76,8 @@ FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
                 if (strcmp(name, ExportName))
                         continue;
 
-                ordinal       = ordinals_table[index];
-                export_offset = export_addr_table[ordinal];
+                ordinal              = ordinals_table[index];
+                export_offset        = export_addr_table[ordinal];
                 target_function_addr = (PVOID)((UINT64)image_base + export_offset);
                 return target_function_addr;
         }
@@ -90,166 +85,107 @@ FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
         return NULL;
 }
 
-NTSTATUS
-ResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject)
-{
-        // clang-format off
-        driver_imports.DrvImpObDereferenceObject               = FindNtExport(DriverObject, "ObDereferenceObject");
-        driver_imports.DrvImpPsGetProcessImageFileName         = FindNtExport(DriverObject, "PsGetProcessImageFileName");
-        driver_imports.DrvImpPsSetCreateProcessNotifyRoutine   = FindNtExport(DriverObject, "PsSetCreateProcessNotifyRoutine");
-        driver_imports.DrvImpPsRemoveCreateThreadNotifyRoutine = FindNtExport(DriverObject, "PsRemoveCreateThreadNotifyRoutine");
-        driver_imports.DrvImpPsGetCurrentThreadId              = FindNtExport(DriverObject, "PsGetCurrentThreadId");
-        driver_imports.DrvImpPsGetProcessId                    = FindNtExport(DriverObject, "PsGetProcessId");
-        driver_imports.DrvImpPsLookupProcessByProcessId        = FindNtExport(DriverObject, "PsLookupProcessByProcessId");
-        driver_imports.DrvImpExEnumHandleTable                 = FindNtExport(DriverObject, "ExEnumHandleTable");
-        driver_imports.DrvImpObGetObjectType                   = FindNtExport(DriverObject, "ObGetObjectType");
-        driver_imports.DrvImpExfUnblockPushLock                = FindNtExport(DriverObject, "ExfUnblockPushLock");
-        driver_imports.DrvImpstrstr                            = FindNtExport(DriverObject, "strstr");
-        driver_imports.DrvImpRtlInitUnicodeString              = FindNtExport(DriverObject, "RtlInitUnicodeString");
-        driver_imports.DrvImpMmGetSystemRoutineAddress         = FindNtExport(DriverObject, "MmGetSystemRoutineAddress");
-        driver_imports.DrvImpRtlUnicodeStringToAnsiString      = FindNtExport(DriverObject, "RtlUnicodeStringToAnsiString");
-        driver_imports.DrvImpRtlCopyUnicodeString              = FindNtExport(DriverObject, "RtlCopyUnicodeString");
-        driver_imports.DrvImpRtlFreeAnsiString                 = FindNtExport(DriverObject, "RtlFreeAnsiString");
-        driver_imports.DrvImpKeInitializeGuardedMutex          = FindNtExport(DriverObject, "KeInitializeGuardedMutex");
-        driver_imports.DrvImpIoCreateDevice                    = FindNtExport(DriverObject, "IoCreateDevice");
-        driver_imports.DrvImpIoCreateSymbolicLink              = FindNtExport(DriverObject, "IoCreateSymbolicLink");
-        driver_imports.DrvImpIoDeleteDevice                    = FindNtExport(DriverObject, "IoDeleteDevice");
-        driver_imports.DrvImpIoDeleteSymbolicLink              = FindNtExport(DriverObject, "IoDeleteSymbolicLink");
-        driver_imports.DrvImpObRegisterCallbacks               = FindNtExport(DriverObject, "ObRegisterCallbacks");
-        driver_imports.DrvImpObUnRegisterCallbacks             = FindNtExport(DriverObject, "ObUnRegisterCallbacks");
-        driver_imports.DrvImpPsSetCreateThreadNotifyRoutine    = FindNtExport(DriverObject, "PsSetCreateThreadNotifyRoutine");
-        driver_imports.DrvImpKeRevertToUserAffinityThreadEx    = FindNtExport(DriverObject, "KeRevertToUserAffinityThreadEx");
-        driver_imports.DrvImpKeSetSystemAffinityThreadEx       = FindNtExport(DriverObject, "KeSetSystemAffinityThreadEx");
-        driver_imports.DrvImpstrnlen                           = FindNtExport(DriverObject, "strnlen");
-        driver_imports.DrvImpRtlInitAnsiString                 = FindNtExport(DriverObject, "RtlInitAnsiString");
-        driver_imports.DrvImpRtlAnsiStringToUnicodeString      = FindNtExport(DriverObject, "RtlAnsiStringToUnicodeString");
-        driver_imports.DrvImpIoGetCurrentProcess               = FindNtExport(DriverObject, "IoGetCurrentProcess");
-        driver_imports.DrvImpRtlGetVersion                     = FindNtExport(DriverObject, "RtlGetVersion");
-        driver_imports.DrvImpRtlCompareMemory                  = FindNtExport(DriverObject, "RtlCompareMemory");
-        driver_imports.DrvImpExGetSystemFirmwareTable          = FindNtExport(DriverObject, "ExGetSystemFirmwareTable");
-        driver_imports.DrvImpIoAllocateWorkItem                = FindNtExport(DriverObject, "IoAllocateWorkItem");
-        driver_imports.DrvImpIoFreeWorkItem                    = FindNtExport(DriverObject, "IoFreeWorkItem");
-        driver_imports.DrvImpIoQueueWorkItem                   = FindNtExport(DriverObject, "IoQueueWorkItem");
-        driver_imports.DrvImpZwOpenFile                        = FindNtExport(DriverObject, "ZwOpenFile");
-        driver_imports.DrvImpZwClose                           = FindNtExport(DriverObject, "ZwClose");
-        driver_imports.DrvImpZwCreateSection                   = FindNtExport(DriverObject, "ZwCreateSection");
-        driver_imports.DrvImpZwMapViewOfSection                = FindNtExport(DriverObject, "ZwMapViewOfSection");
-        driver_imports.DrvImpZwUnmapViewOfSection              = FindNtExport(DriverObject, "ZwUnmapViewOfSection");
-        driver_imports.DrvImpMmCopyMemory                      = FindNtExport(DriverObject, "MmCopyMemory");
-        driver_imports.DrvImpZwDeviceIoControlFile             = FindNtExport(DriverObject, "ZwDeviceIoControlFile");
-        driver_imports.DrvImpKeStackAttachProcess              = FindNtExport(DriverObject, "KeStackAttachProcess");
-        driver_imports.DrvImpKeUnstackDetachProcess            = FindNtExport(DriverObject, "KeUnstackDetachProcess");
-        driver_imports.DrvImpKeWaitForSingleObject             = FindNtExport(DriverObject, "KeWaitForSingleObject");
-        driver_imports.DrvImpPsCreateSystemThread              = FindNtExport(DriverObject, "PsCreateSystemThread");
-        driver_imports.DrvImpIofCompleteRequest                = FindNtExport(DriverObject, "IofCompleteRequest");
-        driver_imports.DrvImpObReferenceObjectByHandle         = FindNtExport(DriverObject, "ObReferenceObjectByHandle");
-        driver_imports.DrvImpKeDelayExecutionThread            = FindNtExport(DriverObject, "KeDelayExecutionThread");
-        driver_imports.DrvImpKeRegisterNmiCallback             = FindNtExport(DriverObject, "KeRegisterNmiCallback");
-        driver_imports.DrvImpKeDeregisterNmiCallback           = FindNtExport(DriverObject, "KeDeregisterNmiCallback");
-        driver_imports.DrvImpKeQueryActiveProcessorCount       = FindNtExport(DriverObject, "KeQueryActiveProcessorCount");
-        driver_imports.DrvImpExAcquirePushLockExclusiveEx      = FindNtExport(DriverObject, "ExAcquirePushLockExclusiveEx");
-        driver_imports.DrvImpExReleasePushLockExclusiveEx      = FindNtExport(DriverObject, "ExReleasePushLockExclusiveEx");
-        driver_imports.DrvImpPsGetThreadId                     = FindNtExport(DriverObject, "PsGetThreadId");
-        driver_imports.DrvImpRtlCaptureStackBackTrace          = FindNtExport(DriverObject, "RtlCaptureStackBackTrace");
-        driver_imports.DrvImpZwOpenDirectoryObject             = FindNtExport(DriverObject, "ZwOpenDirectoryObject");
-        driver_imports.DrvImpKeInitializeAffinityEx            = FindNtExport(DriverObject, "KeInitializeAffinityEx");
-        driver_imports.DrvImpKeAddProcessorAffinityEx          = FindNtExport(DriverObject, "KeAddProcessorAffinityEx");
-        driver_imports.DrvImpRtlQueryModuleInformation         = FindNtExport(DriverObject, "RtlQueryModuleInformation");
-        driver_imports.DrvImpKeInitializeApc                   = FindNtExport(DriverObject, "KeInitializeApc");
-        driver_imports.DrvImpKeInsertQueueApc                  = FindNtExport(DriverObject, "KeInsertQueueApc");
-        driver_imports.DrvImpKeGenericCallDpc                  = FindNtExport(DriverObject, "KeGenericCallDpc");
-        driver_imports.DrvImpKeSignalCallDpcDone               = FindNtExport(DriverObject, "KeSignalCallDpcDone");
-        driver_imports.DrvImpMmGetPhysicalMemoryRangesEx2      = FindNtExport(DriverObject, "MmGetPhysicalMemoryRangesEx2");
-        driver_imports.DrvImpMmGetVirtualForPhysical           = FindNtExport(DriverObject, "MmGetVirtualForPhysical");
-        driver_imports.DrvImpObfReferenceObject                = FindNtExport(DriverObject, "ObfReferenceObject");
-        driver_imports.DrvImpExFreePoolWithTag                 = FindNtExport(DriverObject, "ExFreePoolWithTag");
-        driver_imports.DrvImpExAllocatePool2                   = FindNtExport(DriverObject, "ExAllocatePool2");
-        driver_imports.DrvImpKeReleaseGuardedMutex             = FindNtExport(DriverObject, "KeReleaseGuardedMutex");
-        driver_imports.DrvImpKeAcquireGuardedMutex             = FindNtExport(DriverObject, "KeAcquireGuardedMutex");
-        driver_imports.DrvImpDbgPrintEx                        = FindNtExport(DriverObject, "DbgPrintEx");
-        driver_imports.DrvImpRtlCompareUnicodeString           = FindNtExport(DriverObject, "RtlCompareUnicodeString");
-        driver_imports.DrvImpRtlFreeUnicodeString              = FindNtExport(DriverObject, "RtlFreeUnicodeString");
-        driver_imports.DrvImpPsLookupThreadByThreadId          = FindNtExport(DriverObject, "PsLookupThreadByThreadId");
-        driver_imports.DrvImpMmIsAddressValid                  = FindNtExport(DriverObject, "MmIsAddressValid");                
+/*
+ * The strings in this array need to be hashed at compile time, then we can use the same hash
+ * function to compare when we walk the export table.
+ */
+#define NT_IMPORT_MAX_LENGTH 128
+#define NT_IMPORT_COUNT      79
 
-        if (!driver_imports.DrvImpObDereferenceObject) return STATUS_UNSUCCESSFUL;
-        if (!driver_imports.DrvImpPsGetProcessImageFileName) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsSetCreateProcessNotifyRoutine) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsRemoveCreateThreadNotifyRoutine) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsGetCurrentThreadId) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsGetProcessId) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsLookupProcessByProcessId) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpExEnumHandleTable) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpObGetObjectType) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpExfUnblockPushLock) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpstrstr) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlInitUnicodeString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpMmGetSystemRoutineAddress) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlUnicodeStringToAnsiString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlCopyUnicodeString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlFreeAnsiString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpKeInitializeGuardedMutex) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoCreateDevice) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoCreateSymbolicLink) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoDeleteDevice) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoDeleteSymbolicLink) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpObRegisterCallbacks) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpObUnRegisterCallbacks) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpPsSetCreateThreadNotifyRoutine) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpKeRevertToUserAffinityThreadEx) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpKeSetSystemAffinityThreadEx) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpstrnlen) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlInitAnsiString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlAnsiStringToUnicodeString) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoGetCurrentProcess) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlGetVersion) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpRtlCompareMemory) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpExGetSystemFirmwareTable) return STATUS_UNSUCCESSFUL; 
-        if (!driver_imports.DrvImpIoAllocateWorkItem) return STATUS_UNSUCCESSFUL;
-        if (!driver_imports.DrvImpIoFreeWorkItem) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpIoQueueWorkItem) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwOpenFile) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwClose) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwCreateSection) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwMapViewOfSection) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwUnmapViewOfSection) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpMmCopyMemory) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwDeviceIoControlFile) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeStackAttachProcess) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeUnstackDetachProcess) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeWaitForSingleObject) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpPsCreateSystemThread) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpIofCompleteRequest) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpObReferenceObjectByHandle) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeDelayExecutionThread) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeRegisterNmiCallback) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeDeregisterNmiCallback) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeQueryActiveProcessorCount) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpExAcquirePushLockExclusiveEx) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpExReleasePushLockExclusiveEx) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpPsGetThreadId) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpRtlCaptureStackBackTrace) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpZwOpenDirectoryObject) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeInitializeAffinityEx) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeAddProcessorAffinityEx) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpRtlQueryModuleInformation) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeInitializeApc) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeInsertQueueApc) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeGenericCallDpc) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeSignalCallDpcDone) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpMmGetPhysicalMemoryRangesEx2) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpMmGetVirtualForPhysical) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpObfReferenceObject) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpExFreePoolWithTag) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpExAllocatePool2) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeReleaseGuardedMutex) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpKeAcquireGuardedMutex) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpDbgPrintEx) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpRtlCompareUnicodeString) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpRtlFreeUnicodeString) return STATUS_UNSUCCESSFUL;     
-        if (!driver_imports.DrvImpPsLookupThreadByThreadId) return STATUS_UNSUCCESSFUL;          
-        if (!driver_imports.DrvImpMmIsAddressValid) return STATUS_UNSUCCESSFUL;
-        // clang-format on
+CHAR NT_IMPORTS[NT_IMPORT_COUNT][NT_IMPORT_MAX_LENGTH] = {"ObDereferenceObject",
+                                                          "PsLookupThreadByThreadId",
+                                                          "MmIsAddressValid",
+                                                          "PsSetCreateProcessNotifyRoutine",
+                                                          "PsRemoveCreateThreadNotifyRoutine",
+                                                          "PsGetCurrentThreadId",
+                                                          "PsGetProcessId",
+                                                          "PsLookupProcessByProcessId",
+                                                          "ExEnumHandleTable",
+                                                          "ObGetObjectType",
+                                                          "ExfUnblockPushLock",
+                                                          "PsGetProcessImageFileName",
+                                                          "strstr",
+                                                          "RtlInitUnicodeString",
+                                                          "RtlQueryRegistryValues",
+                                                          "MmGetSystemRoutineAddress",
+                                                          "RtlUnicodeStringToAnsiString",
+                                                          "RtlCopyUnicodeString",
+                                                          "RtlFreeAnsiString",
+                                                          "KeInitializeGuardedMutex",
+                                                          "IoCreateDevice",
+                                                          "IoCreateSymbolicLink",
+                                                          "IoDeleteDevice",
+                                                          "IoDeleteSymbolicLink",
+                                                          "ObRegisterCallbacks",
+                                                          "ObUnRegisterCallbacks",
+                                                          "PsSetCreateThreadNotifyRoutine",
+                                                          "KeRevertToUserAffinityThreadEx",
+                                                          "KeSetSystemAffinityThreadEx",
+                                                          "strnlen",
+                                                          "RtlInitAnsiString",
+                                                          "RtlAnsiStringToUnicodeString",
+                                                          "IoGetCurrentProcess",
+                                                          "RtlGetVersion",
+                                                          "RtlCompareMemory",
+                                                          "ExGetSystemFirmwareTable",
+                                                          "IoAllocateWorkItem",
+                                                          "IoFreeWorkItem",
+                                                          "IoQueueWorkItem",
+                                                          "ZwOpenFile",
+                                                          "ZwClose",
+                                                          "ZwCreateSection",
+                                                          "ZwMapViewOfSection",
+                                                          "ZwUnmapViewOfSection",
+                                                          "MmCopyMemory",
+                                                          "ZwDeviceIoControlFile",
+                                                          "KeStackAttachProcess",
+                                                          "KeUnstackDetachProcess",
+                                                          "KeWaitForSingleObject",
+                                                          "PsCreateSystemThread",
+                                                          "IofCompleteRequest",
+                                                          "ObReferenceObjectByHandle",
+                                                          "KeDelayExecutionThread",
+                                                          "KeRegisterNmiCallback",
+                                                          "KeDeregisterNmiCallback",
+                                                          "KeQueryActiveProcessorCount",
+                                                          "ExAcquirePushLockExclusiveEx",
+                                                          "ExReleasePushLockExclusiveEx",
+                                                          "PsGetThreadId",
+                                                          "RtlCaptureStackBackTrace",
+                                                          "ZwOpenDirectoryObject",
+                                                          "KeInitializeAffinityEx",
+                                                          "KeAddProcessorAffinityEx",
+                                                          "RtlQueryModuleInformation",
+                                                          "KeInitializeApc",
+                                                          "KeInsertQueueApc",
+                                                          "KeGenericCallDpc",
+                                                          "KeSignalCallDpcDone",
+                                                          "MmGetPhysicalMemoryRangesEx2",
+                                                          "MmGetVirtualForPhysical",
+                                                          "ObfReferenceObject",
+                                                          "ExFreePoolWithTag",
+                                                          "ExAllocatePool2",
+                                                          "KeReleaseGuardedMutex",
+                                                          "KeAcquireGuardedMutex",
+                                                          "DbgPrintEx",
+                                                          "RtlCompareUnicodeString",
+                                                          "RtlFreeUnicodeString",
+                                                          "PsGetProcessImageFileName"};
+
+DRIVER_IMPORTS driver_imports = {0};
+
+NTSTATUS
+ImpResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject)
+{
+        PUINT64 imports_array = (PUINT64)&driver_imports;
+
+        for (UINT32 index = 0; index < NT_IMPORT_COUNT; index++)
+        {
+                imports_array[index] = ImpResolveNtImport(DriverObject, NT_IMPORTS[index]);
+
+                if (!imports_array[index])
+                        return STATUS_UNSUCCESSFUL;
+        }
 
         CryptEncryptImportsArray(&driver_imports, IMPORTS_LENGTH);
 

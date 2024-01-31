@@ -4,10 +4,10 @@
 #include "common.h"
 
 PVOID
-FindNtExport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName);
+ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName);
 
 NTSTATUS
-ResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject);
+ImpResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject);
 
 #define IMPORT_FUNCTION_MAX_LENGTH 128
 #define IMPORT_FUNCTION_COUNT      256

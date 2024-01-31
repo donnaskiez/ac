@@ -6,6 +6,7 @@
 #include "callbacks.h"
 #include "driver.h"
 #include "queue.h"
+#include "session.h"
 #include "imports.h"
 
 #ifdef ALLOC_PRAGMA
@@ -80,7 +81,7 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         PKAPC_STATE apc_state         = NULL;
         PEPROCESS   protected_process = NULL;
 
-        GetProtectedProcessEProcess(&protected_process);
+        SessionGetProcess(&protected_process);
 
         if (!protected_process)
                 return;

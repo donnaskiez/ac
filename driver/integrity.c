@@ -6,6 +6,7 @@
 #include "callbacks.h"
 #include "io.h"
 #include "imports.h"
+#include "session.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -888,7 +889,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 
         module_info = (PPROCESS_MODULE_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
-        GetProtectedProcessEProcess(&process);
+        SessionGetProcess(&process);
         ImpRtlInitUnicodeString(&module_path, &module_info->module_path);
 
         /*

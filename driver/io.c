@@ -10,6 +10,7 @@
 #include "hv.h"
 #include "imports.h"
 #include "list.h"
+#include "session.h"
 
 STATIC
 NTSTATUS
@@ -669,7 +670,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         /*
          * LMAO
          */
-        ReadProcessInitialisedConfigFlag(&security_flag);
+        SessionIsActive(&security_flag);
 
         if (security_flag == FALSE && stack_location->Parameters.DeviceIoControl.IoControlCode !=
                                           IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH)
@@ -724,11 +725,11 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_LAUNCH Received");
 
-                status = ProcLoadInitialiseProcessConfig(Irp);
+                status = SessionInitialise(Irp);
 
                 if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("InitialiseProcessConfig failed with status %x", status);
+                        DEBUG_ERROR("InitialiseSession failed with status %x", status);
                         goto end;
                 }
 
@@ -827,7 +828,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_NOTIFY_DRIVER_ON_PROCESS_TERMINATION Received");
 
-                ProcCloseClearProcessConfiguration();
+                SessionTerminate();
                 UnregisterProcessObCallbacks();
 
                 break;
@@ -1006,7 +1007,7 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         DEBUG_INFO("Handle to driver closed.");
 
         /* we also lose reports here, so sohuld pass em into the irp before freeing */
-        ProcCloseClearProcessConfiguration();
+        SessionTerminate();
         UnregisterProcessObCallbacks();
         SharedMappingTerminate();
 

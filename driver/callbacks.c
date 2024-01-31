@@ -8,6 +8,7 @@
 #include "modules.h"
 #include "imports.h"
 #include "list.h"
+#include "session.h"
 
 STATIC
 BOOLEAN
@@ -547,14 +548,14 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
          * whilst we are cleaning up the callbacks on driver unload. We must hold the driver config
          * lock to ensure the pool containing the callback configuration lock is not freed
          */
-        GetCallbackConfigStructure(&configuration);
+        SessionGetCallbackConfiguration(&configuration);
 
         if (!configuration)
                 return OB_PREOP_SUCCESS;
 
         ImpKeAcquireGuardedMutex(&configuration->lock);
-        GetProtectedProcessId(&protected_process_id);
-        GetProtectedProcessEProcess(&protected_process);
+        SessionGetProcessId(&protected_process_id);
+        SessionGetProcess(&protected_process);
 
         if (!protected_process_id || !protected_process)
                 goto end;
@@ -690,7 +691,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 process      = (PEPROCESS)object;
                 process_name = ImpPsGetProcessImageFileName(process);
 
-                GetProtectedProcessEProcess(&protected_process);
+                SessionGetProcess(&protected_process);
 
                 protected_process_name = ImpPsGetProcessImageFileName(protected_process);
 
@@ -892,6 +893,9 @@ TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
 {
         PTIMER_OBJECT timer = (PTIMER_OBJECT)DeferredContext;
 
+        if (!HasDriverLoaded())
+                return;
+
         /* we dont want to queue our work item if it hasnt executed */
         if (timer->state)
                 return;
@@ -944,13 +948,13 @@ VOID
 UnregisterProcessObCallbacks()
 {
         PAGED_CODE();
-        PPROCESS_CONFIG config = GetProcessConfig();
+        PACTIVE_SESSION config = GetActiveSession();
         AcquireDriverConfigLock();
 
-        if (config->callback_info.registration_handle)
+        if (config->callback_configuration.registration_handle)
         {
-                ImpObUnRegisterCallbacks(config->callback_info.registration_handle);
-                config->callback_info.registration_handle = NULL;
+                ImpObUnRegisterCallbacks(config->callback_configuration.registration_handle);
+                config->callback_configuration.registration_handle = NULL;
         }
 
         ReleaseDriverConfigLock();
@@ -962,7 +966,7 @@ RegisterProcessObCallbacks()
         PAGED_CODE();
 
         NTSTATUS        status = STATUS_UNSUCCESSFUL;
-        PPROCESS_CONFIG config = GetProcessConfig();
+        PACTIVE_SESSION config = GetActiveSession();
 
         DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
         AcquireDriverConfigLock();
@@ -983,7 +987,7 @@ RegisterProcessObCallbacks()
         callback_registration.RegistrationContext        = NULL;
 
         status = ImpObRegisterCallbacks(&callback_registration,
-                                        &config->callback_info.registration_handle);
+                                        &config->callback_configuration.registration_handle);
 
         if (!NT_SUCCESS(status))
                 DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
@@ -993,7 +997,7 @@ RegisterProcessObCallbacks()
 }
 
 VOID
-InitialiseObCallbacksConfiguration(_Out_ PPROCESS_CONFIG ProcessConfig)
+InitialiseObCallbacksConfiguration(_Out_ PACTIVE_SESSION ProcessConfig)
 {
-        ImpKeInitializeGuardedMutex(&ProcessConfig->callback_info.lock);
+        ImpKeInitializeGuardedMutex(&ProcessConfig->callback_configuration.lock);
 }

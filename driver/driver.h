@@ -11,28 +11,7 @@
 #include "callbacks.h"
 
 NTSTATUS
-ProcLoadInitialiseProcessConfig(_In_ PIRP Irp);
-
-VOID
-GetProtectedProcessEProcess(_Out_ PEPROCESS* Process);
-
-VOID
-GetProtectedProcessId(_Out_ PLONG ProcessId);
-
-VOID
-ReadProcessInitialisedConfigFlag(_Out_ PBOOLEAN Flag);
-
-NTSTATUS
 QueryActiveApcContextsForCompletion();
-
-VOID
-TerminateProtectedProcessOnViolation();
-
-VOID
-ProcCloseClearProcessConfiguration();
-
-VOID
-GetCallbackConfigStructure(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration);
 
 LPCSTR
 GetDriverName();
@@ -85,8 +64,8 @@ ReleaseDriverConfigLock();
 BOOLEAN
 IsDriverUnloading();
 
-PPROCESS_CONFIG
-GetProcessConfig();
+PACTIVE_SESSION
+GetActiveSession();
 
 PSHARED_MAPPING
 GetSharedMappingConfig();
@@ -96,5 +75,8 @@ UnsetNmiInProgressFlag();
 
 BOOLEAN
 IsNmiInProgress();
+
+BOOLEAN
+HasDriverLoaded();
 
 #endif
