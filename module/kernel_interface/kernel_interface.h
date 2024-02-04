@@ -179,8 +179,6 @@ class kernel_interface {
     void *protected_process_id;
   };
 
-  int test = sizeof(session_initiation_packet);
-
   struct hv_detection_packet {
     unsigned long aperf_msr_timing_check;
     unsigned long invd_emulation_check;
