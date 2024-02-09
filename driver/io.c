@@ -192,8 +192,8 @@ VOID
 IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
         UNREFERENCED_PARAMETER(Csq);
-        Irp->IoStatus.Status = STATUS_CANCELLED;
-        Irp->IoStatus.Status = 0;
+        Irp->IoStatus.Status      = STATUS_CANCELLED;
+        Irp->IoStatus.Information = 0;
         ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
 }
 
@@ -211,10 +211,16 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
         return report;
 }
 
+#define MAX_DEFERRED_REPORTS_COUNT 100
+
 VOID
 IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
-        if (Queue->reports.count > 100)
+        /*
+         * arbitrary number, if we ever do have 100 deferred reports, theres probably a catastrophic
+         * error somewhere else
+         */
+        if (Queue->reports.count > MAX_DEFERRED_REPORTS_COUNT)
         {
                 ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
                 return;
@@ -252,9 +258,16 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 
         status = ValidateIrpOutputBuffer(irp, BufferSize);
 
+        /*
+         * Not sure how we should handle this, for now lets just free the buffer and return a
+         * status.
+         */
         if (!NT_SUCCESS(status))
         {
                 ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
+                irp->IoStatus.Status      = STATUS_INSUFFICIENT_RESOURCES;
+                irp->IoStatus.Information = 0;
+                ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
                 return status;
         }
 
@@ -263,6 +276,7 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
         RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
         ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
         ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
+        return status;
 }
 
 VOID
