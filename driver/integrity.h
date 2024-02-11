@@ -119,4 +119,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module);
 BOOLEAN
 ValidateOurDriversDispatchRoutines();
 
+VOID
+HashDeferredx86ModuleDeferredRoutine();
+
 #endif

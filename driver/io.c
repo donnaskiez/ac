@@ -75,17 +75,20 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
  *
  * user mode program will automatically queue another irp when an irp completes, ensuring queue has
  * a sufficient supply.
+ *
+ * note: maybe we should use a spinlock here? Dont really want competing threads sleeping. I think
+ * spinlock should be used here.
  */
 VOID
 IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
-        KeAcquireGuardedMutex(&GetIrpQueueHead()->lock);
+        KeAcquireSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
 VOID
-IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
+IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _In_ KIRQL Irql)
 {
-        KeReleaseGuardedMutex(&GetIrpQueueHead()->lock);
+        KeReleaseSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
 PIRP
@@ -111,13 +114,13 @@ IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 BOOLEAN
 IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
-        return Queue->reports.count > 0 ? TRUE : FALSE;
+        return Queue->deferred_reports.count > 0 ? TRUE : FALSE;
 }
 
 PDEFERRED_REPORT
 IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
-        return RemoveHeadList(&Queue->reports.head);
+        return RemoveHeadList(&Queue->deferred_reports.head);
 }
 
 STATIC
@@ -150,6 +153,7 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         PDEFERRED_REPORT report = NULL;
         NTSTATUS         status = STATUS_UNSUCCESSFUL;
+        KIRQL            irql   = 0;
 
         /*
          * Important we hold the lock before we call IsThereDeferredReport to prevent the race
@@ -157,7 +161,7 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
          * removes the last entry from the list. We then request a deferred report and will receive
          * a null value leading to a bugcheck in the subsequent call to CompleteDeferredReport.
          */
-        KeAcquireGuardedMutex(&queue->reports.lock);
+        KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
 
         if (IrpQueueIsThereDeferredReport(queue))
         {
@@ -167,16 +171,16 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
                 if (!NT_SUCCESS(status))
                 {
                         IrpQueueFreeDeferredReport(report);
-                        KeReleaseGuardedMutex(&queue->reports.lock);
+                        KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
                         return status;
                 }
 
-                queue->reports.count--;
-                KeReleaseGuardedMutex(&queue->reports.lock);
+                queue->deferred_reports.count--;
+                KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
                 return status;
         }
 
-        KeReleaseGuardedMutex(&queue->reports.lock);
+        KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
         return status;
 }
 
@@ -216,28 +220,34 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 VOID
 IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
+        PDEFERRED_REPORT report = NULL;
+        KIRQL            irql   = 0;
         /*
          * arbitrary number, if we ever do have 100 deferred reports, theres probably a catastrophic
          * error somewhere else
          */
-        if (Queue->reports.count > MAX_DEFERRED_REPORTS_COUNT)
+        if (Queue->deferred_reports.count > MAX_DEFERRED_REPORTS_COUNT)
         {
                 ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
                 return;
         }
 
-        PDEFERRED_REPORT report = IrpQueueAllocateDeferredReport(Buffer, BufferSize);
+        report = IrpQueueAllocateDeferredReport(Buffer, BufferSize);
 
         if (!report)
                 return;
 
-        KeAcquireGuardedMutex(&Queue->reports.lock);
-        InsertTailList(&Queue->reports.head, &report->list_entry);
-        Queue->reports.count++;
-        KeReleaseGuardedMutex(&Queue->reports.lock);
+        KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
+        InsertTailList(&Queue->deferred_reports.head, &report->list_entry);
+        Queue->deferred_reports.count++;
+        KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
 }
 
-/* takes ownership of the buffer, and regardless of the outcome will free it. */
+/* 
+* takes ownership of the buffer, and regardless of the outcome will free it. 
+* 
+* IMPORTANT: All report buffers must be allocated in non paged memory.
+*/
 NTSTATUS
 IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
@@ -284,9 +294,10 @@ IrpQueueFreeDeferredReports()
 {
         PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
         PDEFERRED_REPORT report = NULL;
+        KIRQL            irql   = 0;
 
         /* just in case... */
-        KeAcquireGuardedMutex(&queue->reports.lock);
+        KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
 
         while (IrpQueueIsThereDeferredReport(queue))
         {
@@ -294,7 +305,7 @@ IrpQueueFreeDeferredReports()
                 IrpQueueFreeDeferredReport(report);
         }
 
-        KeReleaseGuardedMutex(&queue->reports.lock);
+        KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
 }
 
 NTSTATUS
@@ -303,10 +314,10 @@ IrpQueueInitialise()
         NTSTATUS        status = STATUS_UNSUCCESSFUL;
         PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
 
-        KeInitializeGuardedMutex(&queue->lock);
-        KeInitializeGuardedMutex(&queue->reports.lock);
+        KeInitializeSpinLock(&queue->lock);
+        KeInitializeSpinLock(&queue->deferred_reports.lock);
         InitializeListHead(&queue->queue);
-        InitializeListHead(&queue->reports.head);
+        InitializeListHead(&queue->deferred_reports.head);
 
         status = IoCsqInitialize(&queue->csq,
                                  IrpQueueInsert,

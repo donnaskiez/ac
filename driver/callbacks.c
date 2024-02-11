@@ -159,6 +159,37 @@ unlock:
         ImpKeReleaseGuardedMutex(&list->lock);
 }
 
+VOID
+EnumerateDriverListWithCallbackRoutine(_In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine,
+                                       _In_opt_ PVOID                   Context)
+{
+        PDRIVER_LIST_HEAD list = GetDriverList();
+        ImpKeAcquireGuardedMutex(&list->lock);
+
+        if (!CallbackRoutine)
+                goto unlock;
+
+        PDRIVER_LIST_ENTRY entry = list->start.Next;
+
+        while (entry)
+        {
+                CallbackRoutine(entry, Context);
+                entry = entry->list.Next;
+        }
+
+unlock:
+        ImpKeReleaseGuardedMutex(&list->lock);
+}
+
+VOID
+DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
+                                    _Out_ PRTL_MODULE_EXTENDED_INFO Extended)
+{
+        Extended->ImageBase = Entry->ImageBase;
+        Extended->ImageSize = Entry->ImageSize;
+        RtlCopyMemory(Extended->FullPathName, Entry->path, sizeof(Extended->FullPathName));
+}
+
 NTSTATUS
 InitialiseDriverList()
 {
@@ -172,6 +203,7 @@ InitialiseDriverList()
 
         InterlockedExchange(&list->active, TRUE);
         ListInit(&list->start, &list->lock);
+        InitializeListHead(&list->deferred_unhashed_x86_modules);
 
         status = GetSystemModuleInformation(&modules);
 
@@ -205,6 +237,9 @@ InitialiseDriverList()
                 {
                         DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
                         entry->hashed = FALSE;
+                        entry->x86    = TRUE;
+                        InsertHeadList(&list->deferred_unhashed_x86_modules,
+                                       &entry->deferred_entry);
                 }
                 else if (!NT_SUCCESS(status))
                 {
@@ -256,11 +291,12 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
                                _In_ PIMAGE_INFO         ImageInfo)
 {
-        NTSTATUS                 status    = STATUS_UNSUCCESSFUL;
-        PDRIVER_LIST_ENTRY       entry     = NULL;
-        RTL_MODULE_EXTENDED_INFO module    = {0};
-        PDRIVER_LIST_HEAD        list      = GetDriverList();
-        ANSI_STRING              ansi_path = {0};
+        NTSTATUS                 status             = STATUS_UNSUCCESSFUL;
+        PDRIVER_LIST_ENTRY       entry              = NULL;
+        RTL_MODULE_EXTENDED_INFO module             = {0};
+        PDRIVER_LIST_HEAD        list               = GetDriverList();
+        ANSI_STRING              ansi_path          = {0};
+        UINT32                   ansi_string_length = 0;
 
         if (InterlockedExchange(&list->active, list->active) == FALSE)
                 return;
@@ -273,8 +309,6 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         if (entry)
                 return;
 
-        DEBUG_VERBOSE("New system image: %wZ", FullImageName);
-
         entry =
             ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
 
@@ -282,26 +316,44 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                 return;
 
         entry->hashed    = TRUE;
+        entry->x86       = FALSE;
         entry->ImageBase = ImageInfo->ImageBase;
         entry->ImageSize = ImageInfo->ImageSize;
 
-        /*todo: unicode 2 ansi string -> store in buf */
         module.ImageBase = ImageInfo->ImageBase;
         module.ImageSize = ImageInfo->ImageSize;
 
-        // if (FullImageName)
-        //{
-        //         status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
+        if (FullImageName)
+        {
+                status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
 
-        //        if (!NT_SUCCESS(status))
-        //                DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
-        //}
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
+                        goto hash;
+                }
 
+                if (ansi_path.Length > sizeof(module.FullPathName))
+                {
+                        RtlFreeAnsiString(&ansi_path);
+                        goto hash;
+                }
+
+                RtlCopyMemory(module.FullPathName, ansi_path.Buffer, ansi_path.Length);
+                RtlCopyMemory(entry->path, ansi_path.Buffer, ansi_path.Length);
+
+                RtlFreeAnsiString(&ansi_path);
+        }
+
+        DEBUG_VERBOSE("New system image ansi: %s", entry->path);
+
+hash:
         status = HashModule(&module, &entry->text_hash);
 
         if (status == STATUS_INVALID_IMAGE_WIN_32)
         {
                 DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+                entry->x86    = TRUE;
                 entry->hashed = FALSE;
         }
         else if (!NT_SUCCESS(status))
@@ -412,12 +464,30 @@ unlock:
 }
 
 VOID
+Hashx86ModulesOnWinlogonLoad()
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        status = Allocatex86HashingWorkItem();
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("Allocatex86HashingWorkItem failed with status %x", status);
+                return status;
+        }
+
+        IoQueueWorkItem(
+            Getx86HashingWorkItem(), HashDeferredx86ModuleDeferredRoutine, NormalWorkQueue, NULL);
+}
+
+VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOOLEAN Create)
 {
-        PPROCESS_LIST_ENTRY entry   = NULL;
-        PKPROCESS           parent  = NULL;
-        PKPROCESS           process = NULL;
-        PPROCESS_LIST_HEAD  list    = GetProcessList();
+        PPROCESS_LIST_ENTRY entry        = NULL;
+        PKPROCESS           parent       = NULL;
+        PKPROCESS           process      = NULL;
+        PPROCESS_LIST_HEAD  list         = GetProcessList();
+        LPCSTR              process_name = NULL;
 
         if (!list->active)
                 return;
@@ -427,6 +497,8 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
 
         if (!parent || !process)
                 return;
+
+        process_name = ImpPsGetProcessImageFileName(process);
 
         if (Create)
         {
@@ -442,6 +514,17 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 entry->process = process;
 
                 ListInsert(&list->start, entry, &list->lock);
+
+                /*
+                 * Notify to our driver that we can hash x86 modules, and hash any x86 modules that
+                 * werent hashed.
+                 */
+                if (!strcmp(process_name, "winlogon.exe"))
+                {
+                        DEBUG_VERBOSE("Winlogon process has started");
+                        UpdateWinlogonProcessState(TRUE);
+                        Hashx86ModulesOnWinlogonLoad();
+                }
         }
         else
         {
@@ -609,31 +692,31 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                             !strcmp(process_creator_name, "explorer.exe"))
                                 goto end;
 
-                        //POPEN_HANDLE_FAILURE_REPORT report =
-                        //    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                        //                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                        //                       REPORT_POOL_TAG);
+                        // POPEN_HANDLE_FAILURE_REPORT report =
+                        //     ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                        //                        sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                        //                        REPORT_POOL_TAG);
 
-                        //if (!report)
-                        //        goto end;
+                        // if (!report)
+                        //         goto end;
 
-                        //report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                        //report->is_kernel_handle = OperationInformation->KernelHandle;
-                        //report->process_id       = process_creator_id;
-                        //report->thread_id        = ImpPsGetCurrentThreadId();
-                        //report->access =
-                        //    OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+                        // report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
+                        // report->is_kernel_handle = OperationInformation->KernelHandle;
+                        // report->process_id       = process_creator_id;
+                        // report->thread_id        = ImpPsGetCurrentThreadId();
+                        // report->access =
+                        //     OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
-                        //RtlCopyMemory(report->process_name,
-                        //              process_creator_name,
-                        //              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+                        // RtlCopyMemory(report->process_name,
+                        //               process_creator_name,
+                        //               HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        //if (!NT_SUCCESS(
-                        //        IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        // if (!NT_SUCCESS(
+                        //         IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
                         //{
-                        //        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
-                        //        goto end;
-                        //}
+                        //         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                        //         goto end;
+                        // }
                 }
         }
 

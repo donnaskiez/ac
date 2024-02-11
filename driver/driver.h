@@ -79,4 +79,16 @@ IsNmiInProgress();
 BOOLEAN
 HasDriverLoaded();
 
+BOOLEAN
+HasWinlogonProcessStarted();
+
+VOID
+UpdateWinlogonProcessState(_In_ BOOLEAN NewValue);
+
+NTSTATUS
+Allocatex86HashingWorkItem();
+
+PIO_WORKITEM
+Getx86HashingWorkItem();
+
 #endif

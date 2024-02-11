@@ -74,6 +74,7 @@ typedef struct _DRIVER_LIST_HEAD
         volatile ULONG    count;
         volatile BOOLEAN  active;
         KGUARDED_MUTEX    lock;
+        LIST_ENTRY        deferred_unhashed_x86_modules;
 
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;
 
@@ -183,21 +184,21 @@ typedef struct _DEFERRED_REPORT
 
 } DEFERRED_REPORT, *PDEFERRED_REPORT;
 
-typedef struct _DEFERRED_REPORTS_HEAD
+typedef struct _DEFERRED_REPORTS_LIST
 {
-        LIST_ENTRY     head;
-        UINT32         count;
-        KGUARDED_MUTEX lock;
+        LIST_ENTRY head;
+        UINT32     count;
+        KSPIN_LOCK lock;
 
-} DEFERRED_REPORTS_HEAD, *PDEFERRED_REPORTS_HEAD;
+} DEFERRED_REPORTS_LIST, *PDEFERRED_REPORTS_LIST;
 
 typedef struct _IRP_QUEUE_HEAD
 {
         LIST_ENTRY            queue;
         volatile UINT32       count;
         IO_CSQ                csq;
-        KGUARDED_MUTEX        lock;
-        DEFERRED_REPORTS_HEAD reports;
+        KSPIN_LOCK            lock;
+        DEFERRED_REPORTS_LIST deferred_reports;
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 

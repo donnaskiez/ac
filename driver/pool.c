@@ -698,7 +698,7 @@ FindUnlinkedProcesses()
                               allocation);
 
                 report_buffer = ImpExAllocatePool2(
-                    POOL_FLAG_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
+                    POOL_FLAG_NON_PAGED, sizeof(INVALID_PROCESS_ALLOCATION_REPORT), REPORT_POOL_TAG);
 
                 if (!report_buffer)
                         continue;

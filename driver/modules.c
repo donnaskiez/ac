@@ -684,8 +684,10 @@ HandleValidateDriversIOCTL()
                                 continue;
                         }
 
-                        PMODULE_VALIDATION_FAILURE report = ImpExAllocatePool2(
-                            POOL_FLAG_PAGED, sizeof(MODULE_VALIDATION_FAILURE), POOL_TAG_INTEGRITY);
+                        PMODULE_VALIDATION_FAILURE report =
+                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                               sizeof(MODULE_VALIDATION_FAILURE),
+                                               POOL_TAG_INTEGRITY);
 
                         if (!report)
                                 continue;
@@ -1236,31 +1238,11 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         PCHAR                  previous_mode = NULL;
         PUCHAR                 state         = NULL;
         BOOLEAN                apc_queueable = FALSE;
+        LPCSTR                 process_name  = NULL;
         PAPC_STACKWALK_CONTEXT context       = (PAPC_STACKWALK_CONTEXT)Context;
-        LPCSTR process_name = ImpPsGetProcessImageFileName(ThreadListEntry->owning_process);
 
-        /*
-         * we dont want to schedule an apc to threads owned by the kernel
-         *
-         * Actually we do... todo: fix this.
-         */
-        if (ThreadListEntry->owning_process == PsInitialSystemProcess || !Context)
-                return;
+        process_name = ImpPsGetProcessImageFileName(ThreadListEntry->owning_process);
 
-        /* We are not interested in these processess.. for now lol */
-        if (!strcmp(process_name, "svchost.exe") || !strcmp(process_name, "Registry") ||
-            !strcmp(process_name, "smss.exe") || !strcmp(process_name, "csrss.exe") ||
-            !strcmp(process_name, "explorer.exe") || !strcmp(process_name, "svchost.exe") ||
-            !strcmp(process_name, "lsass.exe") || !strcmp(process_name, "MemCompression") ||
-            !strcmp(process_name, "WerFault.exe"))
-                return;
-
-        DEBUG_VERBOSE("Validating thread: %llx, process name: %s via kernel APC stackwalk.",
-                      ThreadListEntry->thread,
-                      process_name);
-
-        if (ThreadListEntry->thread == KeGetCurrentThread() || !ThreadListEntry->thread)
-                return;
         /*
          * Its possible to set the KThread->ApcQueueable flag to false ensuring that no APCs
          * can be queued to the thread, as KeInsertQueueApc will check this flag before
@@ -1270,6 +1252,20 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         misc_flags    = (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
         previous_mode = (PCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_PREVIOUS_MODE_OFFSET);
         state         = (PUCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_STATE_OFFSET);
+
+        /*
+         * For now, lets only check for system threads. However, we also want to check for threads
+         * executing in kernel mode, i.e KTHREAD->PreviousMode == UserMode.
+         */
+        if (ThreadListEntry->owning_process != PsInitialSystemProcess)
+                return;
+
+        if (ThreadListEntry->thread == KeGetCurrentThread() || !ThreadListEntry->thread)
+                return;
+
+        DEBUG_VERBOSE("Validating thread: %llx, process name: %s via kernel APC stackwalk.",
+                      ThreadListEntry->thread,
+                      process_name);
 
         /* we dont care about user mode threads */
         // if (*previous_mode == UserMode)

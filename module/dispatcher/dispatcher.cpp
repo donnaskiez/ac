@@ -47,13 +47,15 @@ void dispatcher::dispatcher::run_io_port_thread() {
 }
 
 void dispatcher::dispatcher::run() {
-  helper::generate_rand_seed();
+  //helper::generate_rand_seed();
+  std::srand(std::time(nullptr));
   this->init_timer_callbacks();
   this->run_timer_thread();
   this->run_io_port_thread();
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
-    this->issue_kernel_job();
+    //this->issue_kernel_job();
+          this->k_interface.initiate_apc_stackwalk();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }

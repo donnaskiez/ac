@@ -21,10 +21,20 @@ typedef struct _DRIVER_LIST_ENTRY
         PVOID             ImageBase;
         ULONG             ImageSize;
         BOOLEAN           hashed;
+        BOOLEAN           x86;
         CHAR              path[DRIVER_PATH_LENGTH];
         CHAR              text_hash[SHA_256_HASH_LENGTH];
 
+        /*
+         * This LIST_ENTRY is to be used for modules where the hashing needs to be deferred.
+         * For example, when x86 modules can't be hashed on driver load.
+         */
+        LIST_ENTRY deferred_entry;
+
 } DRIVER_LIST_ENTRY, *PDRIVER_LIST_ENTRY;
+
+typedef void (*DRIVERLIST_CALLBACK_ROUTINE)(_In_ PDRIVER_LIST_ENTRY DriverListEntry,
+                                            _In_opt_ PVOID          Context);
 
 NTSTATUS
 InitialiseDriverList();
@@ -70,7 +80,7 @@ EnumerateThreadListWithCallbackRoutine(_In_ THREADLIST_CALLBACK_ROUTINE Callback
 
 VOID
 EnumerateProcessListWithCallbackRoutine(_In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine,
-                                        _In_opt_ PVOID                   Context);
+                                        _In_opt_ PVOID                    Context);
 
 VOID
 FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry);
@@ -109,5 +119,13 @@ RegisterProcessObCallbacks();
 
 VOID
 InitialiseObCallbacksConfiguration(_Out_ PACTIVE_SESSION ProcessConfig);
+
+VOID
+EnumerateDriverListWithCallbackRoutine(_In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine,
+                                       _In_opt_ PVOID                   Context);
+
+VOID
+DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
+                                    _Out_ PRTL_MODULE_EXTENDED_INFO Extended);
 
 #endif

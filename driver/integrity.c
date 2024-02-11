@@ -46,7 +46,8 @@ NTSTATUS
 StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
                                      _In_ PVOID                                       ModuleBase,
                                      _In_ SIZE_T                                      ModuleSize,
-                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten);
+                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten,
+                                     _In_ BOOLEAN                          IsModulex86);
 
 STATIC
 NTSTATUS
@@ -77,15 +78,6 @@ STATIC
 NTSTATUS
 GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime);
 
-STATIC
-NTSTATUS
-RegistryPathQueryTestSigningCallback(IN PWSTR ValueName,
-                                     IN ULONG ValueType,
-                                     IN PVOID ValueData,
-                                     IN ULONG ValueLength,
-                                     IN PVOID Context,
-                                     IN PVOID EntryContext);
-
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(PAGE, GetDriverImageSize)
 #        pragma alloc_text(PAGE, GetModuleInformationByName)
@@ -102,7 +94,6 @@ RegistryPathQueryTestSigningCallback(IN PWSTR ValueName,
 #        pragma alloc_text(PAGE, ScanForSignature)
 #        pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
 #        pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
-#        pragma alloc_text(PAGE, RegistryPathQueryTestSigningCallback)
 // #pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
 #endif
 
@@ -204,7 +195,8 @@ NTSTATUS
 StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
                                      _In_ PVOID                                       ModuleBase,
                                      _In_ SIZE_T                                      ModuleSize,
-                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten)
+                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten,
+                                     _In_ BOOLEAN                          IsModulex86)
 {
         PAGED_CODE();
 
@@ -244,7 +236,7 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
          */
         dos_header = (PIMAGE_DOS_HEADER)ModuleBase;
 
-        if (!MmIsAddressValid(dos_header))
+        if (!MmIsAddressValid(dos_header) && !IsModulex86)
         {
                 ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
                 *Buffer = NULL;
@@ -433,7 +425,8 @@ ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
         *HashResult     = NULL;
         *HashResultSize = 0;
 
-        status = BCryptOpenAlgorithmProvider(&algo_handle, BCRYPT_SHA256_ALGORITHM, NULL, NULL);
+        status = BCryptOpenAlgorithmProvider(
+            &algo_handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
 
         if (!NT_SUCCESS(status))
         {
@@ -566,7 +559,7 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
         }
 
         status = StoreModuleExecutableRegionsInBuffer(
-            &buffer, module_info.ImageBase, module_info.ImageSize, &bytes_written);
+            &buffer, module_info.ImageBase, module_info.ImageSize, &bytes_written, FALSE);
 
         if (!NT_SUCCESS(status))
         {
@@ -897,8 +890,11 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
          */
         ImpKeStackAttachProcess(process, &apc_state);
 
-        status = StoreModuleExecutableRegionsInBuffer(
-            &memory_buffer, module_info->module_base, module_info->module_size, &bytes_written);
+        status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
+                                                      module_info->module_base,
+                                                      module_info->module_size,
+                                                      &bytes_written,
+                                                      FALSE);
 
         ImpKeUnstackDetachProcess(&apc_state);
 
@@ -918,7 +914,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         }
 
         status = StoreModuleExecutableRegionsInBuffer(
-            &disk_buffer, section, section_size, &bytes_written);
+            &disk_buffer, section, section_size, &bytes_written, FALSE);
 
         if (!NT_SUCCESS(status))
         {
@@ -1405,11 +1401,75 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
         process_name = ImpPsGetProcessImageFileName(Entry->process);
 
         if (!strcmp(process_name, "winlogon.exe"))
-        {
-                DEBUG_VERBOSE("32 bit WinLogon.exe process found at address: %llx",
-                              (UINT64)Entry->process);
                 *process = Entry->process;
+}
+
+STATIC
+NTSTATUS
+StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
+                                _In_ PVOID*                    Buffer,
+                                _In_ PULONG                    BufferSize)
+{
+        NTSTATUS   status    = STATUS_UNSUCCESSFUL;
+        PEPROCESS  process   = NULL;
+        KAPC_STATE apc_state = {0};
+
+        EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
+
+        if (!process)
+                return STATUS_NOT_FOUND;
+
+        ImpKeStackAttachProcess(process, &apc_state);
+
+        status = StoreModuleExecutableRegionsInBuffer(
+            Buffer, Module->ImageBase, Module->ImageSize, BufferSize, TRUE);
+
+        ImpKeUnstackDetachProcess(&apc_state);
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer-x86 failed with status %x",
+                            status);
+
+        return status;
+}
+
+VOID
+HashDeferredx86ModuleDeferredRoutine()
+{
+        NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
+        RTL_MODULE_EXTENDED_INFO module        = {0};
+        PLIST_ENTRY              deferred_head = &GetDriverList()->deferred_unhashed_x86_modules;
+        PLIST_ENTRY              list_entry    = NULL;
+        PDRIVER_LIST_ENTRY       entry         = NULL;
+
+        list_entry = RemoveHeadList(deferred_head);
+
+        if (list_entry == deferred_head)
+                goto end;
+
+        entry = CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
+
+        while (list_entry != deferred_head)
+        {
+                entry = CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
+
+                DriverListEntryToExtendedModuleInfo(entry, &module);
+
+                status = HashModule(&module, &entry->text_hash);
+
+                if (!NT_SUCCESS(status))
+                {
+                        DEBUG_ERROR("HashModule-x86 failed with status %x", status);
+                        return;
+                }
+
+                entry->hashed = TRUE;
+                list_entry = RemoveHeadList(deferred_head);
         }
+
+end:
+        DEBUG_VERBOSE("All deferred x86 modules hashed.");
+        ImpIoFreeWorkItem(Getx86HashingWorkItem());
 }
 
 NTSTATUS
@@ -1423,8 +1483,6 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
         ULONG                 memory_hash_size   = 0;
         PVAL_INTEGRITY_HEADER memory_buffer      = NULL;
         ULONG                 memory_buffer_size = 0;
-        PEPROCESS             process            = NULL;
-        KAPC_STATE            apc_state          = {0};
 
         ImpRtlInitAnsiString(&ansi_string, Module->FullPathName);
 
@@ -1448,33 +1506,32 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
          * 32 bit image base wont be a valid address, while this is hacky it works.
          * Then we simply attach to a 32 bit address space, in our case winlogon,
          * which will allow us to perform the copy.
+         *
+         * Since the driver loads at system startup, our driver is loaded before the WinLogon
+         * process has started, so to combat this return return early with a status code. This will
+         * mark the module as not hashed and x86. We will then queue a work item to hash these
+         * modules later once WinLogon has started.
          */
-        if (!ImpMmIsAddressValid(Module->ImageBase))
+        if (!ImpMmIsAddressValid(Module->ImageBase) && !HasWinlogonProcessStarted())
         {
-                // DEBUG_VERBOSE("Win32k related module found, acquiring 32 bit address space...");
-
-                // EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
-
-                // if (!process)
-                //         goto end;
-
-                // ImpKeStackAttachProcess(process, &apc_state);
-
-                // status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
-                //                                               Module->ImageBase,
-                //                                               Module->ImageSize,
-                //                                               &memory_buffer_size);
-
-                // ImpKeUnstackDetachProcess(&apc_state);
                 status = STATUS_INVALID_IMAGE_WIN_32;
                 goto end;
+        }
+        else if (!ImpMmIsAddressValid(Module->ImageBase) && HasWinlogonProcessStarted())
+        {
+                /*
+                 * Once the WinLogon process has started, we can then hash new x86 modules.
+                 */
+                status = StoreModuleExecutableRegionsx86(
+                    Module, (PVOID)&memory_buffer, &memory_buffer_size);
         }
         else
         {
                 status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
                                                               Module->ImageBase,
                                                               Module->ImageSize,
-                                                              &memory_buffer_size);
+                                                              &memory_buffer_size,
+                                                              FALSE);
         }
 
         if (!NT_SUCCESS(status))
