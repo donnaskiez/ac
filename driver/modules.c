@@ -466,6 +466,7 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return status;
 }
 
+/* TODO: this function needs to be rewritten. Infact, this entire file needs to be rewritten. */
 STATIC
 NTSTATUS
 ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
@@ -1843,4 +1844,72 @@ end:
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 
         return status;
+}
+
+NTSTATUS
+GetDriverObjectByDriverName(_In_ PUNICODE_STRING DriverName, _Out_ PDRIVER_OBJECT* DriverObject)
+{
+        HANDLE            handle                     = NULL;
+        OBJECT_ATTRIBUTES attributes                 = {0};
+        PVOID             directory                  = {0};
+        UNICODE_STRING    directory_name             = {0};
+        NTSTATUS          status                     = STATUS_UNSUCCESSFUL;
+        POBJECT_DIRECTORY directory_object           = NULL;
+
+        *DriverObject = NULL;
+
+        ImpRtlInitUnicodeString(&directory_name, L"\\Driver");
+
+        InitializeObjectAttributes(&attributes, &directory_name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+        status = ImpZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &attributes);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ZwOpenDirectoryObject failed with status %x", status);
+                return status;
+        }
+
+        status = ImpObReferenceObjectByHandle(
+            handle, DIRECTORY_ALL_ACCESS, NULL, KernelMode, &directory, NULL);
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x", status);
+                ImpZwClose(handle);
+                return status;
+        }
+
+        directory_object = (POBJECT_DIRECTORY)directory;
+
+        ImpExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
+
+        for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++)
+        {
+                POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[index];
+
+                if (!entry)
+                        continue;
+
+                POBJECT_DIRECTORY_ENTRY sub_entry = entry;
+
+                while (sub_entry)
+                {
+                        PDRIVER_OBJECT current_driver = sub_entry->Object;
+
+                        if (!RtlCompareUnicodeString(DriverName, &current_driver->DriverName, FALSE))
+                        {
+                                *DriverObject = current_driver;
+                                goto end;
+                        }
+
+                        sub_entry = sub_entry->ChainLink;
+                }
+        }
+
+end:
+        ImpExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
+        ImpObDereferenceObject(directory);
+        ImpZwClose(handle);
+        return STATUS_SUCCESS;
 }

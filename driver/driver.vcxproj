@@ -254,6 +254,7 @@
     <ClCompile Include="io.c" />
     <ClCompile Include="list.c" />
     <ClCompile Include="modules.c" />
+    <ClCompile Include="hw.c" />
     <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
     <ClCompile Include="session.c" />
@@ -266,6 +267,7 @@
     <ClInclude Include="crypt.h" />
     <ClInclude Include="driver.h" />
     <ClInclude Include="hv.h" />
+    <ClInclude Include="hw.h" />
     <ClInclude Include="ia32.h" />
     <ClInclude Include="imports.h" />
     <ClInclude Include="integrity.h" />

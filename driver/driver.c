@@ -13,6 +13,7 @@
 #include "apc.h"
 #include "crypt.h"
 #include "session.h"
+#include "hw.h"
 
 STATIC
 VOID
