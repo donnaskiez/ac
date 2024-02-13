@@ -159,7 +159,7 @@ IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
  * Windows splits DEVICE_OBJECTS up into 2 categories:
  *
  * Physical Device Object (PDO)
- * Function Device Object (FDO)
+ * Functional Device Object (FDO)
  *
  * A PDO represents each device that is connected to a physical bus. Each PDO has an associated
  * DEVICE_NODE. An FDO represents the functionality of the device. Its how the system interacts with
