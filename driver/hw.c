@@ -145,7 +145,7 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
 }
 
 /*
- * WHile this isnt a perfect check to determine whether a DEVICE_OBJECT is indeed a PDO or FDO, this
+ * While this isnt a perfect check to determine whether a DEVICE_OBJECT is indeed a PDO or FDO, this
  * is Peters preferred method... hence it is now my preferred method... :smiling_imp:
  */
 STATIC
@@ -167,6 +167,10 @@ IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
  *
  * More information can be found here:
  * https://learn.microsoft.com/en-gb/windows-hardware/drivers/gettingstarted/device-nodes-and-device-stacks
+ *
+ * A device stack can have multiple PDO's, but can only have one FDO. This means to access each PCI
+ * device on the system, we can enumerate all device objects given the PCI FDO which is called
+ * pci.sys.
  */
 NTSTATUS
 EnumeratePciDeviceObjects()
