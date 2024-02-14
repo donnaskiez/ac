@@ -154,3 +154,27 @@ SessionTerminateProcess()
         /* this wont be needed when procloadstuff is implemented */
         SessionTerminate();
 }
+
+VOID
+SessionIncrementIrpsProcessedCount()
+{
+        ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
+        GetActiveSession()->irps_processed++;
+        ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
+}
+
+VOID
+SessionIncrementReportCount()
+{
+        ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
+        GetActiveSession()->report_count++;
+        ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
+}
+
+VOID
+SessionIncrementHeartbeatCount()
+{
+        ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
+        GetActiveSession()->heartbeat_count++;
+        ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
+}

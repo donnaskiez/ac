@@ -246,11 +246,11 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 B
         KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
 }
 
-/* 
-* takes ownership of the buffer, and regardless of the outcome will free it. 
-* 
-* IMPORTANT: All report buffers must be allocated in non paged memory.
-*/
+/*
+ * takes ownership of the buffer, and regardless of the outcome will free it.
+ *
+ * IMPORTANT: All report buffers must be allocated in non paged memory.
+ */
 NTSTATUS
 IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
@@ -778,12 +778,6 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                         DEBUG_ERROR("QueryActiveApcContextsForCompletion failed with status %x",
                                     status);
 
-                // status = HandlePeriodicGlobalReportQueueQuery(Irp);
-
-                // if (!NT_SUCCESS(status))
-                //         DEBUG_ERROR("HandlePeriodicGlobalReportQueueQuery failed with status %x",
-                //                     status);
-
                 break;
 
         case IOCTL_PERFORM_VIRTUALIZATION_CHECK:
@@ -906,8 +900,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 DEBUG_INFO("IOCTL_REQUEST_HARDWARE_INFORMATION Received");
 
-                PSYSTEM_INFORMATION system_information =
-                    GetDriverConfigSystemInformation(&system_information);
+                PSYSTEM_INFORMATION system_information = GetDriverConfigSystemInformation();
 
                 status = ValidateIrpOutputBuffer(Irp, sizeof(SYSTEM_INFORMATION));
 
@@ -1004,6 +997,8 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         case IOCTL_INITIATE_SHARED_MAPPING:
 
+                DEBUG_INFO("IOCTL_INITIATE_SHARED_MAPPING Received");
+
                 status = SharedMappingInitialise(Irp);
 
                 if (!NT_SUCCESS(status))
@@ -1012,6 +1007,8 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
                 break;
 
         case IOCTL_VALIDATE_PCI_DEVICES:
+
+                DEBUG_INFO("IOCTL_VALIDATE_PCI_DEVICES Received");
 
                 status = ValidatePciDevices();
 
@@ -1040,10 +1037,8 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
         UNREFERENCED_PARAMETER(DeviceObject);
-
         DEBUG_INFO("Handle to driver closed.");
 
-        /* we also lose reports here, so sohuld pass em into the irp before freeing */
         SessionTerminate();
         UnregisterProcessObCallbacks();
         SharedMappingTerminate();
@@ -1056,6 +1051,7 @@ NTSTATUS
 DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
+        UNREFERENCED_PARAMETER(DeviceObject);
         DEBUG_INFO("Handle to driver opened.");
 
         NTSTATUS status = ValidatePciDevices();

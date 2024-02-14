@@ -227,6 +227,13 @@ typedef struct _ACTIVE_SESSION
         UINT32 session_cookie;
         CHAR   session_aes_key[AES_128_KEY_SIZE];
 
+        struct SESSION_STATISTICS
+        {
+                UINT32 irps_processed;
+                UINT32 report_count;
+                UINT32 heartbeat_count;
+        };
+
         KGUARDED_MUTEX lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
@@ -236,7 +243,7 @@ typedef struct _ACTIVE_SESSION
 #define INVALID_DRIVER_LIST_HEAD_POOL  'rwar'
 #define INVALID_DRIVER_LIST_ENTRY_POOL 'gaah'
 #define POOL_TAG_APC                   'apcc'
-#define POOL_TAG_HW                   'hwhw'
+#define POOL_TAG_HW                    'hwhw'
 #define POOL_TAG_DPC                   'apcc'
 #define SYSTEM_MODULES_POOL            'halb'
 #define THREAD_DATA_POOL               'doof'

@@ -32,4 +32,13 @@ SessionInitialise(_In_ PIRP Irp);
 VOID
 SessionTerminateProcess();
 
+VOID
+SessionIncrementIrpsProcessedCount();
+
+VOID
+SessionIncrementReportCount();
+
+VOID
+SessionIncrementHeartbeatCount();
+
 #endif

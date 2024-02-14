@@ -21,15 +21,13 @@ open source anti cheat (lol) which I made for fun.
 - Driver integrity checks both locally and over server
 - Hypervisor detection
 - HalDispatch and HalPrivateDispatch routine validation
-- Dynamic import resolving 
+- Dynamic import resolving & encryption
+- Malicious PCI device detection via configuration space scanning
 
 # planned features
 
 - Heartbeat
-- optimise stuff 
 - ntoskrnl integrity checks
-- spoofed stack identifier
-- process module inline hook detection (this would include checking whether the hook is valid, as many legimate programs hook user mode modules such as discord, nvidia overlay etc.)
 - cr3 protection 
 - string, packet and other encryption
 - tpm ek extraction
