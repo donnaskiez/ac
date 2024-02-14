@@ -138,7 +138,8 @@ enum ioctl_code
         ValidateSystemModules =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20020, METHOD_BUFFERED, FILE_ANY_ACCESS),
         InsertIrpIntoIrpQueue =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS),
         QueryDeferredReports =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS),
-        InitiateSharedMapping =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
+        InitiateSharedMapping =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS),
+        ValidatePciDevices =                    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS)
 };
 
 constexpr int SHARED_STATE_OPERATION_COUNT = 9;
@@ -236,6 +237,7 @@ public:
 
   void run_completion_port();
   void run_nmi_callbacks();
+  void validate_pci_devices();
   void validate_system_driver_objects();
   void detect_system_virtualization();
   void enumerate_handle_tables();

@@ -8,7 +8,7 @@
 namespace dispatcher {
 
 constexpr int DISPATCH_LOOP_SLEEP_TIME = 30;
-constexpr int KERNEL_DISPATCH_FUNCTION_COUNT = 11;
+constexpr int KERNEL_DISPATCH_FUNCTION_COUNT = 12;
 constexpr int DISPATCHER_THREAD_COUNT = 4;
 constexpr int TIMER_CALLBACK_DELAY = 15;
 constexpr int WRITE_SHARED_MAPPING_PERIOD = 30;

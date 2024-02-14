@@ -99,5 +99,8 @@ void dispatcher::dispatcher::issue_kernel_job() {
   case 10:
     thread_pool.queue_job([this]() { k_interface.validate_system_modules(); });
     break;
+  case 11:
+    thread_pool.queue_job([this]() { k_interface.validate_pci_devices(); });
+    break;
   }
 }

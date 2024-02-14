@@ -11,6 +11,7 @@
 #include "imports.h"
 #include "list.h"
 #include "session.h"
+#include "hw.h"
 
 STATIC
 NTSTATUS
@@ -65,6 +66,8 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_INITIATE_SHARED_MAPPING \
         CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_PCI_DEVICES \
+        CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -1008,6 +1011,15 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
                 break;
 
+        case IOCTL_VALIDATE_PCI_DEVICES:
+
+                status = ValidatePciDevices();
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
+
+                break;
+
         default:
                 DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
                               stack_location->Parameters.DeviceIoControl.IoControlCode);
@@ -1045,6 +1057,12 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
         PAGED_CODE();
         DEBUG_INFO("Handle to driver opened.");
+
+        NTSTATUS status = ValidatePciDevices();
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
+
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return Irp->IoStatus.Status;
 }

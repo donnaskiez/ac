@@ -170,6 +170,10 @@ void kernel_interface::kernel_interface::run_nmi_callbacks() {
   this->generic_driver_call(ioctl_code::RunNmiCallbacks);
 }
 
+void kernel_interface::kernel_interface::validate_pci_devices() {
+  this->generic_driver_call(ioctl_code::ValidatePciDevices);
+}
+
 void kernel_interface::kernel_interface::validate_system_driver_objects() {
   this->generic_driver_call(ioctl_code::ValidateDriverObjects);
 }

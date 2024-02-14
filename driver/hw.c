@@ -3,6 +3,15 @@
 #include "modules.h"
 
 #define PCI_VENDOR_ID_OFFSET 0x00
+#define PCI_DEVICE_ID_OFFSET 0x02
+
+#define FLAGGED_DEVICE_ID_COUNT 2
+
+USHORT FLAGGED_DEVICE_IDS[FLAGGED_DEVICE_ID_COUNT] = {
+    0x0666, // default PCIe Squirrel DeviceID (used by PCI Leech)
+    0xffff};
+
+typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context);
 
 /*
  * Every PCI device has a set of registers commonly referred to as the PCI configuration space. In
@@ -65,6 +74,10 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
 
         KeInitializeEvent(&event, NotificationEvent, FALSE);
 
+        /*
+         * we dont need to free this IRP as the IO manager will free it when the request is
+         * completed
+         */
         irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
 
         if (!irp)
@@ -89,10 +102,7 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
         }
 
         if (!NT_SUCCESS(status))
-        {
                 DEBUG_ERROR("Failed to read configuration space with status %x", status);
-                return status;
-        }
 
         return status;
 }
@@ -173,7 +183,7 @@ IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
  * pci.sys.
  */
 NTSTATUS
-EnumeratePciDeviceObjects()
+EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine, _In_opt_ PVOID Context)
 {
         NTSTATUS        status                   = STATUS_UNSUCCESSFUL;
         UNICODE_STRING  pci                      = RTL_CONSTANT_STRING(L"\\Driver\\pci");
@@ -206,24 +216,82 @@ EnumeratePciDeviceObjects()
 
                 /* make sure we have a valid PDO */
                 if (!IsDeviceObjectValidPdo(current_device))
-                        continue;
-
-                status = QueryPciDeviceConfigurationSpace(
-                    current_device, PCI_VENDOR_ID_OFFSET, &vendor_id, sizeof(USHORT));
-
-                if (!NT_SUCCESS(status))
                 {
-                        DEBUG_ERROR("QueryPciDeviceConfigurationSpace failed with status %x",
-                                    status);
+                        ObDereferenceObject(current_device);
                         continue;
                 }
 
-                DEBUG_VERBOSE("Device: %llx, VendorID: %lx", current_device, vendor_id);
+                status = CallbackRoutine(current_device, Context);
+
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR(
+                            "EnumeratePciDeviceObjects CallbackRoutine failed with status %x",
+                            status);
+
+                ObDereferenceObject(current_device);
         }
 
 end:
         if (pci_device_objects)
                 ExFreePoolWithTag(pci_device_objects, POOL_TAG_HW);
+
+        return status;
+}
+
+BOOLEAN
+IsPciConfigurationSpaceFlagged(_In_ PPCI_COMMON_HEADER Configuration)
+{
+        for (UINT32 index = 0; index < FLAGGED_DEVICE_ID_COUNT; index++)
+        {
+                if (Configuration->DeviceID == FLAGGED_DEVICE_IDS[index])
+                        return TRUE;
+        }
+
+        return FALSE;
+}
+
+STATIC
+NTSTATUS
+PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+        NTSTATUS          status = STATUS_UNSUCCESSFUL;
+        PCI_COMMON_HEADER header = {0};
+
+        status = QueryPciDeviceConfigurationSpace(
+            DeviceObject, PCI_VENDOR_ID_OFFSET, &header, sizeof(PCI_COMMON_HEADER));
+
+        if (!NT_SUCCESS(status))
+        {
+                DEBUG_ERROR("QueryPciDeviceConfigurationSpace failed with status %x", status);
+                return status;
+        }
+
+        if (IsPciConfigurationSpaceFlagged(&header))
+        {
+                DEBUG_VERBOSE("Flagged DeviceID found. Device: %llx, DeviceId: %lx",
+                              (UINT64)DeviceObject,
+                              header.DeviceID);
+        }
+        else
+        {
+                DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
+                              DeviceObject,
+                              header.DeviceID,
+                              header.VendorID);
+        }
+
+        return status;
+}
+
+NTSTATUS
+ValidatePciDevices()
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        status = EnumeratePciDeviceObjects(PciDeviceQueryCallback, NULL);
+
+        if (!NT_SUCCESS(status))
+                DEBUG_ERROR("EnumeratePciDeviceObjects failed with status %x", status);
 
         return status;
 }

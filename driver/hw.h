@@ -4,6 +4,6 @@
 #include "common.h"
 
 NTSTATUS
-EnumeratePciDeviceObjects();
+ValidatePciDevices();
 
 #endif
