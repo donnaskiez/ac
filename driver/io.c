@@ -695,7 +695,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         HANDLE             handle         = NULL;
         PKTHREAD           thread         = NULL;
         BOOLEAN            security_flag  = FALSE;
-        __debugbreak();
+
         /*
          * LMAO
          */

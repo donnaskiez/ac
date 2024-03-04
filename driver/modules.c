@@ -1208,20 +1208,6 @@ ApcNormalRoutine(_In_opt_ PVOID NormalContext,
         PAGED_CODE();
 }
 
-VOID
-FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread, _In_ ULONG FlagIndex, _In_ BOOLEAN NewValue)
-{
-        PAGED_CODE();
-
-        PLONG misc_flags = (PLONG)((UINT64)Thread + KTHREAD_MISC_FLAGS_OFFSET);
-        ULONG mask       = 1ul << FlagIndex;
-
-        if (NewValue)
-                *misc_flags |= mask;
-        else
-                *misc_flags &= ~mask;
-}
-
 #define THREAD_STATE_TERMINATED 4
 #define THREAD_STATE_WAIT       5
 #define THREAD_STATE_INIT       0
@@ -1235,7 +1221,7 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 
         PKAPC                  apc           = NULL;
         BOOLEAN                apc_status    = FALSE;
-        PLONG                  misc_flags    = NULL;
+        PLONG                  flags         = NULL;
         PCHAR                  previous_mode = NULL;
         PUCHAR                 state         = NULL;
         BOOLEAN                apc_queueable = FALSE;
@@ -1250,7 +1236,7 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
          * queueing an APC so lets make sure we flip this before before queueing ours. Since
          * we filter out any system threads this should be fine... c:
          */
-        misc_flags    = (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
+        flags         = (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
         previous_mode = (PCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_PREVIOUS_MODE_OFFSET);
         state         = (PUCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_STATE_OFFSET);
 
@@ -1268,22 +1254,8 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                       ThreadListEntry->thread,
                       process_name);
 
-        /* we dont care about user mode threads */
-        // if (*previous_mode == UserMode)
-        //	return;
-
-        /* todo: We should also flag all threads that have the flag set to false */
-        if (*misc_flags >> KTHREAD_MISC_FLAGS_APC_QUEUEABLE == FALSE)
-                FlipKThreadMiscFlagsFlag(
-                    ThreadListEntry->thread, KTHREAD_MISC_FLAGS_APC_QUEUEABLE, TRUE);
-
-        /*
-         * force thread into an alertable state, noting that this does not guarantee that
-         * our APC will be run.
-         */
-        if (*misc_flags >> KTHREAD_MISC_FLAGS_ALERTABLE == FALSE)
-                FlipKThreadMiscFlagsFlag(
-                    ThreadListEntry->thread, KTHREAD_MISC_FLAGS_ALERTABLE, TRUE);
+        SetFlag(*flags, KTHREAD_MISC_FLAGS_ALERTABLE);
+        SetFlag(*flags, KTHREAD_MISC_FLAGS_APC_QUEUEABLE);
 
         apc = (PKAPC)ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
 
@@ -1849,12 +1821,12 @@ end:
 NTSTATUS
 GetDriverObjectByDriverName(_In_ PUNICODE_STRING DriverName, _Out_ PDRIVER_OBJECT* DriverObject)
 {
-        HANDLE            handle                     = NULL;
-        OBJECT_ATTRIBUTES attributes                 = {0};
-        PVOID             directory                  = {0};
-        UNICODE_STRING    directory_name             = {0};
-        NTSTATUS          status                     = STATUS_UNSUCCESSFUL;
-        POBJECT_DIRECTORY directory_object           = NULL;
+        HANDLE            handle           = NULL;
+        OBJECT_ATTRIBUTES attributes       = {0};
+        PVOID             directory        = {0};
+        UNICODE_STRING    directory_name   = {0};
+        NTSTATUS          status           = STATUS_UNSUCCESSFUL;
+        POBJECT_DIRECTORY directory_object = NULL;
 
         *DriverObject = NULL;
 
@@ -1897,7 +1869,8 @@ GetDriverObjectByDriverName(_In_ PUNICODE_STRING DriverName, _Out_ PDRIVER_OBJEC
                 {
                         PDRIVER_OBJECT current_driver = sub_entry->Object;
 
-                        if (!RtlCompareUnicodeString(DriverName, &current_driver->DriverName, FALSE))
+                        if (!RtlCompareUnicodeString(
+                                DriverName, &current_driver->DriverName, FALSE))
                         {
                                 *DriverObject = current_driver;
                                 goto end;
