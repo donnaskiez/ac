@@ -74,7 +74,11 @@ typedef struct _DRIVER_LIST_HEAD
         volatile ULONG    count;
         volatile BOOLEAN  active;
         KGUARDED_MUTEX    lock;
-        LIST_ENTRY        deferred_unhashed_x86_modules;
+
+        /* modules that need to be hashed later. */
+        PIO_WORKITEM  deferred_work_item;
+        LIST_ENTRY    deferred_list;
+        volatile LONG can_hash_x86;
 
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;
 

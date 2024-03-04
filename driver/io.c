@@ -541,6 +541,7 @@ SharedMappingInitialise(_In_ PIRP Irp)
 
         mapping = GetSharedMappingConfig();
 
+        /* TODO: need to copy these out */
         status = ValidateIrpOutputBuffer(Irp, sizeof(SHARED_MAPPING_INIT));
 
         if (!NT_SUCCESS(status))
@@ -694,7 +695,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         HANDLE             handle         = NULL;
         PKTHREAD           thread         = NULL;
         BOOLEAN            security_flag  = FALSE;
-
+        __debugbreak();
         /*
          * LMAO
          */

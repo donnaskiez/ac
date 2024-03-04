@@ -1434,11 +1434,12 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
 }
 
 VOID
-HashDeferredx86ModuleDeferredRoutine()
+DeferredModuleHashingCallback()
 {
         NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
         RTL_MODULE_EXTENDED_INFO module        = {0};
-        PLIST_ENTRY              deferred_head = &GetDriverList()->deferred_unhashed_x86_modules;
+        PDRIVER_LIST_HEAD        driver_list   = GetDriverList();
+        PLIST_ENTRY              deferred_head = &GetDriverList()->deferred_list;
         PLIST_ENTRY              list_entry    = NULL;
         PDRIVER_LIST_ENTRY       entry         = NULL;
 
@@ -1447,29 +1448,31 @@ HashDeferredx86ModuleDeferredRoutine()
         if (list_entry == deferred_head)
                 goto end;
 
-        entry = CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
-
         while (list_entry != deferred_head)
         {
                 entry = CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
 
                 DriverListEntryToExtendedModuleInfo(entry, &module);
 
+                DEBUG_VERBOSE("Hashing Deferred Module: %s", module.FullPathName);
+
                 status = HashModule(&module, &entry->text_hash);
 
                 if (!NT_SUCCESS(status))
                 {
                         DEBUG_ERROR("HashModule-x86 failed with status %x", status);
-                        return;
+                        entry->hashed = FALSE;
+                        list_entry    = RemoveHeadList(deferred_head);
+                        continue;
                 }
 
                 entry->hashed = TRUE;
-                list_entry = RemoveHeadList(deferred_head);
+                list_entry    = RemoveHeadList(deferred_head);
         }
 
 end:
-        DEBUG_VERBOSE("All deferred x86 modules hashed.");
-        ImpIoFreeWorkItem(Getx86HashingWorkItem());
+        DEBUG_VERBOSE("All deferred modules hashed.");
+        ImpIoFreeWorkItem(driver_list->deferred_work_item);
 }
 
 NTSTATUS
@@ -1483,6 +1486,7 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
         ULONG                 memory_hash_size   = 0;
         PVAL_INTEGRITY_HEADER memory_buffer      = NULL;
         ULONG                 memory_buffer_size = 0;
+        PDRIVER_LIST_HEAD     list               = GetDriverList();
 
         ImpRtlInitAnsiString(&ansi_string, Module->FullPathName);
 
@@ -1512,12 +1516,12 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
          * mark the module as not hashed and x86. We will then queue a work item to hash these
          * modules later once WinLogon has started.
          */
-        if (!ImpMmIsAddressValid(Module->ImageBase) && !HasWinlogonProcessStarted())
+        if (!ImpMmIsAddressValid(Module->ImageBase) && !list->can_hash_x86)
         {
                 status = STATUS_INVALID_IMAGE_WIN_32;
                 goto end;
         }
-        else if (!ImpMmIsAddressValid(Module->ImageBase) && HasWinlogonProcessStarted())
+        else if (!ImpMmIsAddressValid(Module->ImageBase) && list->can_hash_x86)
         {
                 /*
                  * Once the WinLogon process has started, we can then hash new x86 modules.

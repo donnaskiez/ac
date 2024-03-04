@@ -5,27 +5,33 @@
 #include "client/message_queue.h"
 #include "dispatcher/dispatcher.h"
 
-void module::run(HINSTANCE hinstDLL) {
-  AllocConsole();
-  FILE *file;
-  freopen_s(&file, "CONOUT$", "w", stdout);
-  freopen_s(&file, "CONIN$", "r", stdin);
+void
+module::run(HINSTANCE hinstDLL)
+{
+#if DEBUG
+        AllocConsole();
+        FILE* file;
+        freopen_s(&file, "CONOUT$", "w", stdout);
+        freopen_s(&file, "CONIN$", "r", stdin);
+#endif
 
-  LPTSTR pipe_name = (LPTSTR)L"\\\\.\\pipe\\DonnaACPipe";
-  LPCWSTR driver_name = L"\\\\.\\DonnaAC";
+        LPTSTR  pipe_name   = (LPTSTR)L"\\\\.\\pipe\\DonnaACPipe";
+        LPCWSTR driver_name = L"\\\\.\\DonnaAC";
 
-  client::message_queue queue(pipe_name);
-  dispatcher::dispatcher dispatch(driver_name, queue);
-  dispatch.run();
+        client::message_queue  queue(pipe_name);
+        dispatcher::dispatcher dispatch(driver_name, queue);
+        dispatch.run();
 
-  fclose(stdout);
-  fclose(stdin);
-  FreeConsole();
+#if DEBUG
+        fclose(stdout);
+        fclose(stdin);
+        FreeConsole();
+#endif
 
-  FreeLibraryAndExitThread(hinstDLL, 0);
+        FreeLibraryAndExitThread(hinstDLL, 0);
 }
 
-void module::terminate()
+void
+module::terminate()
 {
-
 }

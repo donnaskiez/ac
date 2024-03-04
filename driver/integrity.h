@@ -120,6 +120,6 @@ BOOLEAN
 ValidateOurDriversDispatchRoutines();
 
 VOID
-HashDeferredx86ModuleDeferredRoutine();
+DeferredModuleHashingCallback();
 
 #endif

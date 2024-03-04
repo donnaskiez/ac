@@ -97,8 +97,6 @@ typedef struct _DRIVER_CONFIG
         PROCESS_LIST_HEAD      process_list;
         SHARED_MAPPING         mapping;
         BOOLEAN                has_driver_loaded;
-        BOOLEAN                has_winlogon_started;
-        PIO_WORKITEM           x86_hash_workitem;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -116,32 +114,6 @@ UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
-
-PIO_WORKITEM
-Getx86HashingWorkItem()
-{
-        return g_DriverConfig->x86_hash_workitem;
-}
-
-NTSTATUS
-Allocatex86HashingWorkItem()
-{
-        g_DriverConfig->x86_hash_workitem = IoAllocateWorkItem(g_DriverConfig->device_object);
-        return g_DriverConfig->x86_hash_workitem != NULL ? STATUS_SUCCESS
-                                                         : STATUS_INSUFFICIENT_RESOURCES;
-}
-
-BOOLEAN
-HasWinlogonProcessStarted()
-{
-        return g_DriverConfig->has_winlogon_started;
-}
-
-VOID
-UpdateWinlogonProcessState(_In_ BOOLEAN NewValue)
-{
-        g_DriverConfig->has_winlogon_started = NewValue;
-}
 
 BOOLEAN
 HasDriverLoaded()
@@ -916,7 +888,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         }
 
         g_DriverConfig->has_driver_loaded    = TRUE;
-        g_DriverConfig->has_winlogon_started = FALSE;
 
         DEBUG_INFO("Driver Entry Complete.");
         return STATUS_SUCCESS;

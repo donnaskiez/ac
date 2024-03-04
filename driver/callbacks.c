@@ -203,7 +203,13 @@ InitialiseDriverList()
 
         InterlockedExchange(&list->active, TRUE);
         ListInit(&list->start, &list->lock);
-        InitializeListHead(&list->deferred_unhashed_x86_modules);
+        InitializeListHead(&list->deferred_list);
+
+        list->can_hash_x86       = FALSE;
+        list->deferred_work_item = IoAllocateWorkItem(GetDriverDeviceObject());
+
+        if (!list->deferred_work_item)
+                return STATUS_INSUFFICIENT_RESOURCES;
 
         status = GetSystemModuleInformation(&modules);
 
@@ -238,8 +244,7 @@ InitialiseDriverList()
                         DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
                         entry->hashed = FALSE;
                         entry->x86    = TRUE;
-                        InsertHeadList(&list->deferred_unhashed_x86_modules,
-                                       &entry->deferred_entry);
+                        InsertHeadList(&list->deferred_list, &entry->deferred_entry);
                 }
                 else if (!NT_SUCCESS(status))
                 {
@@ -464,29 +469,13 @@ unlock:
 }
 
 VOID
-Hashx86ModulesOnWinlogonLoad()
-{
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-        status = Allocatex86HashingWorkItem();
-
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("Allocatex86HashingWorkItem failed with status %x", status);
-                return status;
-        }
-
-        IoQueueWorkItem(
-            Getx86HashingWorkItem(), HashDeferredx86ModuleDeferredRoutine, NormalWorkQueue, NULL);
-}
-
-VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOOLEAN Create)
 {
         PPROCESS_LIST_ENTRY entry        = NULL;
         PKPROCESS           parent       = NULL;
         PKPROCESS           process      = NULL;
         PPROCESS_LIST_HEAD  list         = GetProcessList();
+        PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
         LPCSTR              process_name = NULL;
 
         if (!list->active)
@@ -522,8 +511,11 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 if (!strcmp(process_name, "winlogon.exe"))
                 {
                         DEBUG_VERBOSE("Winlogon process has started");
-                        UpdateWinlogonProcessState(TRUE);
-                        Hashx86ModulesOnWinlogonLoad();
+                        driver_list->can_hash_x86 = TRUE;
+                        IoQueueWorkItem(driver_list->deferred_work_item,
+                                        DeferredModuleHashingCallback,
+                                        NormalWorkQueue,
+                                        NULL);
                 }
         }
         else
