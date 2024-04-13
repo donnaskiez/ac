@@ -15,13 +15,13 @@
  *		...
  *	};
  *
- * This common structure layout allows us to pass in a callback routine when freeing
- * allowing immense flexibility to ensure we can free and/or deference any objects
- * that are referenced in said object.
+ * This common structure layout allows us to pass in a callback routine when
+ *freeing allowing immense flexibility to ensure we can free and/or deference
+ *any objects that are referenced in said object.
  *
- * I've opted to use a mutex rather then a spinlock since there are many times we
- * enumerate the list for extended periods aswell as queue up many insertions at
- * once.
+ * I've opted to use a mutex rather then a spinlock since there are many times
+ *we enumerate the list for extended periods aswell as queue up many insertions
+ *at once.
  */
 
 #define LIST_POOL_TAG 'list'
@@ -62,8 +62,7 @@ ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
         BOOLEAN result = FALSE;
         ImpKeAcquireGuardedMutex(Lock);
 
-        if (Head->Next)
-        {
+        if (Head->Next) {
                 PSINGLE_LIST_ENTRY entry = Head->Next;
 
                 if (CallbackRoutine)
@@ -79,8 +78,8 @@ ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
 }
 
 /*
- * If we are removing a specific entry, its assumed we have freed and/or dereferenced
- * any fields in the structure.
+ * If we are removing a specific entry, its assumed we have freed and/or
+ * dereferenced any fields in the structure.
  */
 VOID
 ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
@@ -94,17 +93,14 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
         if (!entry)
                 goto unlock;
 
-        if (entry == Entry)
-        {
+        if (entry == Entry) {
                 Head->Next = entry->Next;
                 ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
                 goto unlock;
         }
 
-        while (entry->Next)
-        {
-                if (entry->Next == Entry)
-                {
+        while (entry->Next) {
+                if (entry->Next == Entry) {
                         entry->Next = Entry->Next;
                         ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
                         goto unlock;
@@ -130,17 +126,14 @@ LookasideListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
         if (!entry)
                 goto unlock;
 
-        if (entry == Entry)
-        {
+        if (entry == Entry) {
                 Head->Next = entry->Next;
                 ExFreeToLookasideListEx(&head->lookaside_list, Entry);
                 goto unlock;
         }
 
-        while (entry->Next)
-        {
-                if (entry->Next == Entry)
-                {
+        while (entry->Next) {
+                if (entry->Next == Entry) {
                         entry->Next = Entry->Next;
                         ExFreeToLookasideListEx(&head->lookaside_list, Entry);
                         goto unlock;
@@ -163,8 +156,7 @@ LookasideListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
         PTHREAD_LIST_HEAD head   = GetThreadList();
         BOOLEAN           result = FALSE;
 
-        if (Head->Next)
-        {
+        if (Head->Next) {
                 PSINGLE_LIST_ENTRY entry = Head->Next;
 
                 if (CallbackRoutine)

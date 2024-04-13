@@ -27,8 +27,8 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 #endif
 
 /*
- * Its important on unload we dereference any objects to ensure the kernels reference
- * count remains correct.
+ * Its important on unload we dereference any objects to ensure the kernels
+ * reference count remains correct.
  */
 VOID
 CleanupProcessListFreeCallback(_In_ PPROCESS_LIST_ENTRY ProcessListEntry)
@@ -69,19 +69,19 @@ UnregisterThreadCreateNotifyRoutine()
 }
 
 /*
- * While ExDeleteLookasideListEx already frees each item, we wanna allow ourselves to reduce the
- * reference count to any objects we are referencing.
+ * While ExDeleteLookasideListEx already frees each item, we wanna allow
+ * ourselves to reduce the reference count to any objects we are referencing.
  */
 VOID
 CleanupProcessListOnDriverUnload()
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
         DEBUG_VERBOSE("Freeing process list");
-        for (;;)
-        {
+        for (;;) {
                 if (!LookasideListFreeFirstEntry(
-                        &list->start, &list->lock, CleanupProcessListFreeCallback))
-                {
+                        &list->start,
+                        &list->lock,
+                        CleanupProcessListFreeCallback)) {
                         ExDeleteLookasideListEx(&list->lookaside_list);
                         return;
                 }
@@ -93,11 +93,11 @@ CleanupThreadListOnDriverUnload()
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
         DEBUG_VERBOSE("Freeing thread list!");
-        for (;;)
-        {
+        for (;;) {
                 if (!LookasideListFreeFirstEntry(
-                        &list->start, &list->lock, CleanupThreadListFreeCallback))
-                {
+                        &list->start,
+                        &list->lock,
+                        CleanupThreadListFreeCallback)) {
                         ExDeleteLookasideListEx(&list->lookaside_list);
                         return;
                 }
@@ -108,16 +108,15 @@ VOID
 CleanupDriverListOnDriverUnload()
 {
         PDRIVER_LIST_HEAD list = GetDriverList();
-        for (;;)
-        {
+        for (;;) {
                 if (!ListFreeFirstEntry(&list->start, &list->lock, NULL))
                         return;
         }
 }
 
 VOID
-EnumerateThreadListWithCallbackRoutine(_In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine,
-                                       _In_opt_ PVOID                   Context)
+EnumerateThreadListWithCallbackRoutine(
+    _In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -127,8 +126,7 @@ EnumerateThreadListWithCallbackRoutine(_In_ THREADLIST_CALLBACK_ROUTINE Callback
 
         PTHREAD_LIST_ENTRY entry = list->start.Next;
 
-        while (entry)
-        {
+        while (entry) {
                 CallbackRoutine(entry, Context);
                 entry = entry->list.Next;
         }
@@ -138,8 +136,8 @@ unlock:
 }
 
 VOID
-EnumerateProcessListWithCallbackRoutine(_In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine,
-                                        _In_opt_ PVOID                    Context)
+EnumerateProcessListWithCallbackRoutine(
+    _In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -149,8 +147,7 @@ EnumerateProcessListWithCallbackRoutine(_In_ PROCESSLIST_CALLBACK_ROUTINE Callba
 
         PPROCESS_LIST_ENTRY entry = list->start.Next;
 
-        while (entry)
-        {
+        while (entry) {
                 CallbackRoutine(entry, Context);
                 entry = entry->list.Next;
         }
@@ -160,8 +157,8 @@ unlock:
 }
 
 VOID
-EnumerateDriverListWithCallbackRoutine(_In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine,
-                                       _In_opt_ PVOID                   Context)
+EnumerateDriverListWithCallbackRoutine(
+    _In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
 {
         PDRIVER_LIST_HEAD list = GetDriverList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -171,8 +168,7 @@ EnumerateDriverListWithCallbackRoutine(_In_ DRIVERLIST_CALLBACK_ROUTINE Callback
 
         PDRIVER_LIST_ENTRY entry = list->start.Next;
 
-        while (entry)
-        {
+        while (entry) {
                 CallbackRoutine(entry, Context);
                 entry = entry->list.Next;
         }
@@ -187,7 +183,9 @@ DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
 {
         Extended->ImageBase = Entry->ImageBase;
         Extended->ImageSize = Entry->ImageSize;
-        RtlCopyMemory(Extended->FullPathName, Entry->path, sizeof(Extended->FullPathName));
+        RtlCopyMemory(Extended->FullPathName,
+                      Entry->path,
+                      sizeof(Extended->FullPathName));
 }
 
 NTSTATUS
@@ -213,41 +211,44 @@ InitialiseDriverList()
 
         status = GetSystemModuleInformation(&modules);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x",
+                            status);
                 return status;
         }
 
         /* skip hal.dll and ntoskrnl.exe */
-        for (INT index = 2; index < modules.module_count; index++)
-        {
-                entry = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
+        for (INT index = 2; index < modules.module_count; index++) {
+                entry = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                           sizeof(DRIVER_LIST_ENTRY),
+                                           POOL_TAG_DRIVER_LIST);
 
                 if (!entry)
                         continue;
 
-                module_entry = &((PRTL_MODULE_EXTENDED_INFO)modules.address)[index];
+                module_entry =
+                    &((PRTL_MODULE_EXTENDED_INFO)modules.address)[index];
 
                 entry->hashed    = TRUE;
                 entry->ImageBase = module_entry->ImageBase;
                 entry->ImageSize = module_entry->ImageSize;
 
-                RtlCopyMemory(
-                    entry->path, module_entry->FullPathName, sizeof(module_entry->FullPathName));
+                RtlCopyMemory(entry->path,
+                              module_entry->FullPathName,
+                              sizeof(module_entry->FullPathName));
 
                 status = HashModule(module_entry, entry->text_hash);
 
-                if (status == STATUS_INVALID_IMAGE_WIN_32)
-                {
-                        DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+                if (status == STATUS_INVALID_IMAGE_WIN_32) {
+                        DEBUG_ERROR(
+                            "32 bit module not hashed, will hash later. %x",
+                            status);
                         entry->hashed = FALSE;
                         entry->x86    = TRUE;
-                        InsertHeadList(&list->deferred_list, &entry->deferred_entry);
+                        InsertHeadList(&list->deferred_list,
+                                       &entry->deferred_entry);
                 }
-                else if (!NT_SUCCESS(status))
-                {
+                else if (!NT_SUCCESS(status)) {
                         DEBUG_ERROR("HashModule failed with status %x", status);
                         entry->hashed = FALSE;
                 }
@@ -265,11 +266,13 @@ end:
 }
 
 /*
- * I actually think a spinlock here for the driver list is what we want rather then a mutex, but
- * implementing a spinlock has its challenges... todo: have a think!
+ * I actually think a spinlock here for the driver list is what we want rather
+ * then a mutex, but implementing a spinlock has its challenges... todo: have a
+ * think!
  */
 VOID
-FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry)
+FindDriverEntryByBaseAddress(_In_ PVOID                ImageBase,
+                             _Out_ PDRIVER_LIST_ENTRY* Entry)
 {
         PDRIVER_LIST_HEAD list = GetDriverList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -277,10 +280,8 @@ FindDriverEntryByBaseAddress(_In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Ent
 
         PDRIVER_LIST_ENTRY entry = (PDRIVER_LIST_ENTRY)list->start.Next;
 
-        while (entry)
-        {
-                if (entry->ImageBase == ImageBase)
-                {
+        while (entry) {
+                if (entry->ImageBase == ImageBase) {
                         *Entry = entry;
                         goto unlock;
                 }
@@ -314,8 +315,9 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         if (entry)
                 return;
 
-        entry =
-            ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(DRIVER_LIST_ENTRY), POOL_TAG_DRIVER_LIST);
+        entry = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                sizeof(DRIVER_LIST_ENTRY),
+                                POOL_TAG_DRIVER_LIST);
 
         if (!entry)
                 return;
@@ -328,23 +330,24 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         module.ImageBase = ImageInfo->ImageBase;
         module.ImageSize = ImageInfo->ImageSize;
 
-        if (FullImageName)
-        {
-                status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
+        if (FullImageName) {
+                status = RtlUnicodeStringToAnsiString(
+                    &ansi_path, FullImageName, TRUE);
 
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR(
+                            "RtlUnicodeStringToAnsiString failed with status %x",
+                            status);
                         goto hash;
                 }
 
-                if (ansi_path.Length > sizeof(module.FullPathName))
-                {
+                if (ansi_path.Length > sizeof(module.FullPathName)) {
                         RtlFreeAnsiString(&ansi_path);
                         goto hash;
                 }
 
-                RtlCopyMemory(module.FullPathName, ansi_path.Buffer, ansi_path.Length);
+                RtlCopyMemory(
+                    module.FullPathName, ansi_path.Buffer, ansi_path.Length);
                 RtlCopyMemory(entry->path, ansi_path.Buffer, ansi_path.Length);
 
                 RtlFreeAnsiString(&ansi_path);
@@ -355,14 +358,13 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
 hash:
         status = HashModule(&module, &entry->text_hash);
 
-        if (status == STATUS_INVALID_IMAGE_WIN_32)
-        {
-                DEBUG_ERROR("32 bit module not hashed, will hash later. %x", status);
+        if (status == STATUS_INVALID_IMAGE_WIN_32) {
+                DEBUG_ERROR("32 bit module not hashed, will hash later. %x",
+                            status);
                 entry->x86    = TRUE;
                 entry->hashed = FALSE;
         }
-        else if (!NT_SUCCESS(status))
-        {
+        else if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("HashModule failed with status %x", status);
                 entry->hashed = FALSE;
         }
@@ -385,9 +387,9 @@ InitialiseProcessList()
                                              POOL_TAG_PROCESS_LIST,
                                              0);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x",
+                            status);
                 return status;
         }
 
@@ -411,9 +413,9 @@ InitialiseThreadList()
                                              POOL_TAG_PROCESS_LIST,
                                              0);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x",
+                            status);
                 return status;
         }
 
@@ -423,7 +425,8 @@ InitialiseThreadList()
 }
 
 VOID
-FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Out_ PPROCESS_LIST_ENTRY* Entry)
+FindProcessListEntryByProcess(_In_ PKPROCESS             Process,
+                              _Out_ PPROCESS_LIST_ENTRY* Entry)
 {
         PPROCESS_LIST_HEAD list = GetProcessList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -431,10 +434,8 @@ FindProcessListEntryByProcess(_In_ PKPROCESS Process, _Out_ PPROCESS_LIST_ENTRY*
 
         PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)list->start.Next;
 
-        while (entry)
-        {
-                if (entry->process == Process)
-                {
+        while (entry) {
+                if (entry->process == Process) {
                         *Entry = entry;
                         goto unlock;
                 }
@@ -446,7 +447,8 @@ unlock:
 }
 
 VOID
-FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Out_ PTHREAD_LIST_ENTRY* Entry)
+FindThreadListEntryByThreadAddress(_In_ PKTHREAD             Thread,
+                                   _Out_ PTHREAD_LIST_ENTRY* Entry)
 {
         PTHREAD_LIST_HEAD list = GetThreadList();
         ImpKeAcquireGuardedMutex(&list->lock);
@@ -454,10 +456,8 @@ FindThreadListEntryByThreadAddress(_In_ PKTHREAD Thread, _Out_ PTHREAD_LIST_ENTR
 
         PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)list->start.Next;
 
-        while (entry)
-        {
-                if (entry->thread == Thread)
-                {
+        while (entry) {
+                if (entry->thread == Thread) {
                         *Entry = entry;
                         goto unlock;
                 }
@@ -469,7 +469,9 @@ unlock:
 }
 
 VOID
-ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOOLEAN Create)
+ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
+                           _In_ HANDLE  ProcessId,
+                           _In_ BOOLEAN Create)
 {
         PPROCESS_LIST_ENTRY entry        = NULL;
         PKPROCESS           parent       = NULL;
@@ -489,8 +491,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
 
         process_name = ImpPsGetProcessImageFileName(process);
 
-        if (Create)
-        {
+        if (Create) {
                 entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
                 if (!entry)
@@ -505,11 +506,10 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                 ListInsert(&list->start, entry, &list->lock);
 
                 /*
-                 * Notify to our driver that we can hash x86 modules, and hash any x86 modules that
-                 * werent hashed.
+                 * Notify to our driver that we can hash x86 modules, and hash
+                 * any x86 modules that werent hashed.
                  */
-                if (!strcmp(process_name, "winlogon.exe"))
-                {
+                if (!strcmp(process_name, "winlogon.exe")) {
                         DEBUG_VERBOSE("Winlogon process has started");
                         driver_list->can_hash_x86 = TRUE;
                         IoQueueWorkItem(driver_list->deferred_work_item,
@@ -518,8 +518,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
                                         NULL);
                 }
         }
-        else
-        {
+        else {
                 FindProcessListEntryByProcess(process, &entry);
 
                 if (!entry)
@@ -533,7 +532,9 @@ ProcessCreateNotifyRoutine(_In_ HANDLE ParentId, _In_ HANDLE ProcessId, _In_ BOO
 }
 
 VOID
-ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOLEAN Create)
+ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
+                          _In_ HANDLE  ThreadId,
+                          _In_ BOOLEAN Create)
 {
         PTHREAD_LIST_ENTRY entry   = NULL;
         PKTHREAD           thread  = NULL;
@@ -550,8 +551,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
         if (!thread || !process)
                 return;
 
-        if (Create)
-        {
+        if (Create) {
                 entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
                 if (!entry)
@@ -567,8 +567,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
 
                 ListInsert(&list->start, &entry->list, &list->lock);
         }
-        else
-        {
+        else {
                 FindThreadListEntryByThreadAddress(thread, &entry);
 
                 if (!entry)
@@ -582,8 +581,9 @@ ThreadCreateNotifyRoutine(_In_ HANDLE ProcessId, _In_ HANDLE ThreadId, _In_ BOOL
 }
 
 VOID
-ObPostOpCallbackRoutine(_In_ PVOID                          RegistrationContext,
-                        _In_ POB_POST_OPERATION_INFORMATION OperationInformation)
+ObPostOpCallbackRoutine(_In_ PVOID RegistrationContext,
+                        _In_ POB_POST_OPERATION_INFORMATION
+                            OperationInformation)
 {
         PAGED_CODE();
         UNREFERENCED_PARAMETER(RegistrationContext);
@@ -608,20 +608,21 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
          * This callback routine is executed in the context of the thread that
          * is requesting to open said handle
          */
-        PEPROCESS            process_creator        = PsGetCurrentProcess();
-        PEPROCESS            protected_process      = NULL;
-        PEPROCESS            target_process         = (PEPROCESS)OperationInformation->Object;
-        HANDLE               process_creator_id     = ImpPsGetProcessId(process_creator);
-        LONG                 protected_process_id   = 0;
-        LPCSTR               process_creator_name   = NULL;
-        LPCSTR               target_process_name    = NULL;
-        LPCSTR               protected_process_name = NULL;
-        POB_CALLBACKS_CONFIG configuration          = NULL;
+        PEPROCESS process_creator    = PsGetCurrentProcess();
+        PEPROCESS protected_process  = NULL;
+        PEPROCESS target_process     = (PEPROCESS)OperationInformation->Object;
+        HANDLE    process_creator_id = ImpPsGetProcessId(process_creator);
+        LONG      protected_process_id     = 0;
+        LPCSTR    process_creator_name     = NULL;
+        LPCSTR    target_process_name      = NULL;
+        LPCSTR    protected_process_name   = NULL;
+        POB_CALLBACKS_CONFIG configuration = NULL;
 
         /*
-         * This is to prevent the condition where the thread executing this function is scheduled
-         * whilst we are cleaning up the callbacks on driver unload. We must hold the driver config
-         * lock to ensure the pool containing the callback configuration lock is not freed
+         * This is to prevent the condition where the thread executing this
+         * function is scheduled whilst we are cleaning up the callbacks on
+         * driver unload. We must hold the driver config lock to ensure the pool
+         * containing the callback configuration lock is not freed
          */
         SessionGetCallbackConfiguration(&configuration);
 
@@ -635,48 +636,49 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
         if (!protected_process_id || !protected_process)
                 goto end;
 
-        process_creator_name   = ImpPsGetProcessImageFileName(process_creator);
-        target_process_name    = ImpPsGetProcessImageFileName(target_process);
-        protected_process_name = ImpPsGetProcessImageFileName(protected_process);
+        process_creator_name = ImpPsGetProcessImageFileName(process_creator);
+        target_process_name  = ImpPsGetProcessImageFileName(target_process);
+        protected_process_name =
+            ImpPsGetProcessImageFileName(protected_process);
 
         if (!protected_process_name || !target_process_name)
                 goto end;
 
-        if (!strcmp(protected_process_name, target_process_name))
-        {
+        if (!strcmp(protected_process_name, target_process_name)) {
                 /*
-                 * WerFault is some windows 11 application that cries when it cant get a handle,
-                 * so well allow it for now... todo; learn more about it
+                 * WerFault is some windows 11 application that cries when it
+                 * cant get a handle, so well allow it for now... todo; learn
+                 * more about it
                  *
-                 * todo: perform stricter checks rather then the image name. perhapds check some
-                 * certificate or something.
+                 * todo: perform stricter checks rather then the image name.
+                 * perhapds check some certificate or something.
                  */
                 if (!strcmp(process_creator_name, "lsass.exe") ||
                     !strcmp(process_creator_name, "csrss.exe") ||
                     !strcmp(process_creator_name, "WerFault.exe") ||
                     !strcmp(process_creator_name, "MsMpEng.exe") ||
-                    !strcmp(process_creator_name, target_process_name))
-                {
+                    !strcmp(process_creator_name, target_process_name)) {
                         /* We will downgrade these handles later */
-                        // DEBUG_LOG("Handles created by CSRSS, LSASS and WerFault are allowed for
-                        // now...");
+                        // DEBUG_LOG("Handles created by CSRSS, LSASS and
+                        // WerFault are allowed for now...");
                 }
-                else if (target_process == process_creator)
-                {
+                else if (target_process == process_creator) {
                         // DEBUG_LOG("handles made by NOTEPAD r okay :)");
                         /* handles created by the game (notepad) are okay */
                 }
-                else
-                {
-                        OperationInformation->Parameters->CreateHandleInformation.DesiredAccess =
+                else {
+                        OperationInformation->Parameters
+                            ->CreateHandleInformation.DesiredAccess =
                             deny_access;
-                        OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess =
+                        OperationInformation->Parameters
+                            ->DuplicateHandleInformation.DesiredAccess =
                             deny_access;
 
                         /*
-                         * These processes will constantly open handles to any open process for
-                         * various reasons, so we will still strip them but we won't report them..
-                         * for now atleast.
+                         * These processes will constantly open handles to any
+                         * open process for various reasons, so we will still
+                         * strip them but we won't report them.. for now
+                         * atleast.
                          */
 
                         if (!strcmp(process_creator_name, "Discord.exe") ||
@@ -692,8 +694,10 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                         // if (!report)
                         //         goto end;
 
-                        // report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                        // report->is_kernel_handle = OperationInformation->KernelHandle;
+                        // report->report_code      =
+                        // REPORT_ILLEGAL_HANDLE_OPERATION;
+                        // report->is_kernel_handle =
+                        // OperationInformation->KernelHandle;
                         // report->process_id       = process_creator_id;
                         // report->thread_id        = ImpPsGetCurrentThreadId();
                         // report->access =
@@ -704,10 +708,11 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                         //               HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
                         // if (!NT_SUCCESS(
-                        //         IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                        //         IrpQueueCompleteIrp(report,
+                        //         sizeof(OPEN_HANDLE_FAILURE_REPORT))))
                         //{
-                        //         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
-                        //         goto end;
+                        //         DEBUG_ERROR("IrpQueueCompleteIrp failed with
+                        //         no status."); goto end;
                         // }
                 }
         }
@@ -720,13 +725,15 @@ end:
 
 /* stolen from ReactOS xD */
 VOID NTAPI
-ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable, IN PHANDLE_TABLE_ENTRY HandleTableEntry)
+ExUnlockHandleTableEntry(IN PHANDLE_TABLE       HandleTable,
+                         IN PHANDLE_TABLE_ENTRY HandleTableEntry)
 {
         INT64 old_value;
         PAGED_CODE();
 
         /* Set the lock bit and make sure it wasn't earlier */
-        old_value = InterlockedOr((PLONG)&HandleTableEntry->VolatileLowValue, 1);
+        old_value =
+            InterlockedOr((PLONG)&HandleTableEntry->VolatileLowValue, 1);
 
         /* Unblock any waiters */
         ImpExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
@@ -761,117 +768,113 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         object_type = ImpObGetObjectType(object);
 
         /* TODO: check for threads aswell */
-        if (!ImpRtlCompareUnicodeString(&object_type->Name, &OBJECT_TYPE_PROCESS, TRUE))
-        {
+        if (!ImpRtlCompareUnicodeString(
+                &object_type->Name, &OBJECT_TYPE_PROCESS, TRUE)) {
                 process      = (PEPROCESS)object;
                 process_name = ImpPsGetProcessImageFileName(process);
 
                 SessionGetProcess(&protected_process);
 
-                protected_process_name = ImpPsGetProcessImageFileName(protected_process);
+                protected_process_name =
+                    ImpPsGetProcessImageFileName(protected_process);
 
                 if (strcmp(process_name, protected_process_name))
                         goto end;
 
-                DEBUG_VERBOSE("Handle references our protected process with access mask: %lx",
-                              (ACCESS_MASK)Entry->GrantedAccessBits);
+                DEBUG_VERBOSE(
+                    "Handle references our protected process with access mask: %lx",
+                    (ACCESS_MASK)Entry->GrantedAccessBits);
 
                 handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
 
-                /* These permissions can be stripped from every process including CSRSS and LSASS */
-                if (handle_access_mask & PROCESS_CREATE_PROCESS)
-                {
+                /* These permissions can be stripped from every process
+                 * including CSRSS and LSASS */
+                if (handle_access_mask & PROCESS_CREATE_PROCESS) {
                         Entry->GrantedAccessBits &= ~PROCESS_CREATE_PROCESS;
                         DEBUG_VERBOSE("Stripped PROCESS_CREATE_PROCESS");
                 }
 
-                if (handle_access_mask & PROCESS_CREATE_THREAD)
-                {
+                if (handle_access_mask & PROCESS_CREATE_THREAD) {
                         Entry->GrantedAccessBits &= ~PROCESS_CREATE_THREAD;
                         DEBUG_VERBOSE("Stripped PROCESS_CREATE_THREAD");
                 }
 
-                if (handle_access_mask & PROCESS_DUP_HANDLE)
-                {
+                if (handle_access_mask & PROCESS_DUP_HANDLE) {
                         Entry->GrantedAccessBits &= ~PROCESS_DUP_HANDLE;
                         DEBUG_VERBOSE("Stripped PROCESS_DUP_HANDLE");
                 }
 
-                if (handle_access_mask & PROCESS_QUERY_INFORMATION)
-                {
+                if (handle_access_mask & PROCESS_QUERY_INFORMATION) {
                         Entry->GrantedAccessBits &= ~PROCESS_QUERY_INFORMATION;
                         DEBUG_VERBOSE("Stripped PROCESS_QUERY_INFORMATION");
                 }
 
-                if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION)
-                {
-                        Entry->GrantedAccessBits &= ~PROCESS_QUERY_LIMITED_INFORMATION;
-                        DEBUG_VERBOSE("Stripped PROCESS_QUERY_LIMITED_INFORMATION");
+                if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION) {
+                        Entry->GrantedAccessBits &=
+                            ~PROCESS_QUERY_LIMITED_INFORMATION;
+                        DEBUG_VERBOSE(
+                            "Stripped PROCESS_QUERY_LIMITED_INFORMATION");
                 }
 
-                if (handle_access_mask & PROCESS_VM_READ)
-                {
+                if (handle_access_mask & PROCESS_VM_READ) {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_READ;
                         DEBUG_VERBOSE("Stripped PROCESS_VM_READ");
                 }
 
-                if (!strcmp(process_name, "csrss.exe") || !strcmp(process_name, "lsass.exe"))
-                {
+                if (!strcmp(process_name, "csrss.exe") ||
+                    !strcmp(process_name, "lsass.exe")) {
                         DEBUG_VERBOSE(
                             "Required system process allowed, only stripping some permissions");
                         goto end;
                 }
 
-                /* Permissions beyond here can only be stripped from non critical processes */
-                if (handle_access_mask & PROCESS_SET_INFORMATION)
-                {
+                /* Permissions beyond here can only be stripped from non
+                 * critical processes */
+                if (handle_access_mask & PROCESS_SET_INFORMATION) {
                         Entry->GrantedAccessBits &= ~PROCESS_SET_INFORMATION;
                         DEBUG_VERBOSE("Stripped PROCESS_SET_INFORMATION");
                 }
 
-                if (handle_access_mask & PROCESS_SET_QUOTA)
-                {
+                if (handle_access_mask & PROCESS_SET_QUOTA) {
                         Entry->GrantedAccessBits &= ~PROCESS_SET_QUOTA;
                         DEBUG_VERBOSE("Stripped PROCESS_SET_QUOTA");
                 }
 
-                if (handle_access_mask & PROCESS_SUSPEND_RESUME)
-                {
+                if (handle_access_mask & PROCESS_SUSPEND_RESUME) {
                         Entry->GrantedAccessBits &= ~PROCESS_SUSPEND_RESUME;
                         DEBUG_VERBOSE("Stripped PROCESS_SUSPEND_RESUME ");
                 }
 
-                if (handle_access_mask & PROCESS_TERMINATE)
-                {
+                if (handle_access_mask & PROCESS_TERMINATE) {
                         Entry->GrantedAccessBits &= ~PROCESS_TERMINATE;
                         DEBUG_VERBOSE("Stripped PROCESS_TERMINATE");
                 }
 
-                if (handle_access_mask & PROCESS_VM_OPERATION)
-                {
+                if (handle_access_mask & PROCESS_VM_OPERATION) {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_OPERATION;
                         DEBUG_VERBOSE("Stripped PROCESS_VM_OPERATION");
                 }
 
-                if (handle_access_mask & PROCESS_VM_WRITE)
-                {
+                if (handle_access_mask & PROCESS_VM_WRITE) {
                         Entry->GrantedAccessBits &= ~PROCESS_VM_WRITE;
                         DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
                 }
 
-                POPEN_HANDLE_FAILURE_REPORT report = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(OPEN_HANDLE_FAILURE_REPORT), REPORT_POOL_TAG);
+                POPEN_HANDLE_FAILURE_REPORT report =
+                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                                       REPORT_POOL_TAG);
 
                 if (!report)
                         goto end;
 
                 /*
-                 * Using the same report structure as the ObRegisterCallbacks report
-                 * since both of these reports are closely related by the fact they are
-                 * triggered by a process either opening a handle to our protected process
-                 * or have a valid open handle to it. I also don't think its worth creating
-                 * another queue specifically for open handle reports since they will be
-                 * rare.
+                 * Using the same report structure as the ObRegisterCallbacks
+                 * report since both of these reports are closely related by the
+                 * fact they are triggered by a process either opening a handle
+                 * to our protected process or have a valid open handle to it. I
+                 * also don't think its worth creating another queue
+                 * specifically for open handle reports since they will be rare.
                  */
                 report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
                 report->is_kernel_handle = 0;
@@ -879,12 +882,14 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                 report->thread_id        = 0;
                 report->access           = handle_access_mask;
 
-                RtlCopyMemory(
-                    &report->process_name, process_name, HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+                RtlCopyMemory(&report->process_name,
+                              process_name,
+                              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT))))
-                {
-                        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                if (!NT_SUCCESS(IrpQueueCompleteIrp(
+                        report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
+                        DEBUG_ERROR(
+                            "IrpQueueCompleteIrp failed with no status.");
                         goto end;
                 }
         }
@@ -895,7 +900,8 @@ end:
 }
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context)
+EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
+                        _In_opt_ PVOID           Context)
 {
         /* Handles are stored in pageable memory */
         PAGED_CODE();
@@ -909,7 +915,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
                 return STATUS_SUCCESS;
 
         PHANDLE_TABLE handle_table =
-            *(PHANDLE_TABLE*)((uintptr_t)ProcessListEntry->process + EPROCESS_HANDLE_TABLE_OFFSET);
+            *(PHANDLE_TABLE*)((uintptr_t)ProcessListEntry->process +
+                              EPROCESS_HANDLE_TABLE_OFFSET);
 
         if (!handle_table)
                 return STATUS_INVALID_ADDRESS;
@@ -920,7 +927,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 #pragma warning(push)
 #pragma warning(suppress : 6387)
 
-        BOOLEAN result = ImpExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
+        BOOLEAN result =
+            ImpExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
 
 #pragma warning(pop)
 
@@ -932,7 +940,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOI
 ULONG value = 10;
 
 VOID
-TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
+                           _In_opt_ PVOID      Context)
 {
         NTSTATUS          status = STATUS_UNSUCCESSFUL;
         PTIMER_OBJECT     timer  = (PTIMER_OBJECT)Context;
@@ -943,15 +952,15 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Cont
 
         DEBUG_VERBOSE("Integrity check timer callback invoked.");
 
-        if (!ValidateOurDriversDispatchRoutines())
-        {
+        if (!ValidateOurDriversDispatchRoutines()) {
                 DEBUG_VERBOSE("l");
         }
 
         status = ValidateOurDriverImage();
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("ValidateOurDriverImage failed with status %x", status);
+                DEBUG_ERROR("ValidateOurDriverImage failed with status %x",
+                            status);
 
 end:
         InterlockedExchange(&timer->state, FALSE);
@@ -975,10 +984,13 @@ TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
         if (timer->state)
                 return;
 
-        /* we queue a work item because DPCs run at IRQL = DISPATCH_LEVEL and we need certain
-         * routines which cannot be run at an IRQL this high.*/
+        /* we queue a work item because DPCs run at IRQL = DISPATCH_LEVEL and we
+         * need certain routines which cannot be run at an IRQL this high.*/
         InterlockedExchange(&timer->state, TRUE);
-        IoQueueWorkItem(timer->work_item, TimerObjectWorkItemRoutine, BackgroundWorkQueue, timer);
+        IoQueueWorkItem(timer->work_item,
+                        TimerObjectWorkItemRoutine,
+                        BackgroundWorkQueue,
+                        timer);
 }
 
 NTSTATUS
@@ -1005,7 +1017,8 @@ InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
 VOID
 CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer)
 {
-        /* this routine blocks until all queued DPCs on all processors have executed. */
+        /* this routine blocks until all queued DPCs on all processors have
+         * executed. */
         KeFlushQueuedDpcs();
 
         /* wait for our work item to complete */
@@ -1026,9 +1039,9 @@ UnregisterProcessObCallbacks()
         PACTIVE_SESSION config = GetActiveSession();
         AcquireDriverConfigLock();
 
-        if (config->callback_configuration.registration_handle)
-        {
-                ImpObUnRegisterCallbacks(config->callback_configuration.registration_handle);
+        if (config->callback_configuration.registration_handle) {
+                ImpObUnRegisterCallbacks(
+                    config->callback_configuration.registration_handle);
                 config->callback_configuration.registration_handle = NULL;
         }
 
@@ -1056,16 +1069,18 @@ RegisterProcessObCallbacks()
         operation_registration.PreOperation  = ObPreOpCallbackRoutine;
         operation_registration.PostOperation = ObPostOpCallbackRoutine;
 
-        callback_registration.Version                    = OB_FLT_REGISTRATION_VERSION;
-        callback_registration.OperationRegistration      = &operation_registration;
+        callback_registration.Version = OB_FLT_REGISTRATION_VERSION;
+        callback_registration.OperationRegistration = &operation_registration;
         callback_registration.OperationRegistrationCount = 1;
         callback_registration.RegistrationContext        = NULL;
 
-        status = ImpObRegisterCallbacks(&callback_registration,
-                                        &config->callback_configuration.registration_handle);
+        status = ImpObRegisterCallbacks(
+            &callback_registration,
+            &config->callback_configuration.registration_handle);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("ObRegisterCallbacks failed with status %x", status);
+                DEBUG_ERROR("ObRegisterCallbacks failed with status %x",
+                            status);
 
         ReleaseDriverConfigLock();
         return status;
@@ -1074,5 +1089,6 @@ RegisterProcessObCallbacks()
 VOID
 InitialiseObCallbacksConfiguration(_Out_ PACTIVE_SESSION ProcessConfig)
 {
-        ImpKeInitializeGuardedMutex(&ProcessConfig->callback_configuration.lock);
+        ImpKeInitializeGuardedMutex(
+            &ProcessConfig->callback_configuration.lock);
 }

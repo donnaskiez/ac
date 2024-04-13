@@ -11,15 +11,18 @@ USHORT FLAGGED_DEVICE_IDS[FLAGGED_DEVICE_ID_COUNT] = {
     0x0666, // default PCIe Squirrel DeviceID (used by PCI Leech)
     0xffff};
 
-typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context);
+typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject,
+                                        _In_opt_ PVOID      Context);
 
 /*
- * Every PCI device has a set of registers commonly referred to as the PCI configuration space. In
- * modern PCI-e devices an extended configuration space was implemented. These configuration spaces
- * are mapped into main memory and this allows us to read/write to the registers.
+ * Every PCI device has a set of registers commonly referred to as the PCI
+ * configuration space. In modern PCI-e devices an extended configuration space
+ * was implemented. These configuration spaces are mapped into main memory and
+ * this allows us to read/write to the registers.
  *
- * The configuration space consists of a standard header, containing information such as the
- * DeviceID, VendorID, Status and so on. Below is the header schema including offsets.
+ * The configuration space consists of a standard header, containing information
+ * such as the DeviceID, VendorID, Status and so on. Below is the header schema
+ * including offsets.
  *
  *  | Offset 0x00: Header Type
  *  | Offset 0x01: Multi-Function Device Indicator
@@ -52,9 +55,10 @@ typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject, _In_op
  *  | Offset 0x3E: Interrupt Pin
  *  | Offset 0x3F: Interrupt Line
  *
- * We can use this to then query important information from PCI devices within the device tree. To
- * keep up with modern windows kernel programming, we can make use of the IRP_MN_READ_CONFIG code,
- * which as the name suggests, reads from a PCI devices configuration space.
+ * We can use this to then query important information from PCI devices within
+ * the device tree. To keep up with modern windows kernel programming, we can
+ * make use of the IRP_MN_READ_CONFIG code, which as the name suggests, reads
+ * from a PCI devices configuration space.
  */
 STATIC
 NTSTATUS
@@ -75,34 +79,37 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
         KeInitializeEvent(&event, NotificationEvent, FALSE);
 
         /*
-         * we dont need to free this IRP as the IO manager will free it when the request is
-         * completed
+         * we dont need to free this IRP as the IO manager will free it when the
+         * request is completed
          */
-        irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
+        irp = IoBuildSynchronousFsdRequest(
+            IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
 
-        if (!irp)
-        {
-                DEBUG_ERROR("IoBuildSynchronousFsdRequest failed with no status.");
+        if (!irp) {
+                DEBUG_ERROR(
+                    "IoBuildSynchronousFsdRequest failed with no status.");
                 return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        io_stack_location                                        = IoGetNextIrpStackLocation(irp);
-        io_stack_location->MinorFunction                         = IRP_MN_READ_CONFIG;
-        io_stack_location->Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
-        io_stack_location->Parameters.ReadWriteConfig.Offset     = Offset;
-        io_stack_location->Parameters.ReadWriteConfig.Buffer     = Buffer;
-        io_stack_location->Parameters.ReadWriteConfig.Length     = BufferLength;
+        io_stack_location                = IoGetNextIrpStackLocation(irp);
+        io_stack_location->MinorFunction = IRP_MN_READ_CONFIG;
+        io_stack_location->Parameters.ReadWriteConfig.WhichSpace =
+            PCI_WHICHSPACE_CONFIG;
+        io_stack_location->Parameters.ReadWriteConfig.Offset = Offset;
+        io_stack_location->Parameters.ReadWriteConfig.Buffer = Buffer;
+        io_stack_location->Parameters.ReadWriteConfig.Length = BufferLength;
 
         status = IoCallDriver(DeviceObject, irp);
 
-        if (status = STATUS_PENDING)
-        {
-                KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+        if (status = STATUS_PENDING) {
+                KeWaitForSingleObject(
+                    &event, Executive, KernelMode, FALSE, NULL);
                 status = io.Status;
         }
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("Failed to read configuration space with status %x", status);
+                DEBUG_ERROR("Failed to read configuration space with status %x",
+                            status);
 
         return status;
 }
@@ -123,30 +130,33 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
 
         *DeviceObjectArray = NULL;
 
-        status = IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
+        status =
+            IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
 
-        if (status != STATUS_BUFFER_TOO_SMALL)
-        {
-                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x", status);
+        if (status != STATUS_BUFFER_TOO_SMALL) {
+                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
+                            status);
                 return status;
         }
 
         buffer_size = object_count * sizeof(UINT64);
-        buffer      = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_HW);
+        buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_HW);
 
         if (!buffer)
                 return STATUS_INSUFFICIENT_RESOURCES;
 
-        status = IoEnumerateDeviceObjectList(DriverObject, buffer, buffer_size, &object_count);
+        status = IoEnumerateDeviceObjectList(
+            DriverObject, buffer, buffer_size, &object_count);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
+                            status);
                 ExFreePoolWithTag(buffer, POOL_TAG_HW);
                 return status;
         }
 
-        DEBUG_VERBOSE("EnumerateDriverObjectDeviceObjects: Object Count: %lx", object_count);
+        DEBUG_VERBOSE("EnumerateDriverObjectDeviceObjects: Object Count: %lx",
+                      object_count);
 
         *DeviceObjectArray = buffer;
         *ArrayEntries      = object_count;
@@ -155,8 +165,9 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
 }
 
 /*
- * While this isnt a perfect check to determine whether a DEVICE_OBJECT is indeed a PDO or FDO, this
- * is Peters preferred method... hence it is now my preferred method... :smiling_imp:
+ * While this isnt a perfect check to determine whether a DEVICE_OBJECT is
+ * indeed a PDO or FDO, this is Peters preferred method... hence it is now my
+ * preferred method... :smiling_imp:
  */
 STATIC
 BOOLEAN
@@ -171,22 +182,23 @@ IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
  * Physical Device Object (PDO)
  * Functional Device Object (FDO)
  *
- * A PDO represents each device that is connected to a physical bus. Each PDO has an associated
- * DEVICE_NODE. An FDO represents the functionality of the device. Its how the system interacts with
- * the device objects.
+ * A PDO represents each device that is connected to a physical bus. Each PDO
+ * has an associated DEVICE_NODE. An FDO represents the functionality of the
+ * device. Its how the system interacts with the device objects.
  *
  * More information can be found here:
  * https://learn.microsoft.com/en-gb/windows-hardware/drivers/gettingstarted/device-nodes-and-device-stacks
  *
- * A device stack can have multiple PDO's, but can only have one FDO. This means to access each PCI
- * device on the system, we can enumerate all device objects given the PCI FDO which is called
- * pci.sys.
+ * A device stack can have multiple PDO's, but can only have one FDO. This means
+ * to access each PCI device on the system, we can enumerate all device objects
+ * given the PCI FDO which is called pci.sys.
  */
 NTSTATUS
-EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine, _In_opt_ PVOID Context)
+EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine,
+                          _In_opt_ PVOID           Context)
 {
-        NTSTATUS        status                   = STATUS_UNSUCCESSFUL;
-        UNICODE_STRING  pci                      = RTL_CONSTANT_STRING(L"\\Driver\\pci");
+        NTSTATUS        status = STATUS_UNSUCCESSFUL;
+        UNICODE_STRING  pci    = RTL_CONSTANT_STRING(L"\\Driver\\pci");
         PDRIVER_OBJECT  pci_driver_object        = NULL;
         PDEVICE_OBJECT* pci_device_objects       = NULL;
         PDEVICE_OBJECT  current_device           = NULL;
@@ -195,28 +207,27 @@ EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine, _In_opt_ PVO
 
         status = GetDriverObjectByDriverName(&pci, &pci_driver_object);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetDriverObjectByDriverName failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetDriverObjectByDriverName failed with status %x",
+                            status);
                 return status;
         }
 
         status = EnumerateDriverObjectDeviceObjects(
             pci_driver_object, &pci_device_objects, &pci_device_objects_count);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("EnumerateDriverObjectDeviceObjects failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "EnumerateDriverObjectDeviceObjects failed with status %x",
+                    status);
                 return status;
         }
 
-        for (UINT32 index = 0; index < pci_device_objects_count; index++)
-        {
+        for (UINT32 index = 0; index < pci_device_objects_count; index++) {
                 current_device = pci_device_objects[index];
 
                 /* make sure we have a valid PDO */
-                if (!IsDeviceObjectValidPdo(current_device))
-                {
+                if (!IsDeviceObjectValidPdo(current_device)) {
                         ObDereferenceObject(current_device);
                         continue;
                 }
@@ -241,8 +252,7 @@ end:
 BOOLEAN
 IsPciConfigurationSpaceFlagged(_In_ PPCI_COMMON_HEADER Configuration)
 {
-        for (UINT32 index = 0; index < FLAGGED_DEVICE_ID_COUNT; index++)
-        {
+        for (UINT32 index = 0; index < FLAGGED_DEVICE_ID_COUNT; index++) {
                 if (Configuration->DeviceID == FLAGGED_DEVICE_IDS[index])
                         return TRUE;
         }
@@ -257,23 +267,25 @@ PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
         NTSTATUS          status = STATUS_UNSUCCESSFUL;
         PCI_COMMON_HEADER header = {0};
 
-        status = QueryPciDeviceConfigurationSpace(
-            DeviceObject, PCI_VENDOR_ID_OFFSET, &header, sizeof(PCI_COMMON_HEADER));
+        status = QueryPciDeviceConfigurationSpace(DeviceObject,
+                                                  PCI_VENDOR_ID_OFFSET,
+                                                  &header,
+                                                  sizeof(PCI_COMMON_HEADER));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("QueryPciDeviceConfigurationSpace failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "QueryPciDeviceConfigurationSpace failed with status %x",
+                    status);
                 return status;
         }
 
-        if (IsPciConfigurationSpaceFlagged(&header))
-        {
-                DEBUG_VERBOSE("Flagged DeviceID found. Device: %llx, DeviceId: %lx",
-                              (UINT64)DeviceObject,
-                              header.DeviceID);
+        if (IsPciConfigurationSpaceFlagged(&header)) {
+                DEBUG_VERBOSE(
+                    "Flagged DeviceID found. Device: %llx, DeviceId: %lx",
+                    (UINT64)DeviceObject,
+                    header.DeviceID);
         }
-        else
-        {
+        else {
                 DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
                               DeviceObject,
                               header.DeviceID,
@@ -291,7 +303,8 @@ ValidatePciDevices()
         status = EnumeratePciDeviceObjects(PciDeviceQueryCallback, NULL);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("EnumeratePciDeviceObjects failed with status %x", status);
+                DEBUG_ERROR("EnumeratePciDeviceObjects failed with status %x",
+                            status);
 
         return status;
 }

@@ -8,18 +8,19 @@
 PVOID
 FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
 {
-        PKLDR_DATA_TABLE_ENTRY first = (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
+        PKLDR_DATA_TABLE_ENTRY first =
+            (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
 
         /* first entry contains invalid data, 2nd entry is the kernel */
         PKLDR_DATA_TABLE_ENTRY entry =
-            ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)->InLoadOrderLinks.Flink->Flink;
+            ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)
+                ->InLoadOrderLinks.Flink->Flink;
 
-        while (entry->InLoadOrderLinks.Flink != first)
-        {
-                /* todo: write our own unicode string comparison function, since the entire point of
-                 * this is to find exports with no exports. */
-                if (!wcscmp(entry->BaseDllName.Buffer, Name))
-                {
+        while (entry->InLoadOrderLinks.Flink != first) {
+                /* todo: write our own unicode string comparison function, since
+                 * the entire point of this is to find exports with no exports.
+                 */
+                if (!wcscmp(entry->BaseDllName.Buffer, Name)) {
                         return entry->DllBase;
                 }
 
@@ -48,8 +49,7 @@ ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
 
         image_base = FindDriverBaseNoApi(DriverObject, L"ntoskrnl.exe");
 
-        if (!image_base)
-        {
+        if (!image_base) {
                 DEBUG_ERROR("FindDriverBaseNoApi failed with no status");
                 return NULL;
         }
@@ -58,27 +58,33 @@ ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
          * todo: add comment explaining this shit also this ugly af
          */
         dos_header      = (PIMAGE_DOS_HEADER)image_base;
-        nt_header       = (struct _IMAGE_NT_HEADERS64*)((UINT64)image_base + dos_header->e_lfanew);
+        nt_header       = (struct _IMAGE_NT_HEADERS64*)((UINT64)image_base +
+                                                  dos_header->e_lfanew);
         optional_header = (PIMAGE_OPTIONAL_HEADER64)&nt_header->OptionalHeader;
 
-        data_dir = (PIMAGE_DATA_DIRECTORY) &
-                   (optional_header->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
-        export_dir = (PIMAGE_EXPORT_DIRECTORY)((UINT64)image_base + data_dir->VirtualAddress);
+        data_dir =
+            (PIMAGE_DATA_DIRECTORY) &
+            (optional_header->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
+        export_dir = (PIMAGE_EXPORT_DIRECTORY)((UINT64)image_base +
+                                               data_dir->VirtualAddress);
 
-        export_name_table = (PUINT32)((UINT64)image_base + export_dir->AddressOfNames);
-        ordinals_table    = (PUINT16)((UINT64)image_base + export_dir->AddressOfNameOrdinals);
-        export_addr_table = (PUINT32)((UINT64)image_base + export_dir->AddressOfFunctions);
+        export_name_table =
+            (PUINT32)((UINT64)image_base + export_dir->AddressOfNames);
+        ordinals_table =
+            (PUINT16)((UINT64)image_base + export_dir->AddressOfNameOrdinals);
+        export_addr_table =
+            (PUINT32)((UINT64)image_base + export_dir->AddressOfFunctions);
 
-        for (INT index = 0; index < export_dir->NumberOfNames; index++)
-        {
+        for (INT index = 0; index < export_dir->NumberOfNames; index++) {
                 name = (PCHAR)((UINT64)image_base + export_name_table[index]);
 
                 if (strcmp(name, ExportName))
                         continue;
 
-                ordinal              = ordinals_table[index];
-                export_offset        = export_addr_table[ordinal];
-                target_function_addr = (PVOID)((UINT64)image_base + export_offset);
+                ordinal       = ordinals_table[index];
+                export_offset = export_addr_table[ordinal];
+                target_function_addr =
+                    (PVOID)((UINT64)image_base + export_offset);
                 return target_function_addr;
         }
 
@@ -86,91 +92,92 @@ ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
 }
 
 /*
- * The strings in this array need to be hashed at compile time, then we can use the same hash
- * function to compare when we walk the export table.
+ * The strings in this array need to be hashed at compile time, then we can use
+ * the same hash function to compare when we walk the export table.
  */
 #define NT_IMPORT_MAX_LENGTH 128
 #define NT_IMPORT_COUNT      79
 
-CHAR NT_IMPORTS[NT_IMPORT_COUNT][NT_IMPORT_MAX_LENGTH] = {"ObDereferenceObject",
-                                                          "PsLookupThreadByThreadId",
-                                                          "MmIsAddressValid",
-                                                          "PsSetCreateProcessNotifyRoutine",
-                                                          "PsRemoveCreateThreadNotifyRoutine",
-                                                          "PsGetCurrentThreadId",
-                                                          "PsGetProcessId",
-                                                          "PsLookupProcessByProcessId",
-                                                          "ExEnumHandleTable",
-                                                          "ObGetObjectType",
-                                                          "ExfUnblockPushLock",
-                                                          "PsGetProcessImageFileName",
-                                                          "strstr",
-                                                          "RtlInitUnicodeString",
-                                                          "RtlQueryRegistryValues",
-                                                          "MmGetSystemRoutineAddress",
-                                                          "RtlUnicodeStringToAnsiString",
-                                                          "RtlCopyUnicodeString",
-                                                          "RtlFreeAnsiString",
-                                                          "KeInitializeGuardedMutex",
-                                                          "IoCreateDevice",
-                                                          "IoCreateSymbolicLink",
-                                                          "IoDeleteDevice",
-                                                          "IoDeleteSymbolicLink",
-                                                          "ObRegisterCallbacks",
-                                                          "ObUnRegisterCallbacks",
-                                                          "PsSetCreateThreadNotifyRoutine",
-                                                          "KeRevertToUserAffinityThreadEx",
-                                                          "KeSetSystemAffinityThreadEx",
-                                                          "strnlen",
-                                                          "RtlInitAnsiString",
-                                                          "RtlAnsiStringToUnicodeString",
-                                                          "IoGetCurrentProcess",
-                                                          "RtlGetVersion",
-                                                          "RtlCompareMemory",
-                                                          "ExGetSystemFirmwareTable",
-                                                          "IoAllocateWorkItem",
-                                                          "IoFreeWorkItem",
-                                                          "IoQueueWorkItem",
-                                                          "ZwOpenFile",
-                                                          "ZwClose",
-                                                          "ZwCreateSection",
-                                                          "ZwMapViewOfSection",
-                                                          "ZwUnmapViewOfSection",
-                                                          "MmCopyMemory",
-                                                          "ZwDeviceIoControlFile",
-                                                          "KeStackAttachProcess",
-                                                          "KeUnstackDetachProcess",
-                                                          "KeWaitForSingleObject",
-                                                          "PsCreateSystemThread",
-                                                          "IofCompleteRequest",
-                                                          "ObReferenceObjectByHandle",
-                                                          "KeDelayExecutionThread",
-                                                          "KeRegisterNmiCallback",
-                                                          "KeDeregisterNmiCallback",
-                                                          "KeQueryActiveProcessorCount",
-                                                          "ExAcquirePushLockExclusiveEx",
-                                                          "ExReleasePushLockExclusiveEx",
-                                                          "PsGetThreadId",
-                                                          "RtlCaptureStackBackTrace",
-                                                          "ZwOpenDirectoryObject",
-                                                          "KeInitializeAffinityEx",
-                                                          "KeAddProcessorAffinityEx",
-                                                          "RtlQueryModuleInformation",
-                                                          "KeInitializeApc",
-                                                          "KeInsertQueueApc",
-                                                          "KeGenericCallDpc",
-                                                          "KeSignalCallDpcDone",
-                                                          "MmGetPhysicalMemoryRangesEx2",
-                                                          "MmGetVirtualForPhysical",
-                                                          "ObfReferenceObject",
-                                                          "ExFreePoolWithTag",
-                                                          "ExAllocatePool2",
-                                                          "KeReleaseGuardedMutex",
-                                                          "KeAcquireGuardedMutex",
-                                                          "DbgPrintEx",
-                                                          "RtlCompareUnicodeString",
-                                                          "RtlFreeUnicodeString",
-                                                          "PsGetProcessImageFileName"};
+CHAR NT_IMPORTS[NT_IMPORT_COUNT][NT_IMPORT_MAX_LENGTH] = {
+    "ObDereferenceObject",
+    "PsLookupThreadByThreadId",
+    "MmIsAddressValid",
+    "PsSetCreateProcessNotifyRoutine",
+    "PsRemoveCreateThreadNotifyRoutine",
+    "PsGetCurrentThreadId",
+    "PsGetProcessId",
+    "PsLookupProcessByProcessId",
+    "ExEnumHandleTable",
+    "ObGetObjectType",
+    "ExfUnblockPushLock",
+    "PsGetProcessImageFileName",
+    "strstr",
+    "RtlInitUnicodeString",
+    "RtlQueryRegistryValues",
+    "MmGetSystemRoutineAddress",
+    "RtlUnicodeStringToAnsiString",
+    "RtlCopyUnicodeString",
+    "RtlFreeAnsiString",
+    "KeInitializeGuardedMutex",
+    "IoCreateDevice",
+    "IoCreateSymbolicLink",
+    "IoDeleteDevice",
+    "IoDeleteSymbolicLink",
+    "ObRegisterCallbacks",
+    "ObUnRegisterCallbacks",
+    "PsSetCreateThreadNotifyRoutine",
+    "KeRevertToUserAffinityThreadEx",
+    "KeSetSystemAffinityThreadEx",
+    "strnlen",
+    "RtlInitAnsiString",
+    "RtlAnsiStringToUnicodeString",
+    "IoGetCurrentProcess",
+    "RtlGetVersion",
+    "RtlCompareMemory",
+    "ExGetSystemFirmwareTable",
+    "IoAllocateWorkItem",
+    "IoFreeWorkItem",
+    "IoQueueWorkItem",
+    "ZwOpenFile",
+    "ZwClose",
+    "ZwCreateSection",
+    "ZwMapViewOfSection",
+    "ZwUnmapViewOfSection",
+    "MmCopyMemory",
+    "ZwDeviceIoControlFile",
+    "KeStackAttachProcess",
+    "KeUnstackDetachProcess",
+    "KeWaitForSingleObject",
+    "PsCreateSystemThread",
+    "IofCompleteRequest",
+    "ObReferenceObjectByHandle",
+    "KeDelayExecutionThread",
+    "KeRegisterNmiCallback",
+    "KeDeregisterNmiCallback",
+    "KeQueryActiveProcessorCount",
+    "ExAcquirePushLockExclusiveEx",
+    "ExReleasePushLockExclusiveEx",
+    "PsGetThreadId",
+    "RtlCaptureStackBackTrace",
+    "ZwOpenDirectoryObject",
+    "KeInitializeAffinityEx",
+    "KeAddProcessorAffinityEx",
+    "RtlQueryModuleInformation",
+    "KeInitializeApc",
+    "KeInsertQueueApc",
+    "KeGenericCallDpc",
+    "KeSignalCallDpcDone",
+    "MmGetPhysicalMemoryRangesEx2",
+    "MmGetVirtualForPhysical",
+    "ObfReferenceObject",
+    "ExFreePoolWithTag",
+    "ExAllocatePool2",
+    "KeReleaseGuardedMutex",
+    "KeAcquireGuardedMutex",
+    "DbgPrintEx",
+    "RtlCompareUnicodeString",
+    "RtlFreeUnicodeString",
+    "PsGetProcessImageFileName"};
 
 DRIVER_IMPORTS driver_imports = {0};
 
@@ -179,9 +186,9 @@ ImpResolveDynamicImports(_In_ PDRIVER_OBJECT DriverObject)
 {
         PUINT64 imports_array = (PUINT64)&driver_imports;
 
-        for (UINT32 index = 0; index < NT_IMPORT_COUNT; index++)
-        {
-                imports_array[index] = ImpResolveNtImport(DriverObject, NT_IMPORTS[index]);
+        for (UINT32 index = 0; index < NT_IMPORT_COUNT; index++) {
+                imports_array[index] =
+                    ImpResolveNtImport(DriverObject, NT_IMPORTS[index]);
 
                 if (!imports_array[index])
                         return STATUS_UNSUCCESSFUL;
@@ -207,7 +214,9 @@ ImpPsLookupThreadByThreadId(_In_ HANDLE ThreadId, _Out_ PETHREAD* Thread)
 {
         pPsLookupThreadByThreadId impPsLookupThreadByThreadId =
             (pPsLookupThreadByThreadId)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_LOOKUP_THREAD_BY_THREAD_ID_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_LOOKUP_THREAD_BY_THREAD_ID_INDEX);
 
         return impPsLookupThreadByThreadId(ThreadId, Thread);
 }
@@ -215,29 +224,37 @@ ImpPsLookupThreadByThreadId(_In_ HANDLE ThreadId, _Out_ PETHREAD* Thread)
 BOOLEAN
 ImpMmIsAddressValid(_In_ PVOID VirtualAddress)
 {
-        pMmIsAddressValid impMmIsAddressValid = (pMmIsAddressValid)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, MM_IS_ADDRESS_VALID_INDEX);
+        pMmIsAddressValid impMmIsAddressValid =
+            (pMmIsAddressValid)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, MM_IS_ADDRESS_VALID_INDEX);
 
         return impMmIsAddressValid(VirtualAddress);
 }
 
 NTSTATUS
-ImpPsSetCreateProcessNotifyRoutine(_In_ PCREATE_PROCESS_NOTIFY_ROUTINE NotifyRoutine,
-                                   _In_ BOOLEAN                        Remove)
+ImpPsSetCreateProcessNotifyRoutine(
+    _In_ PCREATE_PROCESS_NOTIFY_ROUTINE NotifyRoutine, _In_ BOOLEAN Remove)
 {
         pPsSetCreateProcessNotifyRoutine impPsSetCreateProcessNotifyRoutine =
             (pPsSetCreateProcessNotifyRoutine)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_SET_CREATE_PROCESS_NOTIFY_ROUTINE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_SET_CREATE_PROCESS_NOTIFY_ROUTINE_INDEX);
 
         return impPsSetCreateProcessNotifyRoutine(NotifyRoutine, Remove);
 }
 
 NTSTATUS
-ImpPsRemoveCreateThreadNotifyRoutine(_In_ PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine)
+ImpPsRemoveCreateThreadNotifyRoutine(
+    _In_ PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine)
 {
-        pPsRemoveCreateThreadNotifyRoutine impPsRemoveCreateThreadNotifyRoutine =
-            (pPsRemoveCreateThreadNotifyRoutine)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_REMOVE_CREATE_THREAD_NOTIFY_ROUTINE_INDEX);
+        pPsRemoveCreateThreadNotifyRoutine
+            impPsRemoveCreateThreadNotifyRoutine =
+                (pPsRemoveCreateThreadNotifyRoutine)
+                    CryptDecryptImportsArrayEntry(
+                        &driver_imports,
+                        IMPORTS_LENGTH,
+                        PS_REMOVE_CREATE_THREAD_NOTIFY_ROUTINE_INDEX);
 
         return impPsRemoveCreateThreadNotifyRoutine(NotifyRoutine);
 }
@@ -247,7 +264,9 @@ ImpPsGetCurrentThreadId()
 {
         pPsGetCurrentThreadId impPsGetCurrentThreadId =
             (pPsGetCurrentThreadId)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_GET_CURRENT_THREAD_ID_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_GET_CURRENT_THREAD_ID_INDEX);
 
         return impPsGetCurrentThreadId();
 }
@@ -255,8 +274,9 @@ ImpPsGetCurrentThreadId()
 HANDLE
 ImpPsGetProcessId(_In_ PEPROCESS Process)
 {
-        pPsGetProcessId impPsGetProcessId = (pPsGetProcessId)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, PS_GET_PROCESS_ID_INDEX);
+        pPsGetProcessId impPsGetProcessId =
+            (pPsGetProcessId)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, PS_GET_PROCESS_ID_INDEX);
 
         return impPsGetProcessId(Process);
 }
@@ -266,7 +286,9 @@ ImpPsLookupProcessByProcessId(_In_ HANDLE ProcessId, _Out_ PEPROCESS* Process)
 {
         pPsLookupProcessByProcessId impPsLookupProcessByProcessId =
             (pPsLookupProcessByProcessId)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_LOOKUP_PROCESS_BY_PROCESS_ID_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_LOOKUP_PROCESS_BY_PROCESS_ID_INDEX);
 
         return impPsLookupProcessByProcessId(ProcessId, Process);
 }
@@ -277,8 +299,9 @@ ImpExEnumHandleTable(_In_ PHANDLE_TABLE HandleTable,
                      _In_opt_ PVOID     Context,
                      _Out_opt_ PHANDLE  Handle)
 {
-        pExEnumHandleTable impExEnumHandleTable = (pExEnumHandleTable)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, EX_ENUM_HANDLE_TABLE_INDEX);
+        pExEnumHandleTable impExEnumHandleTable =
+            (pExEnumHandleTable)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, EX_ENUM_HANDLE_TABLE_INDEX);
 
         return impExEnumHandleTable(HandleTable, Callback, Context, Handle);
 }
@@ -286,8 +309,9 @@ ImpExEnumHandleTable(_In_ PHANDLE_TABLE HandleTable,
 POBJECT_TYPE
 ImpObGetObjectType(_In_ PVOID Object)
 {
-        pObGetObjectType impObGetObjectType = (pObGetObjectType)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, OB_GET_OBJECT_TYPE_INDEX);
+        pObGetObjectType impObGetObjectType =
+            (pObGetObjectType)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, OB_GET_OBJECT_TYPE_INDEX);
 
         return impObGetObjectType(Object);
 }
@@ -307,7 +331,9 @@ ImpPsGetProcessImageFileName(_In_ PEPROCESS Process)
 {
         pPsGetProcessImageFileName impPsGetProcessImageFileName =
             (pPsGetProcessImageFileName)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_GET_PROCESS_IMAGE_FILE_NAME_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_GET_PROCESS_IMAGE_FILE_NAME_INDEX);
 
         return impPsGetProcessImageFileName(Process);
 }
@@ -315,14 +341,15 @@ ImpPsGetProcessImageFileName(_In_ PEPROCESS Process)
 INT
 ImpStrStr(_In_ CHAR* haystack, _In_ CHAR* needle)
 {
-        pstrstr impStrStr =
-            (pstrstr)CryptDecryptImportsArrayEntry(&driver_imports, IMPORTS_LENGTH, STRSTR_INDEX);
+        pstrstr impStrStr = (pstrstr)CryptDecryptImportsArrayEntry(
+            &driver_imports, IMPORTS_LENGTH, STRSTR_INDEX);
 
         return impStrStr(haystack, needle);
 }
 
 VOID
-ImpRtlInitUnicodeString(_In_ PUNICODE_STRING DestinationString, _In_ PCWSTR SourceString)
+ImpRtlInitUnicodeString(_In_ PUNICODE_STRING DestinationString,
+                        _In_ PCWSTR          SourceString)
 {
         pRtlInitUnicodeString impRtlInitUnicodeString =
             (pRtlInitUnicodeString)CryptDecryptImportsArrayEntry(
@@ -340,9 +367,12 @@ ImpRtlQueryRegistryValues(_In_ ULONG                     RelativeTo,
 {
         pRtlQueryRegistryValues impRtlQueryRegistryValues =
             (pRtlQueryRegistryValues)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_QUERY_REGISTRY_VALUES_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_QUERY_REGISTRY_VALUES_INDEX);
 
-        return impRtlQueryRegistryValues(RelativeTo, Path, QueryTable, Context, Environment);
+        return impRtlQueryRegistryValues(
+            RelativeTo, Path, QueryTable, Context, Environment);
 }
 
 PVOID
@@ -350,7 +380,9 @@ ImpMmGetSystemRoutineAddress(_In_ PUNICODE_STRING SystemRoutineName)
 {
         pMmGetSystemRoutineAddress impMmGetSystemRoutineAddress =
             (pMmGetSystemRoutineAddress)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, MM_GET_SYSTEM_ROUTINE_ADDRESS_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                MM_GET_SYSTEM_ROUTINE_ADDRESS_INDEX);
 
         return impMmGetSystemRoutineAddress(SystemRoutineName);
 }
@@ -362,14 +394,17 @@ ImpRtlUnicodeStringToAnsiString(_In_ PANSI_STRING     DestinationString,
 {
         pRtlUnicodeStringToAnsiString impRtlUnicodeStringToAnsiString =
             (pRtlUnicodeStringToAnsiString)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_UNICODE_STRING_TO_ANSI_STRING_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_UNICODE_STRING_TO_ANSI_STRING_INDEX);
 
         return impRtlUnicodeStringToAnsiString(
             DestinationString, SourceString, AllocateDestinationString);
 }
 
 VOID
-ImpRtlCopyUnicodeString(_In_ PUNICODE_STRING DestinationString, _In_ PCUNICODE_STRING SourceString)
+ImpRtlCopyUnicodeString(_In_ PUNICODE_STRING  DestinationString,
+                        _In_ PCUNICODE_STRING SourceString)
 {
         pRtlCopyUnicodeString impRtlCopyUnicodeString =
             (pRtlCopyUnicodeString)CryptDecryptImportsArrayEntry(
@@ -381,8 +416,9 @@ ImpRtlCopyUnicodeString(_In_ PUNICODE_STRING DestinationString, _In_ PCUNICODE_S
 VOID
 ImpRtlFreeAnsiString(_In_ PANSI_STRING AnsiString)
 {
-        pRtlFreeAnsiString impRtlFreeAnsiString = (pRtlFreeAnsiString)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, RTL_FREE_ANSI_STRING_INDEX);
+        pRtlFreeAnsiString impRtlFreeAnsiString =
+            (pRtlFreeAnsiString)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, RTL_FREE_ANSI_STRING_INDEX);
 
         impRtlFreeAnsiString(AnsiString);
 }
@@ -392,7 +428,9 @@ ImpKeInitializeGuardedMutex(_In_ PKGUARDED_MUTEX GuardedMutex)
 {
         pKeInitializeGuardedMutex impKeInitializeGuardedMutex =
             (pKeInitializeGuardedMutex)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_INITIALIZE_GUARDED_MUTEX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_INITIALIZE_GUARDED_MUTEX_INDEX);
 
         impKeInitializeGuardedMutex(GuardedMutex);
 }
@@ -406,8 +444,9 @@ ImpIoCreateDevice(_In_ PDRIVER_OBJECT      DriverObject,
                   _In_ BOOLEAN             Exclusive,
                   _Out_ PDEVICE_OBJECT*    DeviceObject)
 {
-        pIoCreateDevice impIoCreateDevice = (pIoCreateDevice)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, IO_CREATE_DEVICE_INDEX);
+        pIoCreateDevice impIoCreateDevice =
+            (pIoCreateDevice)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, IO_CREATE_DEVICE_INDEX);
 
         return impIoCreateDevice(DriverObject,
                                  DeviceExtensionSize,
@@ -419,7 +458,8 @@ ImpIoCreateDevice(_In_ PDRIVER_OBJECT      DriverObject,
 }
 
 NTSTATUS
-ImpIoCreateSymbolicLink(_In_ PUNICODE_STRING SymbolicLinkName, _In_ PUNICODE_STRING DeviceName)
+ImpIoCreateSymbolicLink(_In_ PUNICODE_STRING SymbolicLinkName,
+                        _In_ PUNICODE_STRING DeviceName)
 {
         pIoCreateSymbolicLink impIoCreateSymbolicLink =
             (pIoCreateSymbolicLink)CryptDecryptImportsArrayEntry(
@@ -431,8 +471,9 @@ ImpIoCreateSymbolicLink(_In_ PUNICODE_STRING SymbolicLinkName, _In_ PUNICODE_STR
 VOID
 ImpIoDeleteDevice(_In_ PDEVICE_OBJECT DeviceObject)
 {
-        pIoDeleteDevice impIoDeleteDevice = (pIoDeleteDevice)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, IO_DELETE_DEVICE_INDEX);
+        pIoDeleteDevice impIoDeleteDevice =
+            (pIoDeleteDevice)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, IO_DELETE_DEVICE_INDEX);
 
         impIoDeleteDevice(DeviceObject);
 }
@@ -469,11 +510,14 @@ ImpObUnRegisterCallbacks(_In_ PVOID RegistrationHandle)
 }
 
 NTSTATUS
-ImpPsSetCreateThreadNotifyRoutine(_In_ PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine)
+ImpPsSetCreateThreadNotifyRoutine(
+    _In_ PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine)
 {
         pPsSetCreateThreadNotifyRoutine impPsSetCreateThreadNotifyRoutine =
             (pPsSetCreateThreadNotifyRoutine)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, PS_SET_CREATE_THREAD_NOTIFY_ROUTINE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                PS_SET_CREATE_THREAD_NOTIFY_ROUTINE_INDEX);
 
         return impPsSetCreateThreadNotifyRoutine(NotifyRoutine);
 }
@@ -483,7 +527,9 @@ ImpKeRevertToUserAffinityThreadEx(_In_ KAFFINITY Affinity)
 {
         pKeRevertToUserAffinityThreadEx impKeRevertToUserAffinityThreadEx =
             (pKeRevertToUserAffinityThreadEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_REVERT_TO_USER_AFFINITY_THREAD_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_REVERT_TO_USER_AFFINITY_THREAD_EX_INDEX);
 
         impKeRevertToUserAffinityThreadEx(Affinity);
 }
@@ -493,7 +539,9 @@ ImpKeSetSystemAffinityThreadEx(_In_ KAFFINITY Affinity)
 {
         pKeSetSystemAffinityThreadEx impKeSetSystemAffinityThreadEx =
             (pKeSetSystemAffinityThreadEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_SET_SYSTEM_AFFINITY_THREAD_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_SET_SYSTEM_AFFINITY_THREAD_EX_INDEX);
 
         return impKeSetSystemAffinityThreadEx(Affinity);
 }
@@ -501,17 +549,19 @@ ImpKeSetSystemAffinityThreadEx(_In_ KAFFINITY Affinity)
 SIZE_T
 ImpStrnlen(_In_ CHAR* str, _In_ SIZE_T maxCount)
 {
-        pstrnlen impStrnlen =
-            (pstrnlen)CryptDecryptImportsArrayEntry(&driver_imports, IMPORTS_LENGTH, STRNLEN_INDEX);
+        pstrnlen impStrnlen = (pstrnlen)CryptDecryptImportsArrayEntry(
+            &driver_imports, IMPORTS_LENGTH, STRNLEN_INDEX);
 
         return impStrnlen(str, maxCount);
 }
 
 VOID
-ImpRtlInitAnsiString(_In_ PANSI_STRING DestinationString, _In_ PCSZ SourceString)
+ImpRtlInitAnsiString(_In_ PANSI_STRING DestinationString,
+                     _In_ PCSZ         SourceString)
 {
-        pRtlInitAnsiString impRtlInitAnsiString = (pRtlInitAnsiString)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, RTL_INIT_ANSI_STRING_INDEX);
+        pRtlInitAnsiString impRtlInitAnsiString =
+            (pRtlInitAnsiString)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, RTL_INIT_ANSI_STRING_INDEX);
 
         impRtlInitAnsiString(DestinationString, SourceString);
 }
@@ -523,7 +573,9 @@ ImpRtlAnsiStringToUnicodeString(_In_ PUNICODE_STRING DestinationString,
 {
         pRtlAnsiStringToUnicodeString impRtlAnsiStringToUnicodeString =
             (pRtlAnsiStringToUnicodeString)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_ANSI_STRING_TO_UNICODE_STRING_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_ANSI_STRING_TO_UNICODE_STRING_INDEX);
 
         return impRtlAnsiStringToUnicodeString(
             DestinationString, SourceString, AllocateDestinationString);
@@ -542,8 +594,9 @@ ImpIoGetCurrentProcess()
 NTSTATUS
 ImpRtlGetVersion(_Out_ PRTL_OSVERSIONINFOW lpVersionInformation)
 {
-        pRtlGetVersion impRtlGetVersion = (pRtlGetVersion)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, RTL_GET_VERSION_INDEX);
+        pRtlGetVersion impRtlGetVersion =
+            (pRtlGetVersion)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, RTL_GET_VERSION_INDEX);
 
         return impRtlGetVersion(lpVersionInformation);
 }
@@ -551,8 +604,9 @@ ImpRtlGetVersion(_Out_ PRTL_OSVERSIONINFOW lpVersionInformation)
 SIZE_T
 ImpRtlCompareMemory(_In_ PVOID Source1, _In_ PVOID Source2, _In_ SIZE_T Length)
 {
-        pRtlCompareMemory impRtlCompareMemory = (pRtlCompareMemory)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, RTL_COMPARE_MEMORY_INDEX);
+        pRtlCompareMemory impRtlCompareMemory =
+            (pRtlCompareMemory)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, RTL_COMPARE_MEMORY_INDEX);
 
         return impRtlCompareMemory(Source1, Source2, Length);
 }
@@ -566,7 +620,9 @@ ImpExGetSystemFirmwareTable(_In_ ULONG   FirmwareTableProviderSignature,
 {
         pExGetSystemFirmwareTable impExGetSystemFirmwareTable =
             (pExGetSystemFirmwareTable)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, EX_GET_SYSTEM_FIRMWARE_TABLE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                EX_GET_SYSTEM_FIRMWARE_TABLE_INDEX);
 
         return impExGetSystemFirmwareTable(FirmwareTableProviderSignature,
                                            FirmwareTableID,
@@ -588,8 +644,9 @@ ImpIoAllocateWorkItem(_In_ PDEVICE_OBJECT DeviceObject)
 VOID
 ImpIoFreeWorkItem(_In_ PIO_WORKITEM WorkItem)
 {
-        pIoFreeWorkItem impIoFreeWorkItem = (pIoFreeWorkItem)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, IO_FREE_WORK_ITEM_INDEX);
+        pIoFreeWorkItem impIoFreeWorkItem =
+            (pIoFreeWorkItem)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, IO_FREE_WORK_ITEM_INDEX);
 
         impIoFreeWorkItem(WorkItem);
 }
@@ -600,8 +657,9 @@ ImpIoQueueWorkItem(_In_ PIO_WORKITEM         IoWorkItem,
                    _In_ WORK_QUEUE_TYPE      QueueType,
                    _In_opt_ PVOID            Context)
 {
-        pIoQueueWorkItem impIoQueueWorkItem = (pIoQueueWorkItem)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, IO_QUEUE_WORK_ITEM_INDEX);
+        pIoQueueWorkItem impIoQueueWorkItem =
+            (pIoQueueWorkItem)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, IO_QUEUE_WORK_ITEM_INDEX);
 
         impIoQueueWorkItem(IoWorkItem, WorkerRoutine, QueueType, Context);
 }
@@ -617,8 +675,12 @@ ImpZwOpenFile(_Out_ PHANDLE           FileHandle,
         pZwOpenFile impZwOpenFile = (pZwOpenFile)CryptDecryptImportsArrayEntry(
             &driver_imports, IMPORTS_LENGTH, ZW_OPEN_FILE_INDEX);
 
-        return impZwOpenFile(
-            FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
+        return impZwOpenFile(FileHandle,
+                             DesiredAccess,
+                             ObjectAttributes,
+                             IoStatusBlock,
+                             ShareAccess,
+                             OpenOptions);
 }
 
 NTSTATUS
@@ -639,8 +701,9 @@ ImpZwCreateSection(_Out_ PHANDLE               SectionHandle,
                    _In_ ULONG                  AllocationAttributes,
                    _In_opt_ HANDLE             FileHandle)
 {
-        pZwCreateSection impZwCreateSection = (pZwCreateSection)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, ZW_CREATE_SECTION_INDEX);
+        pZwCreateSection impZwCreateSection =
+            (pZwCreateSection)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, ZW_CREATE_SECTION_INDEX);
 
         return impZwCreateSection(SectionHandle,
                                   DesiredAccess,
@@ -684,7 +747,9 @@ ImpZwUnmapViewOfSection(_In_ HANDLE ProcessHandle, _In_ PVOID BaseAddress)
 {
         pZwUnmapViewOfSection impZwUnmapViewOfSection =
             (pZwUnmapViewOfSection)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, ZW_UNMAP_VIEW_OF_SECTION_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                ZW_UNMAP_VIEW_OF_SECTION_INDEX);
 
         return impZwUnmapViewOfSection(ProcessHandle, BaseAddress);
 }
@@ -696,11 +761,15 @@ ImpMmCopyMemory(_In_ PVOID           TargetAddress,
                 _In_ ULONG           Flags,
                 _Out_ PSIZE_T        NumberOfBytesTransferred)
 {
-        pMmCopyMemory impMmCopyMemory = (pMmCopyMemory)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, MM_COPY_MEMORY_INDEX);
+        pMmCopyMemory impMmCopyMemory =
+            (pMmCopyMemory)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, MM_COPY_MEMORY_INDEX);
 
-        return impMmCopyMemory(
-            TargetAddress, SourceAddress, NumberOfBytes, Flags, NumberOfBytesTransferred);
+        return impMmCopyMemory(TargetAddress,
+                               SourceAddress,
+                               NumberOfBytes,
+                               Flags,
+                               NumberOfBytesTransferred);
 }
 
 NTSTATUS
@@ -717,7 +786,9 @@ ImpZwDeviceIoControlFile(_In_ HANDLE              FileHandle,
 {
         pZwDeviceIoControlFile impZwDeviceIoControlFile =
             (pZwDeviceIoControlFile)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, ZW_DEVICE_IO_CONTROL_FILE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                ZW_DEVICE_IO_CONTROL_FILE_INDEX);
 
         return impZwDeviceIoControlFile(FileHandle,
                                         Event,
@@ -746,7 +817,9 @@ ImpKeUnstackDetachProcess(_In_ PKAPC_STATE ApcState)
 {
         pKeUnstackDetachProcess impKeUnstackDetachProcess =
             (pKeUnstackDetachProcess)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_UNSTACK_DETACH_PROCESS_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_UNSTACK_DETACH_PROCESS_INDEX);
 
         impKeUnstackDetachProcess(ApcState);
 }
@@ -760,9 +833,12 @@ ImpKeWaitForSingleObject(_In_ PVOID           Object,
 {
         pKeWaitForSingleObject impKeWaitForSingleObject =
             (pKeWaitForSingleObject)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_WAIT_FOR_SINGLE_OBJECT_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_WAIT_FOR_SINGLE_OBJECT_INDEX);
 
-        return impKeWaitForSingleObject(Object, WaitReason, WaitMode, Alertable, Timeout);
+        return impKeWaitForSingleObject(
+            Object, WaitReason, WaitMode, Alertable, Timeout);
 }
 
 NTSTATUS
@@ -798,19 +874,26 @@ ImpIofCompleteRequest(_In_ PIRP Irp, _In_ CCHAR PriorityBoost)
 }
 
 NTSTATUS
-ImpObReferenceObjectByHandle(_In_ HANDLE                          Handle,
-                             _In_ ACCESS_MASK                     DesiredAccess,
-                             _In_opt_ POBJECT_TYPE                ObjectType,
-                             _In_ KPROCESSOR_MODE                 AccessMode,
-                             _Out_ PVOID*                         Object,
-                             _Out_opt_ POBJECT_HANDLE_INFORMATION HandleInformation)
+ImpObReferenceObjectByHandle(_In_ HANDLE           Handle,
+                             _In_ ACCESS_MASK      DesiredAccess,
+                             _In_opt_ POBJECT_TYPE ObjectType,
+                             _In_ KPROCESSOR_MODE  AccessMode,
+                             _Out_ PVOID*          Object,
+                             _Out_opt_ POBJECT_HANDLE_INFORMATION
+                                 HandleInformation)
 {
         pObReferenceObjectByHandle impObReferenceObjectByHandle =
             (pObReferenceObjectByHandle)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, OB_REFERENCE_OBJECT_BY_HANDLE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                OB_REFERENCE_OBJECT_BY_HANDLE_INDEX);
 
-        return impObReferenceObjectByHandle(
-            Handle, DesiredAccess, ObjectType, AccessMode, Object, HandleInformation);
+        return impObReferenceObjectByHandle(Handle,
+                                            DesiredAccess,
+                                            ObjectType,
+                                            AccessMode,
+                                            Object,
+                                            HandleInformation);
 }
 
 NTSTATUS
@@ -820,7 +903,9 @@ ImpKeDelayExecutionThread(_In_ KPROCESSOR_MODE WaitMode,
 {
         pKeDelayExecutionThread impKeDelayExecutionThread =
             (pKeDelayExecutionThread)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_DELAY_EXECUTION_THREAD_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_DELAY_EXECUTION_THREAD_INDEX);
 
         return impKeDelayExecutionThread(WaitMode, Alertable, Interval);
 }
@@ -830,7 +915,9 @@ ImpKeRegisterNmiCallback(_In_ PVOID CallbackRoutine, _In_opt_ PVOID Context)
 {
         pKeRegisterNmiCallback impKeRegisterNmiCallback =
             (pKeRegisterNmiCallback)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_REGISTER_NMI_CALLBACK_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_REGISTER_NMI_CALLBACK_INDEX);
 
         return impKeRegisterNmiCallback(CallbackRoutine, Context);
 }
@@ -840,7 +927,9 @@ ImpKeDeregisterNmiCallback(_In_ PVOID Handle)
 {
         pKeDeregisterNmiCallback impKeDeregisterNmiCallback =
             (pKeDeregisterNmiCallback)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_DEREGISTER_NMI_CALLBACK_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_DEREGISTER_NMI_CALLBACK_INDEX);
 
         return impKeDeregisterNmiCallback(Handle);
 }
@@ -850,27 +939,35 @@ ImpKeQueryActiveProcessorCount(_In_ PKAFFINITY ActiveProcessors)
 {
         pKeQueryActiveProcessorCount impKeQueryActiveProcessorCount =
             (pKeQueryActiveProcessorCount)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_QUERY_ACTIVE_PROCESSOR_COUNT_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_QUERY_ACTIVE_PROCESSOR_COUNT_INDEX);
 
         return impKeQueryActiveProcessorCount(ActiveProcessors);
 }
 
 VOID
-ImpExAcquirePushLockExclusiveEx(_Inout_ PEX_PUSH_LOCK PushLock, _In_ ULONG Flags)
+ImpExAcquirePushLockExclusiveEx(_Inout_ PEX_PUSH_LOCK PushLock,
+                                _In_ ULONG            Flags)
 {
         pExAcquirePushLockExclusiveEx impExAcquirePushLockExclusiveEx =
             (pExAcquirePushLockExclusiveEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, EX_ACQUIRE_PUSH_LOCK_EXCLUSIVE_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                EX_ACQUIRE_PUSH_LOCK_EXCLUSIVE_EX_INDEX);
 
         impExAcquirePushLockExclusiveEx(PushLock, Flags);
 }
 
 VOID
-ImpExReleasePushLockExclusiveEx(_Inout_ PEX_PUSH_LOCK PushLock, _In_ ULONG Flags)
+ImpExReleasePushLockExclusiveEx(_Inout_ PEX_PUSH_LOCK PushLock,
+                                _In_ ULONG            Flags)
 {
         pExReleasePushLockExclusiveEx impExReleasePushLockExclusiveEx =
             (pExReleasePushLockExclusiveEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, EX_RELEASE_PUSH_LOCK_EXCLUSIVE_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                EX_RELEASE_PUSH_LOCK_EXCLUSIVE_EX_INDEX);
 
         impExReleasePushLockExclusiveEx(PushLock, Flags);
 }
@@ -878,8 +975,9 @@ ImpExReleasePushLockExclusiveEx(_Inout_ PEX_PUSH_LOCK PushLock, _In_ ULONG Flags
 HANDLE
 ImpPsGetThreadId(_In_ PETHREAD Thread)
 {
-        pPsGetThreadId impPsGetThreadId = (pPsGetThreadId)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, PS_GET_THREAD_ID_INDEX);
+        pPsGetThreadId impPsGetThreadId =
+            (pPsGetThreadId)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, PS_GET_THREAD_ID_INDEX);
 
         return impPsGetThreadId(Thread);
 }
@@ -892,9 +990,12 @@ ImpRtlCaptureStackBackTrace(_In_ ULONG       FramesToSkip,
 {
         pRtlCaptureStackBackTrace impRtlCaptureStackBackTrace =
             (pRtlCaptureStackBackTrace)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_CAPTURE_STACK_BACK_TRACE_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_CAPTURE_STACK_BACK_TRACE_INDEX);
 
-        return impRtlCaptureStackBackTrace(FramesToSkip, FramesToCapture, BackTrace, BackTraceHash);
+        return impRtlCaptureStackBackTrace(
+            FramesToSkip, FramesToCapture, BackTrace, BackTraceHash);
 }
 
 NTSTATUS
@@ -904,9 +1005,12 @@ ImpZwOpenDirectoryObject(_Out_ PHANDLE           DirectoryHandle,
 {
         pZwOpenDirectoryObject impZwOpenDirectoryObject =
             (pZwOpenDirectoryObject)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, ZW_OPEN_DIRECTORY_OBJECT_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                ZW_OPEN_DIRECTORY_OBJECT_INDEX);
 
-        return impZwOpenDirectoryObject(DirectoryHandle, DesiredAccess, ObjectAttributes);
+        return impZwOpenDirectoryObject(
+            DirectoryHandle, DesiredAccess, ObjectAttributes);
 }
 
 VOID
@@ -914,7 +1018,9 @@ ImpKeInitializeAffinityEx(_In_ PKAFFINITY_EX AffinityMask)
 {
         pKeInitializeAffinityEx impKeInitializeAffinityEx =
             (pKeInitializeAffinityEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_INITIALIZE_AFFINITY_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_INITIALIZE_AFFINITY_EX_INDEX);
 
         impKeInitializeAffinityEx(AffinityMask);
 }
@@ -924,7 +1030,9 @@ ImpKeAddProcessorAffinityEx(_In_ PKAFFINITY_EX Affinity, _In_ INT CoreNumber)
 {
         pKeAddProcessorAffinityEx impKeAddProcessorAffinityEx =
             (pKeAddProcessorAffinityEx)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_ADD_PROCESSOR_AFFINITY_EX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_ADD_PROCESSOR_AFFINITY_EX_INDEX);
 
         impKeAddProcessorAffinityEx(Affinity, CoreNumber);
 }
@@ -936,9 +1044,12 @@ ImpRtlQueryModuleInformation(_Inout_ ULONG* InformationLength,
 {
         pRtlQueryModuleInformation impRtlQueryModuleInformation =
             (pRtlQueryModuleInformation)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_QUERY_MODULE_INFORMATION_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_QUERY_MODULE_INFORMATION_INDEX);
 
-        return impRtlQueryModuleInformation(InformationLength, SizePerModule, InformationBuffer);
+        return impRtlQueryModuleInformation(
+            InformationLength, SizePerModule, InformationBuffer);
 }
 
 VOID
@@ -951,8 +1062,9 @@ ImpKeInitializeApc(_In_ PKAPC             Apc,
                    _In_ KPROCESSOR_MODE   ApcMode,
                    _In_ PVOID             NormalContext)
 {
-        pKeInitializeApc impKeInitializeApc = (pKeInitializeApc)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, KE_INITIALIZE_APC_INDEX);
+        pKeInitializeApc impKeInitializeApc =
+            (pKeInitializeApc)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, KE_INITIALIZE_APC_INDEX);
 
         impKeInitializeApc(Apc,
                            Thread,
@@ -970,17 +1082,20 @@ ImpKeInsertQueueApc(_In_ PKAPC     Apc,
                     _In_ PVOID     SystemArgument2,
                     _In_ KPRIORITY Increment)
 {
-        pKeInsertQueueApc impKeInsertQueueApc = (pKeInsertQueueApc)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, KE_INSERT_QUEUE_APC_INDEX);
+        pKeInsertQueueApc impKeInsertQueueApc =
+            (pKeInsertQueueApc)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, KE_INSERT_QUEUE_APC_INDEX);
 
-        return impKeInsertQueueApc(Apc, SystemArgument1, SystemArgument2, Increment);
+        return impKeInsertQueueApc(
+            Apc, SystemArgument1, SystemArgument2, Increment);
 }
 
 VOID
 ImpKeGenericCallDpc(_In_ PKDEFERRED_ROUTINE DpcRoutine, _In_ PVOID Context)
 {
-        pKeGenericCallDpc impKeGenericCallDpc = (pKeGenericCallDpc)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, KE_GENERIC_CALL_DPC_INDEX);
+        pKeGenericCallDpc impKeGenericCallDpc =
+            (pKeGenericCallDpc)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, KE_GENERIC_CALL_DPC_INDEX);
 
         impKeGenericCallDpc(DpcRoutine, Context);
 }
@@ -1000,7 +1115,9 @@ ImpMmGetPhysicalMemoryRangesEx2(_In_ PVOID PartitionObject, _In_ ULONG Flags)
 {
         pMmGetPhysicalMemoryRangesEx2 impMmGetPhysicalMemoryRangesEx2 =
             (pMmGetPhysicalMemoryRangesEx2)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, MM_GET_PHYSICAL_MEMORY_RANGES_EX2_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                MM_GET_PHYSICAL_MEMORY_RANGES_EX2_INDEX);
 
         return impMmGetPhysicalMemoryRangesEx2(PartitionObject, Flags);
 }
@@ -1010,7 +1127,9 @@ ImpMmGetVirtualForPhysical(_In_ PHYSICAL_ADDRESS PhysicalAddress)
 {
         pMmGetVirtualForPhysical impMmGetVirtualForPhysical =
             (pMmGetVirtualForPhysical)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, MM_GET_VIRTUAL_FOR_PHYSICAL_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                MM_GET_VIRTUAL_FOR_PHYSICAL_INDEX);
 
         return impMmGetVirtualForPhysical(PhysicalAddress);
 }
@@ -1028,17 +1147,21 @@ ImpObfReferenceObject(_In_ PVOID Object)
 VOID
 ImpExFreePoolWithTag(_In_ PVOID P, _In_ ULONG Tag)
 {
-        pExFreePoolWithTag impExFreePoolWithTag = (pExFreePoolWithTag)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, EX_FREE_POOL_WITH_TAG_INDEX);
+        pExFreePoolWithTag impExFreePoolWithTag =
+            (pExFreePoolWithTag)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, EX_FREE_POOL_WITH_TAG_INDEX);
 
         impExFreePoolWithTag(P, Tag);
 }
 
 PVOID
-ImpExAllocatePool2(_In_ POOL_FLAGS Flags, _In_ SIZE_T NumberOfBytes, _In_ ULONG Tag)
+ImpExAllocatePool2(_In_ POOL_FLAGS Flags,
+                   _In_ SIZE_T     NumberOfBytes,
+                   _In_ ULONG      Tag)
 {
-        pExAllocatePool2 impExAllocatePool2 = (pExAllocatePool2)CryptDecryptImportsArrayEntry(
-            &driver_imports, IMPORTS_LENGTH, EX_ALLOCATE_POOL2_INDEX);
+        pExAllocatePool2 impExAllocatePool2 =
+            (pExAllocatePool2)CryptDecryptImportsArrayEntry(
+                &driver_imports, IMPORTS_LENGTH, EX_ALLOCATE_POOL2_INDEX);
 
         return impExAllocatePool2(Flags, NumberOfBytes, Tag);
 }
@@ -1048,7 +1171,9 @@ ImpKeReleaseGuardedMutex(_In_ PKGUARDED_MUTEX GuardedMutex)
 {
         pKeReleaseGuardedMutex impKeReleaseGuardedMutex =
             (pKeReleaseGuardedMutex)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_RELEASE_GUARDED_MUTEX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_RELEASE_GUARDED_MUTEX_INDEX);
 
         impKeReleaseGuardedMutex(GuardedMutex);
 }
@@ -1058,7 +1183,9 @@ ImpKeAcquireGuardedMutex(_In_ PKGUARDED_MUTEX GuardedMutex)
 {
         pKeAcquireGuardedMutex impKeAcquireGuardedMutex =
             (pKeAcquireGuardedMutex)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, KE_ACQUIRE_GUARDED_MUTEX_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                KE_ACQUIRE_GUARDED_MUTEX_INDEX);
 
         impKeAcquireGuardedMutex(GuardedMutex);
 }
@@ -1084,7 +1211,9 @@ ImpRtlCompareUnicodeString(_In_ PCUNICODE_STRING String1,
 {
         pRtlCompareUnicodeString impRtlCompareUnicodeString =
             (pRtlCompareUnicodeString)CryptDecryptImportsArrayEntry(
-                &driver_imports, IMPORTS_LENGTH, RTL_COMPARE_UNICODE_STRING_INDEX);
+                &driver_imports,
+                IMPORTS_LENGTH,
+                RTL_COMPARE_UNICODE_STRING_INDEX);
 
         return impRtlCompareUnicodeString(String1, String2, CaseInSensitive);
 }

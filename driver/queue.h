@@ -6,8 +6,7 @@
 
 #define MAX_REPORTS_PER_IRP 20
 
-typedef struct QUEUE_HEAD
-{
+typedef struct QUEUE_HEAD {
         struct _QUEUE_NODE* start;
         struct _QUEUE_NODE* end;
         KGUARDED_MUTEX      lock;
@@ -23,29 +22,25 @@ typedef struct QUEUE_HEAD
  * can be pushed into the queue before the next iteration can take ownership
  * of the spinlock.
  */
-typedef struct _REPORT_QUEUE_HEAD
-{
+typedef struct _REPORT_QUEUE_HEAD {
         QUEUE_HEAD       head;
         volatile BOOLEAN is_driver_unloading;
         KGUARDED_MUTEX   lock;
 
 } REPORT_QUEUE_HEAD, *PREPORT_QUEUE_HEAD;
 
-typedef struct _QUEUE_NODE
-{
+typedef struct _QUEUE_NODE {
         struct _QUEUE_NODE* next;
         PVOID               data;
 
 } QUEUE_NODE, *PQUEUE_NODE;
 
-typedef struct _GLOBAL_REPORT_QUEUE_HEADER
-{
+typedef struct _GLOBAL_REPORT_QUEUE_HEADER {
         INT count;
 
 } GLOBAL_REPORT_QUEUE_HEADER, *PGLOBAL_REPORT_QUEUE_HEADER;
 
-typedef struct _REPORT_HEADER
-{
+typedef struct _REPORT_HEADER {
         INT report_id;
 
 } REPORT_HEADER, *PREPORT_HEADER;

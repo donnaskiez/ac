@@ -4,8 +4,7 @@
 
 /* for now, lets just xor the aes key with our cookie */
 
-typedef struct _SESSION_INITIATION_PACKET
-{
+typedef struct _SESSION_INITIATION_PACKET {
         UINT32 session_cookie;
         CHAR   session_aes_key[AES_128_KEY_SIZE];
         PVOID  protected_process_id;
@@ -54,7 +53,8 @@ SessionGetProcessId(_Out_ PLONG ProcessId)
 }
 
 VOID
-SessionGetCallbackConfiguration(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
+SessionGetCallbackConfiguration(
+    _Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
 {
         ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
         *CallbackConfiguration = &GetActiveSession()->callback_configuration;
@@ -91,13 +91,14 @@ SessionInitialise(_In_ PIRP Irp)
 
         status = ValidateIrpInputBuffer(Irp, sizeof(SESSION_INITIATION_PACKET));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x",
+                            status);
                 return status;
         }
 
-        information = (PSESSION_INITIATION_PACKET)Irp->AssociatedIrp.SystemBuffer;
+        information =
+            (PSESSION_INITIATION_PACKET)Irp->AssociatedIrp.SystemBuffer;
 
         ImpKeAcquireGuardedMutex(&session->lock);
 
@@ -106,8 +107,7 @@ SessionInitialise(_In_ PIRP Irp)
         /* What if we pass an invalid handle here? not good. */
         status = ImpPsLookupProcessByProcessId(session->um_handle, &process);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 status = STATUS_INVALID_PARAMETER;
                 goto end;
         }
@@ -116,7 +116,9 @@ SessionInitialise(_In_ PIRP Irp)
         session->process           = process;
         session->is_session_active = TRUE;
         session->session_cookie    = information->session_cookie;
-        RtlCopyMemory(session->session_aes_key, information->session_aes_key, AES_128_KEY_SIZE);
+        RtlCopyMemory(session->session_aes_key,
+                      information->session_aes_key,
+                      AES_128_KEY_SIZE);
 
 end:
         ImpKeReleaseGuardedMutex(&session->lock);
@@ -133,20 +135,21 @@ SessionTerminateProcess()
 
         SessionGetProcessId(&process_id);
 
-        if (!process_id)
-        {
-                DEBUG_ERROR("Failed to terminate process as process id is null");
+        if (!process_id) {
+                DEBUG_ERROR(
+                    "Failed to terminate process as process id is null");
                 return;
         }
 
-        /* Make sure we pass a km handle to ZwTerminateProcess and NOT a usermode handle. */
-        status = ZwTerminateProcess(process_id, STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
+        /* Make sure we pass a km handle to ZwTerminateProcess and NOT a
+         * usermode handle. */
+        status = ZwTerminateProcess(process_id,
+                                    STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 /*
-                 * We don't want to clear the process config if ZwTerminateProcess fails
-                 * so we can try again.
+                 * We don't want to clear the process config if
+                 * ZwTerminateProcess fails so we can try again.
                  */
                 DEBUG_ERROR("ZwTerminateProcess failed with status %x", status);
                 return;

@@ -21,7 +21,8 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject);
 
 _Function_class_(DRIVER_INITIALIZE) _IRQL_requires_same_
 NTSTATUS
-DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
+DriverEntry(_In_ PDRIVER_OBJECT  DriverObject,
+            _In_ PUNICODE_STRING RegistryPath);
 
 STATIC
 NTSTATUS
@@ -54,7 +55,8 @@ DrvLoadEnableNotifyRoutines();
 
 STATIC
 NTSTATUS
-DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath);
+DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
+                              _In_ PUNICODE_STRING RegistryPath);
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(INIT, DriverEntry)
@@ -73,8 +75,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 #        pragma alloc_text(PAGE, DrvLoadInitialiseDriverConfig)
 #endif
 
-typedef struct _DRIVER_CONFIG
-{
+typedef struct _DRIVER_CONFIG {
         volatile LONG          nmi_status;
         UNICODE_STRING         unicode_driver_name;
         ANSI_STRING            ansi_driver_name;
@@ -104,10 +105,11 @@ UNICODE_STRING g_DeviceName         = RTL_CONSTANT_STRING(L"\\Device\\DonnaAC");
 UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 
 /*
- * Rather then getting the driver state from the device object passed to our IOCTL handlers, store a
- * pointer to the device extension here and abstract it with getters which can be accessed globally.
- * The reason for this is because there isnt a way for us to pass a context structure to some of
- * notify routines so I think it's better to do it this way.
+ * Rather then getting the driver state from the device object passed to our
+ * IOCTL handlers, store a pointer to the device extension here and abstract it
+ * with getters which can be accessed globally. The reason for this is because
+ * there isnt a way for us to pass a context structure to some of notify
+ * routines so I think it's better to do it this way.
  *
  * Note that the device extension pointer should be encrypted
  */
@@ -130,9 +132,12 @@ UnsetNmiInProgressFlag()
 BOOLEAN
 IsNmiInProgress()
 {
-        /* if the initial value is true, we dont own the lock hence return false */
-        return InterlockedCompareExchange(&g_DriverConfig->nmi_status, TRUE, FALSE) == 0 ? FALSE
-                                                                                         : TRUE;
+        /* if the initial value is true, we dont own the lock hence return false
+         */
+        return InterlockedCompareExchange(
+                   &g_DriverConfig->nmi_status, TRUE, FALSE) == 0
+                   ? FALSE
+                   : TRUE;
 }
 
 PSHARED_MAPPING
@@ -263,8 +268,8 @@ GetProcessList()
 }
 
 /*
- * The question is, What happens if we attempt to register our callbacks after we
- * unregister them but before we free the pool? Hm.. No Good.
+ * The question is, What happens if we attempt to register our callbacks after
+ * we unregister them but before we free the pool? Hm.. No Good.
  *
  * Okay to solve this well acquire the driver lock aswell, we could also just
  * store the structure in the .data section but i ceebs atm.
@@ -286,10 +291,12 @@ DrvUnloadFreeConfigStrings()
         PAGED_CODE();
 
         if (g_DriverConfig->unicode_driver_name.Buffer)
-                ImpExFreePoolWithTag(g_DriverConfig->unicode_driver_name.Buffer, POOL_TAG_STRINGS);
+                ImpExFreePoolWithTag(g_DriverConfig->unicode_driver_name.Buffer,
+                                     POOL_TAG_STRINGS);
 
         if (g_DriverConfig->driver_path.Buffer)
-                ImpExFreePoolWithTag(g_DriverConfig->driver_path.Buffer, POOL_TAG_STRINGS);
+                ImpExFreePoolWithTag(g_DriverConfig->driver_path.Buffer,
+                                     POOL_TAG_STRINGS);
 
         if (g_DriverConfig->ansi_driver_name.Buffer)
                 ImpRtlFreeAnsiString(&g_DriverConfig->ansi_driver_name);
@@ -352,9 +359,10 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
         InterlockedExchange(&g_DriverConfig->unload_in_progress, TRUE);
 
         /*
-         * This blocks the thread dispatching the unload routine, which I don't think is ideal.
-         * This is the issue with using APCs, we have very little safe control over when they
-         * complete and thus when we can free them.. For now, thisl do.
+         * This blocks the thread dispatching the unload routine, which I don't
+         * think is ideal. This is the issue with using APCs, we have very
+         * little safe control over when they complete and thus when we can free
+         * them.. For now, thisl do.
          */
         while (DrvUnloadFreeAllApcContextStructures() == FALSE)
                 YieldProcessor();
@@ -390,26 +398,29 @@ DrvLoadEnableNotifyRoutines()
 
         status = PsSetLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("PsSetLoadImageNotifyRoutine failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("PsSetLoadImageNotifyRoutine failed with status %x",
+                            status);
                 return status;
         }
 
         status = ImpPsSetCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("PsSetCreateThreadNotifyRoutine failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "PsSetCreateThreadNotifyRoutine failed with status %x",
+                    status);
                 PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
                 return status;
         }
 
-        status = ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, FALSE);
+        status = ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine,
+                                                    FALSE);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("PsSetCreateProcessNotifyRoutine failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "PsSetCreateProcessNotifyRoutine failed with status %x",
+                    status);
                 ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
                 PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
                 return status;
@@ -429,20 +440,20 @@ DrvLoadSetupDriverLists()
 
         status = InitialiseDriverList();
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 UnregisterProcessCreateNotifyRoutine();
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
-                DEBUG_ERROR("InitialiseDriverList failed with status %x", status);
+                DEBUG_ERROR("InitialiseDriverList failed with status %x",
+                            status);
                 return status;
         }
 
         status = InitialiseThreadList();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitialiseThreadList failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("InitialiseThreadList failed with status %x",
+                            status);
                 UnregisterProcessCreateNotifyRoutine();
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
@@ -452,9 +463,9 @@ DrvLoadSetupDriverLists()
 
         status = InitialiseProcessList();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitialiseProcessList failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("InitialiseProcessList failed with status %x",
+                            status);
                 UnregisterProcessCreateNotifyRoutine();
                 UnregisterThreadCreateNotifyRoutine();
                 UnregisterImageLoadNotifyRoutine();
@@ -489,9 +500,10 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
 
         ImpRtlInitUnicodeString(&value_name, ValueName);
 
-        if (ImpRtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE)
-        {
-                temp_buffer = ImpExAllocatePool2(POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
+        if (ImpRtlCompareUnicodeString(&value_name, &image_path, FALSE) ==
+            FALSE) {
+                temp_buffer = ImpExAllocatePool2(
+                    POOL_FLAG_PAGED, ValueLength, POOL_TAG_STRINGS);
 
                 if (!temp_buffer)
                         return STATUS_MEMORY_NOT_ALLOCATED;
@@ -503,26 +515,28 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
                 g_DriverConfig->driver_path.MaximumLength = ValueLength;
         }
 
-        if (ImpRtlCompareUnicodeString(&value_name, &display_name, FALSE) == FALSE)
-        {
-                temp_buffer =
-                    ImpExAllocatePool2(POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
+        if (ImpRtlCompareUnicodeString(&value_name, &display_name, FALSE) ==
+            FALSE) {
+                temp_buffer = ImpExAllocatePool2(
+                    POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
 
                 if (!temp_buffer)
                         return STATUS_MEMORY_NOT_ALLOCATED;
 
                 /*
-                 * The registry path driver name does not contain the .sys extension which is
-                 * required for us since when we enumerate the system modules we are comparing the
-                 * entire path including the .sys extension. Hence we add it to the end of the
-                 * buffer here.
+                 * The registry path driver name does not contain the .sys
+                 * extension which is required for us since when we enumerate
+                 * the system modules we are comparing the entire path including
+                 * the .sys extension. Hence we add it to the end of the buffer
+                 * here.
                  */
                 RtlCopyMemory(temp_buffer, ValueData, ValueLength);
                 wcscpy((UINT64)temp_buffer + ValueLength - 2, L".sys");
 
-                g_DriverConfig->unicode_driver_name.Buffer        = (PWCH)temp_buffer;
-                g_DriverConfig->unicode_driver_name.Length        = ValueLength + 20;
-                g_DriverConfig->unicode_driver_name.MaximumLength = ValueLength + 20;
+                g_DriverConfig->unicode_driver_name.Buffer = (PWCH)temp_buffer;
+                g_DriverConfig->unicode_driver_name.Length = ValueLength + 20;
+                g_DriverConfig->unicode_driver_name.MaximumLength =
+                    ValueLength + 20;
         }
 
         return STATUS_SUCCESS;
@@ -551,33 +565,33 @@ GetSystemProcessorType()
 
         __cpuid(cpuid, 0);
 
-        DEBUG_VERBOSE("Cpuid: EBX: %lx, ECX: %lx, EDX: %lx", cpuid[1], cpuid[2], cpuid[3]);
+        DEBUG_VERBOSE("Cpuid: EBX: %lx, ECX: %lx, EDX: %lx",
+                      cpuid[1],
+                      cpuid[2],
+                      cpuid[3]);
 
         if (cpuid[EBX_REGISTER] == CPUID_AUTHENTIC_AMD_EBX &&
             cpuid[ECX_REGISTER] == CPUID_AUTHENTIC_AMD_ECX &&
-            cpuid[EDX_REGISTER] == CPUID_AUTHENTIC_AMD_EDX)
-        {
+            cpuid[EDX_REGISTER] == CPUID_AUTHENTIC_AMD_EDX) {
                 g_DriverConfig->system_information.processor = GenuineIntel;
                 return STATUS_SUCCESS;
         }
         else if (cpuid[EBX_REGISTER] == CPUID_GENUINE_INTEL_EBX &&
                  cpuid[ECX_REGISTER] == CPUID_GENUINE_INTEL_ECX &&
-                 cpuid[EDX_REGISTER] == CPUID_GENUINE_INTEL_EDX)
-        {
+                 cpuid[EDX_REGISTER] == CPUID_GENUINE_INTEL_EDX) {
                 g_DriverConfig->system_information.processor = AuthenticAmd;
                 return STATUS_SUCCESS;
         }
-        else
-        {
+        else {
                 g_DriverConfig->system_information.processor = Unknown;
                 return STATUS_UNSUCCESSFUL;
         }
 }
 
 /*
- * Even though we are technically not meant to be operating when running under a virtualized system,
- * it is still useful to test the attainment of system information under a virtualized system for
- * testing purposes.
+ * Even though we are technically not meant to be operating when running under a
+ * virtualized system, it is still useful to test the attainment of system
+ * information under a virtualized system for testing purposes.
  */
 STATIC
 NTSTATUS
@@ -590,49 +604,49 @@ ParseSmbiosForGivenSystemEnvironment()
                                   SmbiosInformation,
                                   SMBIOS_VENDOR_STRING_SUB_INDEX);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("ParseSMBIOSTable failed with status %x", status);
                 return status;
         }
 
         if (strstr(&g_DriverConfig->system_information.vendor, "VMware, Inc"))
                 g_DriverConfig->system_information.environment = Vmware;
-        else if (strstr(&g_DriverConfig->system_information.vendor, "innotek GmbH"))
+        else if (strstr(&g_DriverConfig->system_information.vendor,
+                        "innotek GmbH"))
                 g_DriverConfig->system_information.environment = VirtualBox;
         else
                 g_DriverConfig->system_information.environment = NativeWindows;
 
-        switch (g_DriverConfig->system_information.environment)
-        {
-        case NativeWindows:
-        {
+        switch (g_DriverConfig->system_information.environment) {
+        case NativeWindows: {
                 /*
-                 * TODO: double check that amd indexes are the same should be, but should check just
-                 * in case
+                 * TODO: double check that amd indexes are the same should be,
+                 * but should check just in case
                  */
-                status = ParseSMBIOSTable(&g_DriverConfig->system_information.motherboard_serial,
-                                          MOTHERBOARD_SERIAL_CODE_LENGTH,
-                                          VendorSpecificInformation,
-                                          SMBIOS_NATIVE_SERIAL_NUMBER_SUB_INDEX);
+                status = ParseSMBIOSTable(
+                    &g_DriverConfig->system_information.motherboard_serial,
+                    MOTHERBOARD_SERIAL_CODE_LENGTH,
+                    VendorSpecificInformation,
+                    SMBIOS_NATIVE_SERIAL_NUMBER_SUB_INDEX);
 
                 break;
         }
-        case Vmware:
-        {
-                status = ParseSMBIOSTable(&g_DriverConfig->system_information.motherboard_serial,
-                                          MOTHERBOARD_SERIAL_CODE_LENGTH,
-                                          SystemInformation,
-                                          SMBIOS_VMWARE_SERIAL_NUMBER_SUB_INDEX);
+        case Vmware: {
+                status = ParseSMBIOSTable(
+                    &g_DriverConfig->system_information.motherboard_serial,
+                    MOTHERBOARD_SERIAL_CODE_LENGTH,
+                    SystemInformation,
+                    SMBIOS_VMWARE_SERIAL_NUMBER_SUB_INDEX);
 
                 break;
         }
         case VirtualBox:
-        default: DEBUG_WARNING("Environment type not supported."); return STATUS_NOT_SUPPORTED;
+        default:
+                DEBUG_WARNING("Environment type not supported.");
+                return STATUS_NOT_SUPPORTED;
         }
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("ParseSMBIOSTable 2 failed with status %x", status);
                 return status;
         }
@@ -650,51 +664,59 @@ DrvLoadGatherSystemEnvironmentSettings()
          * On Vmware, the APERF_MSR is not emulated hence this will return TRUE.
          */
         if (APERFMsrTimingCheck())
-                g_DriverConfig->system_information.virtualised_environment = TRUE;
+                g_DriverConfig->system_information.virtualised_environment =
+                    TRUE;
 
-        status = GetOsVersionInformation(&g_DriverConfig->system_information.os_information);
+        status = GetOsVersionInformation(
+            &g_DriverConfig->system_information.os_information);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetOsVersionInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetOsVersionInformation failed with status %x",
+                            status);
                 return status;
         }
 
         status = GetSystemProcessorType();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemProcessorType failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemProcessorType failed with status %x",
+                            status);
                 return status;
         }
 
         status = ParseSmbiosForGivenSystemEnvironment();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ParseSmbiosForGivenSystemEnvironment failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "ParseSmbiosForGivenSystemEnvironment failed with status %x",
+                    status);
                 return status;
         }
 
-        status =
-            GetHardDiskDriveSerialNumber(&g_DriverConfig->system_information.drive_0_serial,
-                                         sizeof(g_DriverConfig->system_information.drive_0_serial));
+        status = GetHardDiskDriveSerialNumber(
+            &g_DriverConfig->system_information.drive_0_serial,
+            sizeof(g_DriverConfig->system_information.drive_0_serial));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetHardDiskDriverSerialNumber failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "GetHardDiskDriverSerialNumber failed with status %x",
+                    status);
                 return status;
         }
 
-        DEBUG_VERBOSE("OS Major Version: %lx, Minor Version: %lx, Build Number: %lx",
-                      g_DriverConfig->system_information.os_information.dwMajorVersion,
-                      g_DriverConfig->system_information.os_information.dwMinorVersion,
-                      g_DriverConfig->system_information.os_information.dwBuildNumber);
-        DEBUG_VERBOSE("Environment type: %lx", g_DriverConfig->system_information.environment);
-        DEBUG_VERBOSE("Processor type: %lx", g_DriverConfig->system_information.processor);
+        DEBUG_VERBOSE(
+            "OS Major Version: %lx, Minor Version: %lx, Build Number: %lx",
+            g_DriverConfig->system_information.os_information.dwMajorVersion,
+            g_DriverConfig->system_information.os_information.dwMinorVersion,
+            g_DriverConfig->system_information.os_information.dwBuildNumber);
+        DEBUG_VERBOSE("Environment type: %lx",
+                      g_DriverConfig->system_information.environment);
+        DEBUG_VERBOSE("Processor type: %lx",
+                      g_DriverConfig->system_information.processor);
         DEBUG_VERBOSE("Motherboard serial: %s",
                       g_DriverConfig->system_information.motherboard_serial);
-        DEBUG_VERBOSE("Drive 0 serial: %s", g_DriverConfig->system_information.drive_0_serial);
+        DEBUG_VERBOSE("Drive 0 serial: %s",
+                      g_DriverConfig->system_information.drive_0_serial);
 
         return status;
 }
@@ -722,33 +744,42 @@ DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
         query_table[1].EntryContext  = NULL;
         query_table[1].QueryRoutine  = RegistryPathQueryCallbackRoutine;
 
-        status = RtlxQueryRegistryValues(
-            RTL_REGISTRY_ABSOLUTE, RegistryPath->Buffer, &query_table, NULL, NULL);
+        status = RtlxQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
+                                         RegistryPath->Buffer,
+                                         &query_table,
+                                         NULL,
+                                         NULL);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x",
+                            status);
                 return status;
         }
 
         /*
-         * The registry path contains the name of the driver i.e Driver, but does not contain the
-         * .sys extension. Lets add it to our stored driver name since we need the .sys extension
-         * when querying the system modules for our driver.
+         * The registry path contains the name of the driver i.e Driver, but
+         * does not contain the .sys extension. Lets add it to our stored driver
+         * name since we need the .sys extension when querying the system
+         * modules for our driver.
          */
 
         status = ImpRtlUnicodeStringToAnsiString(
-            &g_DriverConfig->ansi_driver_name, &g_DriverConfig->unicode_driver_name, TRUE);
+            &g_DriverConfig->ansi_driver_name,
+            &g_DriverConfig->unicode_driver_name,
+            TRUE);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x", status);
+                DEBUG_ERROR(
+                    "RtlUnicodeStringToAnsiString failed with status %x",
+                    status);
 
         return status;
 }
 
 STATIC
 NTSTATUS
-DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
+DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
+                              _In_ PUNICODE_STRING RegistryPath)
 {
         PAGED_CODE();
         DEBUG_VERBOSE("Initialising driver configuration");
@@ -766,38 +797,41 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_ST
 
         status = DrvLoadRetrieveDriverNameFromRegistry(RegistryPath);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("DrvLoadRetrieveDriverNameFromRegistry failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "DrvLoadRetrieveDriverNameFromRegistry failed with status %x",
+                    status);
                 return status;
         }
 
-        /* when this function failed, we bugcheck in freeconfigstrings todo: fix */
+        /* when this function failed, we bugcheck in freeconfigstrings todo: fix
+         */
         status = DrvLoadGatherSystemEnvironmentSettings();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GatherSystemEnvironmentSettings failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "GatherSystemEnvironmentSettings failed with status %x",
+                    status);
                 return status;
         }
 
         status = InitialiseTimerObject(&g_DriverConfig->timer);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitialiseTimerObject failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("InitialiseTimerObject failed with status %x",
+                            status);
                 return status;
         }
 
         status = IrpQueueInitialise();
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("IrpQueueInitialise failed with status %x", status);
                 return status;
         }
 
-        DEBUG_VERBOSE("driver name: %s", g_DriverConfig->ansi_driver_name.Buffer);
+        DEBUG_VERBOSE("driver name: %s",
+                      g_DriverConfig->ansi_driver_name.Buffer);
         return status;
 }
 
@@ -827,13 +861,12 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                                    FALSE,
                                    &DriverObject->DeviceObject);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("IoCreateDevice failed with status %x", status);
                 return status;
         }
 
-        g_DriverConfig                       = DriverObject->DeviceObject->DeviceExtension;
+        g_DriverConfig = DriverObject->DeviceObject->DeviceExtension;
         g_DriverConfig->device_object        = DriverObject->DeviceObject;
         g_DriverConfig->driver_object        = DriverObject;
         g_DriverConfig->device_name          = &g_DeviceName;
@@ -841,9 +874,10 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         status = DrvLoadInitialiseDriverConfig(DriverObject, RegistryPath);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "InitialiseDriverConfigOnDriverEntry failed with status %x",
+                    status);
                 DrvUnloadFreeConfigStrings();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
                 return status;
@@ -851,12 +885,12 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         SessionInitialiseStructure();
 
-        status =
-            IoCreateSymbolicLink(g_DriverConfig->device_symbolic_link, g_DriverConfig->device_name);
+        status = IoCreateSymbolicLink(g_DriverConfig->device_symbolic_link,
+                                      g_DriverConfig->device_name);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("IoCreateSymbolicLink failed with status %x",
+                            status);
                 DrvUnloadFreeConfigStrings();
                 DrvUnloadFreeTimerObject();
                 ImpIoDeleteDevice(DriverObject->DeviceObject);
@@ -865,9 +899,9 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         status = DrvLoadEnableNotifyRoutines();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("EnablenotifyRoutines failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("EnablenotifyRoutines failed with status %x",
+                            status);
                 DrvUnloadFreeConfigStrings();
                 DrvUnloadFreeTimerObject();
                 DrvUnloadDeleteSymbolicLink();
@@ -877,9 +911,9 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
         status = DrvLoadSetupDriverLists();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x",
+                            status);
                 DrvUnloadFreeConfigStrings();
                 DrvUnloadFreeTimerObject();
                 DrvUnloadDeleteSymbolicLink();
@@ -887,7 +921,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
                 return status;
         }
 
-        g_DriverConfig->has_driver_loaded    = TRUE;
+        g_DriverConfig->has_driver_loaded = TRUE;
 
         DEBUG_INFO("Driver Entry Complete.");
         return STATUS_SUCCESS;

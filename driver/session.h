@@ -21,7 +21,8 @@ VOID
 SessionGetProcessId(_Out_ PLONG ProcessId);
 
 VOID
-SessionGetCallbackConfiguration(_Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration);
+SessionGetCallbackConfiguration(
+    _Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration);
 
 VOID
 SessionTerminate();

@@ -16,7 +16,8 @@ QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
 {
         ImpKeAcquireGuardedMutex(&Head->lock);
 
-        PQUEUE_NODE temp = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
+        PQUEUE_NODE temp = ExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
 
         if (!temp)
                 goto end;

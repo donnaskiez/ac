@@ -1,5 +1,4 @@
-﻿Language: Cpp
-BasedOnStyle: webkit
+﻿BasedOnStyle: webkit
 AccessModifierOffset: -4
 
 AlignAfterOpenBracket: Align
@@ -14,7 +13,6 @@ AlignOperands: true
 AlignTrailingComments: true
 
 AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
 
 AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
@@ -29,10 +27,9 @@ AlwaysBreakTemplateDeclarations: true #false
 BinPackArguments: false
 BinPackParameters: false
 
-ExperimentalAutoDetectBinPacking: false
 AllowAllParametersOfDeclarationOnNextLine: true
 
-BreakBeforeBraces: Custom
+BreakBeforeBraces: Stroustrup
 BraceWrapping:
     AfterCaseLabel: true
     AfterClass: true
@@ -51,7 +48,7 @@ BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: AfterColon
 BreakStringLiterals: false
 
-ColumnLimit: 100
+ColumnLimit: 80
 CommentPragmas: '^begin_wpp|^end_wpp|^FUNC |^USESUFFIX |^USESUFFIX '
 
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
@@ -80,7 +77,6 @@ SortIncludes: false
 
 SpaceAfterCStyleCast: false
 SpaceBeforeAssignmentOperators: true
-SpaceBeforeCtorInitializerColon: true
 SpaceBeforeCtorInitializerColon: true
 SpaceBeforeParens: ControlStatements
 SpaceBeforeRangeBasedForLoopColon: true
@@ -127,5 +123,5 @@ StatementMacros: [
     '__drv_freesMem',
     ]
     
-TabWidth: '8'
+TabWidth: '4'
 UseTab: Never

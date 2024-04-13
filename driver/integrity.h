@@ -5,15 +5,14 @@
 
 #include "common.h"
 
-typedef struct _MODULE_DISPATCHER_HEADER
-{
-        volatile UINT32 validated; // if this is > 0, a thread is already using it
-        UINT8           result;
+typedef struct _MODULE_DISPATCHER_HEADER {
+        volatile UINT32
+              validated; // if this is > 0, a thread is already using it
+        UINT8 result;
 
 } MODULE_DISPATCHER_HEADER, *PMODULE_DISPATCHER_HEADER;
 
-typedef struct _SYSTEM_MODULE_INFORMATION
-{
+typedef struct _SYSTEM_MODULE_INFORMATION {
         MODULE_DISPATCHER_HEADER dispatcher_header;
         RTL_MODULE_EXTENDED_INFO module_information;
 
@@ -21,8 +20,7 @@ typedef struct _SYSTEM_MODULE_INFORMATION
 
 #define VERIFICATION_THREAD_COUNT 4
 
-typedef struct _SYS_MODULE_VAL_CONTEXT
-{
+typedef struct _SYS_MODULE_VAL_CONTEXT {
         /* Stores the number of actively executing worker threads */
         volatile LONG active_thread_count;
 
@@ -47,13 +45,13 @@ typedef struct _SYS_MODULE_VAL_CONTEXT
         /* pointer to the array of dispatcher info used to synchonize threads */
         PMODULE_DISPATCHER_HEADER dispatcher_info;
 
-        /* array of pointers to work items, used to free work items when complete */
+        /* array of pointers to work items, used to free work items when
+         * complete */
         PIO_WORKITEM work_items[VERIFICATION_THREAD_COUNT];
 
 } SYS_MODULE_VAL_CONTEXT, *PSYS_MODULE_VAL_CONTEXT;
 
-typedef enum _SMBIOS_TABLE_INDEX
-{
+typedef enum _SMBIOS_TABLE_INDEX {
         SmbiosInformation = 0,
         SystemInformation,
         VendorSpecificInformation,
@@ -75,7 +73,8 @@ NTSTATUS
 ValidateProcessLoadedModule(_Inout_ PIRP Irp);
 
 NTSTATUS
-GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T ConfigDrive0MaxSize);
+GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
+                             _In_ SIZE_T   ConfigDrive0MaxSize);
 
 NTSTATUS
 ParseSMBIOSTable(_Out_ PVOID Buffer,

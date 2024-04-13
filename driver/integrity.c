@@ -12,23 +12,20 @@
 #include <initguid.h>
 #include <devpkey.h>
 
-typedef struct _INTEGRITY_CHECK_HEADER
-{
+typedef struct _INTEGRITY_CHECK_HEADER {
         INT  executable_section_count;
         LONG total_packet_size;
 
 } INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
 
-typedef struct _PROCESS_MODULE_INFORMATION
-{
+typedef struct _PROCESS_MODULE_INFORMATION {
         PVOID  module_base;
         SIZE_T module_size;
         WCHAR  module_path[MAX_MODULE_PATH];
 
 } PROCESS_MODULE_INFORMATION, *PPROCESS_MODULE_INFORMATION;
 
-typedef struct _PROCESS_MODULE_VALIDATION_RESULT
-{
+typedef struct _PROCESS_MODULE_VALIDATION_RESULT {
         INT is_module_valid;
 
 } PROCESS_MODULE_VALIDATION_RESULT, *PPROCESS_MODULE_VALIDATION_RESULT;
@@ -39,28 +36,33 @@ InitiateEptFunctionAddressArrays();
 
 STATIC
 NTSTATUS
-GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCSTR ModuleName);
+GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
+                           _In_ LPCSTR                     ModuleName);
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
-                                     _In_ PVOID                                       ModuleBase,
-                                     _In_ SIZE_T                                      ModuleSize,
-                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten,
-                                     _In_ BOOLEAN                          IsModulex86);
+StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten)
+                                         PVOID*   Buffer,
+                                     _In_ PVOID   ModuleBase,
+                                     _In_ SIZE_T  ModuleSize,
+                                     _Out_        _Deref_out_range_(>, 0)
+                                         PSIZE_T  BytesWritten,
+                                     _In_ BOOLEAN IsModulex86);
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          SectionHandle,
-                                    _Outptr_result_bytebuffer_(*Size) PVOID* Section,
-                                    _In_ PUNICODE_STRING                     Path,
+MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle,
+                                    _Outptr_result_bytebuffer_(*Size)
+                                        PVOID*           Section,
+                                    _In_ PUNICODE_STRING Path,
                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T Size);
 
 STATIC
 NTSTATUS
-ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
-                    _In_ ULONG                                         BufferSize,
-                    _Outptr_result_bytebuffer_(*HashResultSize) PVOID* HashResult,
+ComputeHashOfBuffer(_In_ PVOID Buffer,
+                    _In_ ULONG BufferSize,
+                    _Outptr_result_bytebuffer_(*HashResultSize)
+                        PVOID* HashResult,
                     _Out_ _Deref_out_range_(>, 0) PULONG HashResultSize);
 
 STATIC
@@ -76,7 +78,8 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
 
 STATIC
 NTSTATUS
-GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime);
+GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
+                            _Out_ PUINT64 AverageTime);
 
 #ifdef ALLOC_PRAGMA
 #        pragma alloc_text(PAGE, GetDriverImageSize)
@@ -98,8 +101,9 @@ GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime
 #endif
 
 /*
- * note: this can be put into its own function wihtout an IRP as argument then it can be used
- * in both the get driver image ioctl handler and the CopyDriverExecvutableRegions func
+ * note: this can be put into its own function wihtout an IRP as argument then
+ * it can be used in both the get driver image ioctl handler and the
+ * CopyDriverExecvutableRegions func
  */
 NTSTATUS
 GetDriverImageSize(_Inout_ PIRP Irp)
@@ -113,31 +117,33 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 
         status = GetSystemModuleInformation(&modules);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x",
+                            status);
                 return status;
         }
 
         driver_info = FindSystemModuleByName(driver_name, &modules);
 
-        if (!driver_info)
-        {
-                DEBUG_ERROR("FindSystemModuleByName failed with no status code");
+        if (!driver_info) {
+                DEBUG_ERROR(
+                    "FindSystemModuleByName failed with no status code");
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_NOT_FOUND;
         }
 
         status = ValidateIrpOutputBuffer(Irp, sizeof(ULONG));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
+                            status);
                 goto end;
         }
 
         Irp->IoStatus.Information = sizeof(ULONG);
-        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, &driver_info->ImageSize, sizeof(ULONG));
+        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
+                      &driver_info->ImageSize,
+                      sizeof(ULONG));
 
 end:
 
@@ -149,7 +155,8 @@ end:
 
 STATIC
 NTSTATUS
-GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCSTR ModuleName)
+GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
+                           _In_ LPCSTR                     ModuleName)
 {
         PAGED_CODE();
 
@@ -160,16 +167,15 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
 
         status = GetSystemModuleInformation(&modules);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x",
+                            status);
                 return status;
         }
 
         driver_info = FindSystemModuleByName(driver_name, &modules);
 
-        if (!driver_info)
-        {
+        if (!driver_info) {
                 DEBUG_ERROR("FindSystemModuleByName failed with no status");
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_NOT_FOUND;
@@ -179,8 +185,9 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
         ModuleInfo->ImageBase      = driver_info->ImageBase;
         ModuleInfo->ImageSize      = driver_info->ImageSize;
 
-        RtlCopyMemory(
-            ModuleInfo->FullPathName, driver_info->FullPathName, sizeof(ModuleInfo->FullPathName));
+        RtlCopyMemory(ModuleInfo->FullPathName,
+                      driver_info->FullPathName,
+                      sizeof(ModuleInfo->FullPathName));
 
         if (modules.address)
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -192,11 +199,13 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCS
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) PVOID* Buffer,
-                                     _In_ PVOID                                       ModuleBase,
-                                     _In_ SIZE_T                                      ModuleSize,
-                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T BytesWritten,
-                                     _In_ BOOLEAN                          IsModulex86)
+StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten)
+                                         PVOID*   Buffer,
+                                     _In_ PVOID   ModuleBase,
+                                     _In_ SIZE_T  ModuleSize,
+                                     _Out_        _Deref_out_range_(>, 0)
+                                         PSIZE_T  BytesWritten,
+                                     _In_ BOOLEAN IsModulex86)
 {
         PAGED_CODE();
 
@@ -216,90 +225,100 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
                 return STATUS_INVALID_PARAMETER;
 
         /*
-         * The reason we allocate a buffer to temporarily hold the section data is that
-         * we don't know the total size until after we iterate over the sections meaning
-         * we cant set Irp->IoStatus.Information to the size of our reponse until we
-         * enumerate and count all executable sections for the file.
+         * The reason we allocate a buffer to temporarily hold the section data
+         * is that we don't know the total size until after we iterate over the
+         * sections meaning we cant set Irp->IoStatus.Information to the size of
+         * our reponse until we enumerate and count all executable sections for
+         * the file.
          */
         buffer_size = ModuleSize + sizeof(INTEGRITY_CHECK_HEADER);
 
         *BytesWritten = 0;
-        *Buffer       = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_INTEGRITY);
+        *Buffer       = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_INTEGRITY);
 
         if (*Buffer == NULL)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
         /*
-         * Note: Verifier doesn't like it when we map the module so rather then mapping it to our
-         * address space we will simply use MmCopyMemory on the module to avoid upsetting verifier
+         * Note: Verifier doesn't like it when we map the module so rather then
+         * mapping it to our address space we will simply use MmCopyMemory on
+         * the module to avoid upsetting verifier
          * :)
          */
         dos_header = (PIMAGE_DOS_HEADER)ModuleBase;
 
-        if (!MmIsAddressValid(dos_header) && !IsModulex86)
-        {
+        if (!MmIsAddressValid(dos_header) && !IsModulex86) {
                 ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
                 *Buffer = NULL;
                 return STATUS_INVALID_ADDRESS;
         }
 
         /*
-         * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the IMAGE_NT_HEADER from the base
-         * of the image.
+         * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
+         * IMAGE_NT_HEADER from the base of the image.
          */
-        nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase + dos_header->e_lfanew);
+        nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase +
+                                                  dos_header->e_lfanew);
 
         num_sections = nt_header->FileHeader.NumberOfSections;
 
         /*
-         * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns the address of
-         * the first section of the PE file.
+         * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns
+         * the address of the first section of the PE file.
          */
         section     = IMAGE_FIRST_SECTION(nt_header);
         buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
 
-        for (ULONG index = 0; index < num_sections - 1; index++)
-        {
-                /* create a function for this instead, check for writeable sections use !*/
-                if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE)
-                {
+        for (ULONG index = 0; index < num_sections - 1; index++) {
+                /* create a function for this instead, check for writeable
+                 * sections use !*/
+                if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) {
                         /*
                          * Note: MmCopyMemory will fail on discardable sections.
                          */
                         address.VirtualAddress = section;
 
-                        status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size,
+                        status = ImpMmCopyMemory((UINT64)buffer_base +
+                                                     total_packet_size,
                                                  address,
                                                  sizeof(IMAGE_SECTION_HEADER),
                                                  MM_COPY_MEMORY_VIRTUAL,
                                                  &bytes_returned);
 
-                        if (!NT_SUCCESS(status))
-                        {
-                                DEBUG_ERROR("MmCopyMemory failed with status %x", status);
-                                ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+                        if (!NT_SUCCESS(status)) {
+                                DEBUG_ERROR(
+                                    "MmCopyMemory failed with status %x",
+                                    status);
+                                ImpExFreePoolWithTag(*Buffer,
+                                                     POOL_TAG_INTEGRITY);
                                 *Buffer = NULL;
                                 return status;
                         }
 
-                        address.VirtualAddress = (UINT64)ModuleBase + section->PointerToRawData;
+                        address.VirtualAddress =
+                            (UINT64)ModuleBase + section->PointerToRawData;
 
-                        status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size +
-                                                     sizeof(IMAGE_SECTION_HEADER),
-                                                 address,
-                                                 section->SizeOfRawData,
-                                                 MM_COPY_MEMORY_VIRTUAL,
-                                                 &bytes_returned);
+                        status = ImpMmCopyMemory(
+                            (UINT64)buffer_base + total_packet_size +
+                                sizeof(IMAGE_SECTION_HEADER),
+                            address,
+                            section->SizeOfRawData,
+                            MM_COPY_MEMORY_VIRTUAL,
+                            &bytes_returned);
 
-                        if (!NT_SUCCESS(status))
-                        {
-                                DEBUG_ERROR("MmCopyMemory failed with status %x", status);
-                                ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+                        if (!NT_SUCCESS(status)) {
+                                DEBUG_ERROR(
+                                    "MmCopyMemory failed with status %x",
+                                    status);
+                                ImpExFreePoolWithTag(*Buffer,
+                                                     POOL_TAG_INTEGRITY);
                                 *Buffer = NULL;
                                 return status;
                         }
 
-                        total_packet_size += section->SizeOfRawData + sizeof(IMAGE_SECTION_HEADER);
+                        total_packet_size += section->SizeOfRawData +
+                                             sizeof(IMAGE_SECTION_HEADER);
                         num_executable_sections += 1;
                 }
 
@@ -308,7 +327,8 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
 
         INTEGRITY_CHECK_HEADER header   = {0};
         header.executable_section_count = num_executable_sections;
-        header.total_packet_size        = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
+        header.total_packet_size =
+            total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
         RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
 
         *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
@@ -317,9 +337,10 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten) P
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          SectionHandle,
-                                    _Outptr_result_bytebuffer_(*Size) PVOID* Section,
-                                    _In_ PUNICODE_STRING                     Path,
+MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle,
+                                    _Outptr_result_bytebuffer_(*Size)
+                                        PVOID*           Section,
+                                    _In_ PUNICODE_STRING Path,
                                     _Out_ _Deref_out_range_(>, 0) PSIZE_T Size)
 {
         PAGED_CODE();
@@ -335,13 +356,17 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
 
         ImpRtlInitUnicodeString(&path, Path->Buffer);
 
-        InitializeObjectAttributes(&object_attributes, &path, OBJ_KERNEL_HANDLE, NULL, NULL);
+        InitializeObjectAttributes(
+            &object_attributes, &path, OBJ_KERNEL_HANDLE, NULL, NULL);
 
-        status =
-            ImpZwOpenFile(&file_handle, GENERIC_READ, &object_attributes, &pio_block, NULL, NULL);
+        status = ImpZwOpenFile(&file_handle,
+                               GENERIC_READ,
+                               &object_attributes,
+                               &pio_block,
+                               NULL,
+                               NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("ZwOpenFile failed with status %x", status);
                 return status;
         }
@@ -360,24 +385,24 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
                                     SEC_IMAGE,
                                     file_handle);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("ZwCreateSection failed with status %x", status);
                 ImpZwClose(file_handle);
                 *SectionHandle = NULL;
                 return status;
         }
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x",
+                            status);
                 return status;
         }
         /*
-         * Mapping a section with the flag SEC_IMAGE (see function above) tells the os we
-         * are mapping an executable image. This then allows the OS to take care of parsing
-         * the PE header and dealing with all relocations for us, meaning the mapped image
-         * will be identical to the in memory image.
+         * Mapping a section with the flag SEC_IMAGE (see function above) tells
+         * the os we are mapping an executable image. This then allows the OS to
+         * take care of parsing the PE header and dealing with all relocations
+         * for us, meaning the mapped image will be identical to the in memory
+         * image.
          */
         status = ImpZwMapViewOfSection(*SectionHandle,
                                        ZwCurrentProcess(),
@@ -390,9 +415,9 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
                                        MEM_TOP_DOWN,
                                        PAGE_READONLY);
 
-        if (!NT_SUCCESS(status))
-        {
-                /* caller is responsible for closing handle on success, therefore null it */
+        if (!NT_SUCCESS(status)) {
+                /* caller is responsible for closing handle on success,
+                 * therefore null it */
                 DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
                 ImpZwClose(file_handle);
                 ImpZwClose(*SectionHandle);
@@ -406,9 +431,10 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE                          Sec
 
 STATIC
 NTSTATUS
-ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
-                    _In_ ULONG                                         BufferSize,
-                    _Outptr_result_bytebuffer_(*HashResultSize) PVOID* HashResult,
+ComputeHashOfBuffer(_In_ PVOID Buffer,
+                    _In_ ULONG BufferSize,
+                    _Outptr_result_bytebuffer_(*HashResultSize)
+                        PVOID* HashResult,
                     _Out_ _Deref_out_range_(>, 0) PULONG HashResultSize)
 {
         PAGED_CODE();
@@ -428,16 +454,16 @@ ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
         status = BCryptOpenAlgorithmProvider(
             &algo_handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("BCryptOpenAlogrithmProvider failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("BCryptOpenAlogrithmProvider failed with status %x",
+                            status);
                 goto end;
         }
 
         /*
-         * Request the size of the hash object buffer, this is different then the buffer that
-         * will store the resulting hash, instead this will be used to store the hash object
-         * used to create the hash.
+         * Request the size of the hash object buffer, this is different then
+         * the buffer that will store the resulting hash, instead this will be
+         * used to store the hash object used to create the hash.
          */
         status = BCryptGetProperty(algo_handle,
                                    BCRYPT_OBJECT_LENGTH,
@@ -446,23 +472,22 @@ ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
                                    &bytes_copied,
                                    NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
                 goto end;
         }
 
-        hash_object = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, hash_object_size, POOL_TAG_INTEGRITY);
+        hash_object = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, hash_object_size, POOL_TAG_INTEGRITY);
 
-        if (!hash_object)
-        {
+        if (!hash_object) {
                 status = STATUS_MEMORY_NOT_ALLOCATED;
                 goto end;
         }
 
         /*
-         * This call gets the size of the resulting hash, which we will use to allocate the
-         * resulting hash buffer.
+         * This call gets the size of the resulting hash, which we will use to
+         * allocate the resulting hash buffer.
          */
         status = BCryptGetProperty(algo_handle,
                                    BCRYPT_HASH_LENGTH,
@@ -471,53 +496,56 @@ ComputeHashOfBuffer(_In_ PVOID                                         Buffer,
                                    &bytes_copied,
                                    NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
                 goto end;
         }
 
-        resulting_hash =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, resulting_hash_size, POOL_TAG_INTEGRITY);
+        resulting_hash = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, resulting_hash_size, POOL_TAG_INTEGRITY);
 
-        if (!resulting_hash)
-        {
+        if (!resulting_hash) {
                 status = STATUS_MEMORY_NOT_ALLOCATED;
                 goto end;
         }
 
         /*
-         * Here we create our hash object and store it in the hash_object buffer.
+         * Here we create our hash object and store it in the hash_object
+         * buffer.
          */
-        status = BCryptCreateHash(
-            algo_handle, &hash_handle, hash_object, hash_object_size, NULL, NULL, NULL);
+        status = BCryptCreateHash(algo_handle,
+                                  &hash_handle,
+                                  hash_object,
+                                  hash_object_size,
+                                  NULL,
+                                  NULL,
+                                  NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("BCryptCreateHash failed with status %x", status);
                 goto end;
         }
 
         /*
-         * This function hashes the buffer, but does NOT store it in our resulting buffer yet,
-         * we need to call BCryptFinishHash to retrieve the final hash.
+         * This function hashes the buffer, but does NOT store it in our
+         * resulting buffer yet, we need to call BCryptFinishHash to retrieve
+         * the final hash.
          */
         status = BCryptHashData(hash_handle, Buffer, BufferSize, NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("BCryptHashData failed with status %x", status);
                 goto end;
         }
 
         /*
-         * As said in the previous comment, this is where we retrieve the final hash and store
-         * it in our output buffer.
+         * As said in the previous comment, this is where we retrieve the final
+         * hash and store it in our output buffer.
          */
-        status = BCryptFinishHash(hash_handle, resulting_hash, resulting_hash_size, NULL);
+        status = BCryptFinishHash(
+            hash_handle, resulting_hash, resulting_hash_size, NULL);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("BCryptFinishHash failed with status %x", status);
                 goto end;
         }
@@ -552,26 +580,30 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 
         status = GetModuleInformationByName(&module_info, driver_name);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetModuleInformationByName failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetModuleInformationByName failed with status %x",
+                            status);
                 return status;
         }
 
-        status = StoreModuleExecutableRegionsInBuffer(
-            &buffer, module_info.ImageBase, module_info.ImageSize, &bytes_written, FALSE);
+        status = StoreModuleExecutableRegionsInBuffer(&buffer,
+                                                      module_info.ImageBase,
+                                                      module_info.ImageSize,
+                                                      &bytes_written,
+                                                      FALSE);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffe failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "StoreModuleExecutableRegionsInBuffe failed with status %x",
+                    status);
                 return status;
         }
 
         status = ValidateIrpOutputBuffer(Irp, bytes_written);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
+                            status);
                 goto end;
         }
 
@@ -591,16 +623,19 @@ end:
 /*
  * From line 727 in the SMBIOS Specification:
  *
- *    727 • Each structure shall be terminated by a double-null (0000h), either directly following
- * the 728   formatted area (if no strings are present) or directly following the last string. This
- * includes 729   system- and OEM-specific structures and allows upper-level software to easily
- * traverse the 730   structure table. (See structure-termination examples later in this clause.)
+ *    727 • Each structure shall be terminated by a double-null (0000h), either
+ * directly following the 728   formatted area (if no strings are present) or
+ * directly following the last string. This includes 729   system- and
+ * OEM-specific structures and allows upper-level software to easily traverse
+ * the 730   structure table. (See structure-termination examples later in this
+ * clause.)
  *
- * TLDR is that if the first two characters proceeding the structure are null terminators, then
- * there are no strings, otherwise to find the end of the string section simply iterate until there
- * is a double null terminator.
+ * TLDR is that if the first two characters proceeding the structure are null
+ * terminators, then there are no strings, otherwise to find the end of the
+ * string section simply iterate until there is a double null terminator.
  *
- * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
+ * source:
+ * https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
  */
 STATIC
 VOID
@@ -614,13 +649,13 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
         PCHAR current_char_in_strings = string_section_start;
         PCHAR next_char_in_strings    = string_section_start + 1;
 
-        for (;;)
-        {
+        for (;;) {
                 if (*current_char_in_strings == NULL_TERMINATOR &&
-                    *next_char_in_strings == NULL_TERMINATOR)
-                {
+                    *next_char_in_strings == NULL_TERMINATOR) {
                         *CurrentStructure =
-                            (PSMBIOS_TABLE_HEADER)((UINT64)next_char_in_strings + 1);
+                            (PSMBIOS_TABLE_HEADER)((UINT64)
+                                                       next_char_in_strings +
+                                                   1);
                         return;
                 }
 
@@ -630,15 +665,17 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
 }
 
 /*
- * Remember that the string index does not start from the beginning of the struct. For example, lets
- * take RAW_SMBIOS_TABLE_02: the first string is NOT "Type" at index 0, the first string is
- * Manufacturer. So if we want to find the SerialNumber, the string index would be 4, as the
- * previous 3 values (after the header) are all strings. So remember, the index is into the number
- * of strings that exist for the given table, NOT the size of the structure or a values index into
- * the struct.
+ * Remember that the string index does not start from the beginning of the
+ * struct. For example, lets take RAW_SMBIOS_TABLE_02: the first string is NOT
+ * "Type" at index 0, the first string is Manufacturer. So if we want to find
+ * the SerialNumber, the string index would be 4, as the previous 3 values
+ * (after the header) are all strings. So remember, the index is into the number
+ * of strings that exist for the given table, NOT the size of the structure or a
+ * values index into the struct.
  *
- * Here we count the number of strings by incrementing the string_count each time we pass a null
- * terminator so we know when we're at the beginning of the target string.
+ * Here we count the number of strings by incrementing the string_count each
+ * time we pass a null terminator so we know when we're at the beginning of the
+ * target string.
  */
 STATIC
 NTSTATUS
@@ -651,23 +688,23 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
 
         INT   current_string_char_index = 0;
         INT   string_count              = 0;
-        PCHAR current_string_char       = (PCHAR)((UINT64)Table + Table->Length);
-        PCHAR next_string_char          = current_string_char + 1;
+        PCHAR current_string_char = (PCHAR)((UINT64)Table + Table->Length);
+        PCHAR next_string_char    = current_string_char + 1;
 
-        for (;;)
-        {
-                if (*current_string_char == NULL_TERMINATOR && *next_string_char == NULL_TERMINATOR)
+        for (;;) {
+                if (*current_string_char == NULL_TERMINATOR &&
+                    *next_string_char == NULL_TERMINATOR)
                         return STATUS_NOT_FOUND;
 
                 if (current_string_char_index >= BufferSize)
                         return STATUS_BUFFER_TOO_SMALL;
 
-                if (string_count + 1 == Index)
-                {
+                if (string_count + 1 == Index) {
                         if (*current_string_char == NULL_TERMINATOR)
                                 return STATUS_SUCCESS;
 
-                        RtlCopyMemory((UINT64)Buffer + current_string_char_index,
+                        RtlCopyMemory((UINT64)Buffer +
+                                          current_string_char_index,
                                       current_string_char,
                                       sizeof(CHAR));
 
@@ -675,8 +712,7 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
                         goto increment;
                 }
 
-                if (*current_string_char == NULL_TERMINATOR)
-                {
+                if (*current_string_char == NULL_TERMINATOR) {
                         current_string_char_index = 0;
                         string_count++;
                 }
@@ -714,53 +750,64 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
         PSMBIOS_TABLE_HEADER smbios_table_header          = NULL;
         PRAW_SMBIOS_TABLE_01 smbios_baseboard_information = NULL;
 
-        status = ImpExGetSystemFirmwareTable(SMBIOS_TABLE, 0, NULL, 0, &firmware_table_buffer_size);
+        status = ImpExGetSystemFirmwareTable(
+            SMBIOS_TABLE, 0, NULL, 0, &firmware_table_buffer_size);
 
         /*
-         * Because we pass a null buffer here, the NTSTATUS result will be a BUFFER_TOO_SMALL error,
-         * so to validate this function call we check the return bytes returned (which indicate
-         * required buffer size) is above 0.
+         * Because we pass a null buffer here, the NTSTATUS result will be a
+         * BUFFER_TOO_SMALL error, so to validate this function call we check
+         * the return bytes returned (which indicate required buffer size) is
+         * above 0.
          */
-        if (firmware_table_buffer_size == NULL)
-        {
-                DEBUG_ERROR("ExGetSystemFirmwareTable call 1 failed to get required buffer size.");
+        if (firmware_table_buffer_size == NULL) {
+                DEBUG_ERROR(
+                    "ExGetSystemFirmwareTable call 1 failed to get required buffer size.");
                 return STATUS_BUFFER_TOO_SMALL;
         }
 
-        firmware_table_buffer =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, firmware_table_buffer_size, POOL_TAG_INTEGRITY);
+        firmware_table_buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                   firmware_table_buffer_size,
+                                                   POOL_TAG_INTEGRITY);
 
         if (!firmware_table_buffer)
                 return STATUS_MEMORY_NOT_ALLOCATED;
 
-        status = ImpExGetSystemFirmwareTable(
-            SMBIOS_TABLE, NULL, firmware_table_buffer, firmware_table_buffer_size, &bytes_returned);
+        status = ImpExGetSystemFirmwareTable(SMBIOS_TABLE,
+                                             NULL,
+                                             firmware_table_buffer,
+                                             firmware_table_buffer_size,
+                                             &bytes_returned);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ExGetSystemFirmwareTable call 2 failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "ExGetSystemFirmwareTable call 2 failed with status %x",
+                    status);
                 goto end;
         }
 
-        smbios_data         = (PRAW_SMBIOS_DATA)firmware_table_buffer;
-        smbios_table_header = (PSMBIOS_TABLE_HEADER)(&smbios_data->SMBIOSTableData[0]);
+        smbios_data = (PRAW_SMBIOS_DATA)firmware_table_buffer;
+        smbios_table_header =
+            (PSMBIOS_TABLE_HEADER)(&smbios_data->SMBIOSTableData[0]);
 
         /*
-         * The System Information table is equal to Type == 2 and contains the serial number of the
-         * motherboard in the computer among various other things.
+         * The System Information table is equal to Type == 2 and contains the
+         * serial number of the motherboard in the computer among various other
+         * things.
          *
-         * source: https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
+         * source:
+         * https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
          * line 823
          */
         while (smbios_table_header->Type != TableIndex)
                 GetNextSMBIOSStructureInTable(&smbios_table_header);
 
-        status =
-            GetStringAtIndexFromSMBIOSTable(smbios_table_header, TableSubIndex, Buffer, BufferSize);
+        status = GetStringAtIndexFromSMBIOSTable(
+            smbios_table_header, TableSubIndex, Buffer, BufferSize);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetStringAtIndexFromSMBIOSTable failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "GetStringAtIndexFromSMBIOSTable failed with status %x",
+                    status);
                 goto end;
         }
 
@@ -783,31 +830,33 @@ ComputeHashOfSections(_In_ PIMAGE_SECTION_HEADER DiskSection,
 {
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-        if (DiskSection->SizeOfRawData != MemorySection->SizeOfRawData)
-        {
-                DEBUG_WARNING("Executable section sizes differ between images.");
+        if (DiskSection->SizeOfRawData != MemorySection->SizeOfRawData) {
+                DEBUG_WARNING(
+                    "Executable section sizes differ between images.");
                 return STATUS_INVALID_BUFFER_SIZE;
         }
 
-        status = ComputeHashOfBuffer((UINT64)DiskSection + sizeof(IMAGE_SECTION_HEADER),
+        status = ComputeHashOfBuffer((UINT64)DiskSection +
+                                         sizeof(IMAGE_SECTION_HEADER),
                                      DiskSection->SizeOfRawData,
                                      DiskHash,
                                      DiskHashSize);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ComputeHashOfBuffer failed with status %x",
+                            status);
                 return status;
         }
 
-        status = ComputeHashOfBuffer((UINT64)MemorySection + sizeof(IMAGE_SECTION_HEADER),
+        status = ComputeHashOfBuffer((UINT64)MemorySection +
+                                         sizeof(IMAGE_SECTION_HEADER),
                                      MemorySection->SizeOfRawData,
                                      MemoryHash,
                                      MemoryHashSize);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfBuffer 2 failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ComputeHashOfBuffer 2 failed with status %x",
+                            status);
                 return status;
         }
 
@@ -824,8 +873,7 @@ CompareHashes(_In_ PVOID Hash1, _In_ PVOID Hash2, _In_ UINT32 Length)
                 return FALSE;
 }
 
-typedef struct _VAL_INTEGRITY_HEADER
-{
+typedef struct _VAL_INTEGRITY_HEADER {
         INTEGRITY_CHECK_HEADER integrity_check_header;
         IMAGE_SECTION_HEADER   section_header;
         CHAR                   section_base[];
@@ -833,29 +881,32 @@ typedef struct _VAL_INTEGRITY_HEADER
 } VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
 
 /*
- * Because the infrastructure has already been setup to validate modules in the driver, that
- * is how I will validate the usermode modules as well. Another reason is that the win32 api
- * makes it very easy to take a snapshot of the modules and enumerate them with easy to use
- * functions and macros.
+ * Because the infrastructure has already been setup to validate modules in the
+ * driver, that is how I will validate the usermode modules as well. Another
+ * reason is that the win32 api makes it very easy to take a snapshot of the
+ * modules and enumerate them with easy to use functions and macros.
  *
  * 1. Take a snapshot of the modules in the process from our dll
- * 2. pass the image base, image size and the image path to our driver via an IRP
- * 3. from our driver, to first verify the in memory module, attach to our protected process
- *    and using the base + size simply use StoreModuleExecutableRegionsInBuffer()
- * 4. Next we use the path to map the image on disk into memory, and pass the image to
- *    StoreModuleExecutableRegionsInBuffer() just as we did before.
- * 5. With the 2 buffers that contain both images executable regions, we hash them and compare
- *    for anomalies.
+ * 2. pass the image base, image size and the image path to our driver via an
+ * IRP
+ * 3. from our driver, to first verify the in memory module, attach to our
+ * protected process and using the base + size simply use
+ * StoreModuleExecutableRegionsInBuffer()
+ * 4. Next we use the path to map the image on disk into memory, and pass the
+ * image to StoreModuleExecutableRegionsInBuffer() just as we did before.
+ * 5. With the 2 buffers that contain both images executable regions, we hash
+ * them and compare for anomalies.
  *
- * note: Its important to realise that since these are user mode modules, they are often hooked
- * by various legitimate programs - such as discord, nvidia etc. So this needs to be rethinked.
+ * note: Its important to realise that since these are user mode modules, they
+ * are often hooked by various legitimate programs - such as discord, nvidia
+ * etc. So this needs to be rethinked.
  */
 NTSTATUS
 ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 {
         PAGED_CODE();
 
-        NTSTATUS                         status            = STATUS_UNSUCCESSFUL;
+        NTSTATUS                         status = STATUS_UNSUCCESSFUL;
         PROCESS_MODULE_VALIDATION_RESULT validation_result = {0};
         PPROCESS_MODULE_INFORMATION      module_info       = NULL;
         PKPROCESS                        process           = NULL;
@@ -872,15 +923,17 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         PVOID                            section           = NULL;
         ULONG                            section_size      = 0;
 
-        status = ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
+        status =
+            ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x",
+                            status);
                 return status;
         }
 
-        module_info = (PPROCESS_MODULE_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+        module_info =
+            (PPROCESS_MODULE_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
         SessionGetProcess(&process);
         ImpRtlInitUnicodeString(&module_path, &module_info->module_path);
@@ -898,27 +951,30 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 
         ImpKeUnstackDetachProcess(&apc_state);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "StoreModuleExecutableRegionsInBuffer failed with status %x",
+                    status);
                 goto end;
         }
 
         status = MapDiskImageIntoVirtualAddressSpace(
             &section_handle, &section, &module_path, &section_size, 0);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "MapDiskImageIntoVirtualAddressSpace failed with status %x",
+                    status);
                 goto end;
         }
 
         status = StoreModuleExecutableRegionsInBuffer(
             &disk_buffer, section, section_size, &bytes_written, FALSE);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "StoreModuleExecutableRegionsInbuffer 2 failed with status %x",
+                    status);
                 goto end;
         }
 
@@ -929,16 +985,17 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                                        &memory_hash,
                                        &memory_hash_size);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ComputeHashOfSections failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("ComputeHashOfSections failed with status %x",
+                            status);
                 goto end;
         }
 
-        if (!CompareHashes(disk_hash, memory_hash, memory_hash_size))
-        {
-                PPROCESS_MODULE_VALIDATION_REPORT report = ImpExAllocatePool2(
-                    POOL_FLAG_NON_PAGED, sizeof(PROCESS_MODULE_VALIDATION_REPORT), REPORT_POOL_TAG);
+        if (!CompareHashes(disk_hash, memory_hash, memory_hash_size)) {
+                PPROCESS_MODULE_VALIDATION_REPORT report =
+                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                       sizeof(PROCESS_MODULE_VALIDATION_REPORT),
+                                       REPORT_POOL_TAG);
 
                 if (!report)
                         goto end;
@@ -946,14 +1003,16 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                 report->report_code = REPORT_INVALID_PROCESS_MODULE;
                 report->image_base  = module_info->module_base;
                 report->image_size  = module_info->module_size;
-                RtlCopyMemory(
-                    report->module_path, module_info->module_path, sizeof(report->module_path));
+                RtlCopyMemory(report->module_path,
+                              module_info->module_path,
+                              sizeof(report->module_path));
 
-                status = IrpQueueCompleteIrp(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+                status = IrpQueueCompleteIrp(
+                    report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
 
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x",
+                                    status);
                         goto end;
                 }
         }
@@ -982,30 +1041,32 @@ end:
 }
 
 /*
- * TODO: Query PhysicalDrive%n to get the serial numbers for all harddrives, can use the command
- * "wmic diskdrive" check in console.
+ * TODO: Query PhysicalDrive%n to get the serial numbers for all harddrives, can
+ * use the command "wmic diskdrive" check in console.
  */
 NTSTATUS
-GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T ConfigDrive0MaxSize)
+GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
+                             _In_ SIZE_T   ConfigDrive0MaxSize)
 {
         PAGED_CODE();
 
-        NTSTATUS                   status                    = STATUS_UNSUCCESSFUL;
-        HANDLE                     handle                    = NULL;
-        OBJECT_ATTRIBUTES          attributes                = {0};
-        IO_STATUS_BLOCK            status_block              = {0};
-        STORAGE_PROPERTY_QUERY     storage_property          = {0};
+        NTSTATUS                   status           = STATUS_UNSUCCESSFUL;
+        HANDLE                     handle           = NULL;
+        OBJECT_ATTRIBUTES          attributes       = {0};
+        IO_STATUS_BLOCK            status_block     = {0};
+        STORAGE_PROPERTY_QUERY     storage_property = {0};
         STORAGE_DESCRIPTOR_HEADER  storage_descriptor_header = {0};
         PSTORAGE_DEVICE_DESCRIPTOR device_descriptor         = NULL;
         UNICODE_STRING             physical_drive_path       = {0};
         PCHAR                      serial_number             = NULL;
         SIZE_T                     serial_length             = 0;
 
-        ImpRtlInitUnicodeString(&physical_drive_path, L"\\DosDevices\\PhysicalDrive0");
+        ImpRtlInitUnicodeString(&physical_drive_path,
+                                L"\\DosDevices\\PhysicalDrive0");
 
         /*
-         * No need to use the flag OBJ_FORCE_ACCESS_CHECK since we arent passing a handle given
-         * to us from usermode.
+         * No need to use the flag OBJ_FORCE_ACCESS_CHECK since we arent passing
+         * a handle given to us from usermode.
          */
         InitializeObjectAttributes(&attributes,
                                    &physical_drive_path,
@@ -1013,11 +1074,13 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                                    NULL,
                                    NULL);
 
-        status = ImpZwOpenFile(&handle, GENERIC_READ, &attributes, &status_block, NULL, NULL);
+        status = ImpZwOpenFile(
+            &handle, GENERIC_READ, &attributes, &status_block, NULL, NULL);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ZwOpenFile on PhysicalDrive0 failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "ZwOpenFile on PhysicalDrive0 failed with status %x",
+                    status);
                 goto end;
         }
 
@@ -1035,17 +1098,18 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                                           &storage_descriptor_header,
                                           sizeof(STORAGE_DESCRIPTOR_HEADER));
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ZwDeviceIoControlFile first call failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "ZwDeviceIoControlFile first call failed with status %x",
+                    status);
                 goto end;
         }
 
-        device_descriptor = ImpExAllocatePool2(
-            POOL_FLAG_NON_PAGED, storage_descriptor_header.Size, POOL_TAG_INTEGRITY);
+        device_descriptor = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                               storage_descriptor_header.Size,
+                                               POOL_TAG_INTEGRITY);
 
-        if (!device_descriptor)
-        {
+        if (!device_descriptor) {
                 status = STATUS_MEMORY_NOT_ALLOCATED;
                 goto end;
         }
@@ -1061,20 +1125,21 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
                                           device_descriptor,
                                           storage_descriptor_header.Size);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("ZwDeviceIoControlFile second call failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "ZwDeviceIoControlFile second call failed with status %x",
+                    status);
                 goto end;
         }
 
-        if (device_descriptor->SerialNumberOffset > 0)
-        {
-                serial_number =
-                    (PCHAR)((UINT64)device_descriptor + device_descriptor->SerialNumberOffset);
-                serial_length = strnlen_s(serial_number, DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) + 1;
+        if (device_descriptor->SerialNumberOffset > 0) {
+                serial_number = (PCHAR)((UINT64)device_descriptor +
+                                        device_descriptor->SerialNumberOffset);
+                serial_length = strnlen_s(serial_number,
+                                          DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) +
+                                1;
 
-                if (serial_length > ConfigDrive0MaxSize)
-                {
+                if (serial_length > ConfigDrive0MaxSize) {
                         DEBUG_ERROR(
                             "Serial length is greater then the allocated buffer size for the drives serial number.");
                         status = STATUS_BUFFER_TOO_SMALL;
@@ -1083,7 +1148,8 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T Confi
 
                 RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
 
-                DEBUG_VERBOSE("Successfully retrieved hard disk serial number.");
+                DEBUG_VERBOSE(
+                    "Successfully retrieved hard disk serial number.");
         }
 end:
 
@@ -1109,8 +1175,8 @@ end:
 //     SIZE_T string_length = 0;
 //
 //     /* PCI guid */
-//     CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff, 0x1f, 0x95, 0x35,
-//     0x99 };
+//     CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff,
+//     0x1f, 0x95, 0x35, 0x99 };
 //
 //     status = IoGetDeviceInterfaces(
 //         &guid,
@@ -1121,8 +1187,8 @@ end:
 //
 //     if ( !NT_SUCCESS( status ) )
 //     {
-//         DEBUG_VERBOSE( "IoGetDeviceInterfaces failed with status %x", status );
-//         return;
+//         DEBUG_VERBOSE( "IoGetDeviceInterfaces failed with status %x", status
+//         ); return;
 //     }
 //
 //     current_string = device_interfaces;
@@ -1154,11 +1220,11 @@ ScanForSignature(_In_ PVOID  BaseAddress,
         CHAR current_char     = 0;
         CHAR current_sig_char = 0;
 
-        for (INT index = 0; index < MaxLength; index++)
-        {
-                for (INT sig_index = 0; sig_index < SignatureLength + 1; sig_index++)
-                {
-                        current_char     = *(PCHAR)((UINT64)BaseAddress + index + sig_index);
+        for (INT index = 0; index < MaxLength; index++) {
+                for (INT sig_index = 0; sig_index < SignatureLength + 1;
+                     sig_index++) {
+                        current_char =
+                            *(PCHAR)((UINT64)BaseAddress + index + sig_index);
                         current_sig_char = Signature[sig_index];
 
                         if (sig_index == SignatureLength)
@@ -1220,20 +1286,22 @@ MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
 #define EPT_EXECUTION_TIME_MULTIPLIER 10
 
 /*
- * Even though we test for the presence of a hypervisor, we should still test for the presence
- * of EPT hooks on key functions as this is a primary method for reversing AC's.
+ * Even though we test for the presence of a hypervisor, we should still test
+ * for the presence of EPT hooks on key functions as this is a primary method
+ * for reversing AC's.
  *
  * Credits to momo5502 for the idea: https://momo5502.com/blog/?p=255
  *
  * [+] EPT: Read average: 14991c28f5c2
  * [+] no EPT: Read average: 28828f5c28
  *
- * On average a read when HyperDbg's !epthook is active is around ~125x longer. Will need to
- * continue testing with other HV's, however it is a good start.
+ * On average a read when HyperDbg's !epthook is active is around ~125x longer.
+ * Will need to continue testing with other HV's, however it is a good start.
  */
 STATIC
 NTSTATUS
-GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime)
+GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
+                            _Out_ PUINT64 AverageTime)
 {
         if (!RoutineAddress || !AverageTime)
                 return STATUS_UNSUCCESSFUL;
@@ -1246,38 +1314,43 @@ GetAverageReadTimeAtRoutine(_In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime
 /*
  * todo: encrypt both arrays
  *
- * The goal with the control functions is to find a reference time for an average read on a
- * function that is not EPT hooked. To accomplish this I've selected some arbitrary, rarely
- * used functions that shouldn't really ever have an EPT hook active on them. This will give
- * us a baseline that we can then average out to find a relatively accurate average read time.
+ * The goal with the control functions is to find a reference time for an
+ * average read on a function that is not EPT hooked. To accomplish this I've
+ * selected some arbitrary, rarely used functions that shouldn't really ever
+ * have an EPT hook active on them. This will give us a baseline that we can
+ * then average out to find a relatively accurate average read time.
  *
- * From here, we have an array of protected functions which are commonly hooked via EPT to
- * reverse anti cheats. We then check the read times of these functions and compare them to
- * the average of the read times for the control functions. If the read threshold exceeds a
- * multiple of 10, we can be fairly certain an EPT hook is active.
+ * From here, we have an array of protected functions which are commonly hooked
+ * via EPT to reverse anti cheats. We then check the read times of these
+ * functions and compare them to the average of the read times for the control
+ * functions. If the read threshold exceeds a multiple of 10, we can be fairly
+ * certain an EPT hook is active.
  *
- * Each time we measure the read we perform 30 iterations to ensure we get a consistent result
- * aswell as disabling interrupts + raising IRQL to ensure the test is as accurate as possible.
+ * Each time we measure the read we perform 30 iterations to ensure we get a
+ * consistent result aswell as disabling interrupts + raising IRQL to ensure the
+ * test is as accurate as possible.
  *
- * The following open source Intel VT-X hv's w/ EPT functionality have been tested and detected
- * in a non vm environment:
+ * The following open source Intel VT-X hv's w/ EPT functionality have been
+ * tested and detected in a non vm environment:
  *
  * HyperDbg !epthook (https://github.com/HyperDbg/HyperDbg):  detected
  * DdiMon (https://github.com/tandasat/DdiMon):               detected
  */
-WCHAR CONTROL_FUNCTIONS[EPT_CONTROL_FUNCTIONS_COUNT][EPT_MAX_FUNCTION_NAME_LENGTH] = {
-    L"RtlAssert",
-    L"PsAcquireSiloHardReference",
-    L"PsDereferencePrimaryToken",
-    L"ZwCommitEnlistment"};
+WCHAR CONTROL_FUNCTIONS[EPT_CONTROL_FUNCTIONS_COUNT]
+                       [EPT_MAX_FUNCTION_NAME_LENGTH] = {
+                           L"RtlAssert",
+                           L"PsAcquireSiloHardReference",
+                           L"PsDereferencePrimaryToken",
+                           L"ZwCommitEnlistment"};
 
-WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT][EPT_MAX_FUNCTION_NAME_LENGTH] = {
-    L"ExAllocatePoolWithTag", L"MmCopyMemory"};
+WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT]
+                         [EPT_MAX_FUNCTION_NAME_LENGTH] = {
+                             L"ExAllocatePoolWithTag", L"MmCopyMemory"};
 
 /*
- * For whatever reason MmGetSystemRoutineAddress only works once, then every call
- * thereafter fails. So will be storing the routine addresses in arrays since they
- * dont change once the kernel is loaded.
+ * For whatever reason MmGetSystemRoutineAddress only works once, then every
+ * call thereafter fails. So will be storing the routine addresses in arrays
+ * since they dont change once the kernel is loaded.
  */
 UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT]     = {0};
 UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = {0};
@@ -1290,18 +1363,19 @@ InitiateEptFunctionAddressArrays()
 
         UNICODE_STRING current_function;
 
-        for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++)
-        {
-                ImpRtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
-                CONTROL_FUNCTION_ADDRESSES[index] = ImpMmGetSystemRoutineAddress(&current_function);
+        for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
+                ImpRtlInitUnicodeString(&current_function,
+                                        CONTROL_FUNCTIONS[index]);
+                CONTROL_FUNCTION_ADDRESSES[index] =
+                    ImpMmGetSystemRoutineAddress(&current_function);
 
                 if (!CONTROL_FUNCTION_ADDRESSES[index])
                         return STATUS_UNSUCCESSFUL;
         }
 
-        for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
-        {
-                ImpRtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
+        for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
+                ImpRtlInitUnicodeString(&current_function,
+                                        CONTROL_FUNCTIONS[index]);
                 PROTECTED_FUNCTION_ADDRESSES[index] =
                     ImpMmGetSystemRoutineAddress(&current_function);
 
@@ -1323,24 +1397,25 @@ DetectEptHooksInKeyFunctions()
         UINT64   control_time_sum = 0;
         UINT64   control_average  = 0;
 
-        /* todo: once we call this, we need to set a flag to skip this, otherwise we just return
-         * early */
+        /* todo: once we call this, we need to set a flag to skip this,
+         * otherwise we just return early */
         status = InitiateEptFunctionAddressArrays();
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("InitiateEptFunctionAddressArrays failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "InitiateEptFunctionAddressArrays failed with status %x",
+                    status);
                 return status;
         }
 
-        for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++)
-        {
-                status = GetAverageReadTimeAtRoutine(CONTROL_FUNCTION_ADDRESSES[index],
-                                                     &instruction_time);
+        for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
+                status = GetAverageReadTimeAtRoutine(
+                    CONTROL_FUNCTION_ADDRESSES[index], &instruction_time);
 
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x", status);
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR(
+                            "DetectEptPresentOnFunction failed with status %x",
+                            status);
                         control_fails += 1;
                         continue;
                 }
@@ -1351,26 +1426,27 @@ DetectEptHooksInKeyFunctions()
         if (control_time_sum == 0)
                 return STATUS_UNSUCCESSFUL;
 
-        control_average = control_time_sum / (EPT_CONTROL_FUNCTIONS_COUNT - control_fails);
+        control_average =
+            control_time_sum / (EPT_CONTROL_FUNCTIONS_COUNT - control_fails);
 
         if (control_average == 0)
                 return STATUS_UNSUCCESSFUL;
 
-        for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++)
-        {
-                status = GetAverageReadTimeAtRoutine(PROTECTED_FUNCTION_ADDRESSES[index],
-                                                     &instruction_time);
+        for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
+                status = GetAverageReadTimeAtRoutine(
+                    PROTECTED_FUNCTION_ADDRESSES[index], &instruction_time);
 
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x", status);
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR(
+                            "DetectEptPresentOnFunction failed with status %x",
+                            status);
                         continue;
                 }
 
-                /* [+] EPT hook detected at function: ExAllocatePoolWithTag with execution time of:
-                 * 149b7777777 */
-                if (control_average * EPT_EXECUTION_TIME_MULTIPLIER < instruction_time)
-                {
+                /* [+] EPT hook detected at function: ExAllocatePoolWithTag with
+                 * execution time of: 149b7777777 */
+                if (control_average * EPT_EXECUTION_TIME_MULTIPLIER <
+                    instruction_time) {
                         DEBUG_WARNING(
                             "EPT hook detected at function: %llx with execution time of: %llx",
                             PROTECTED_FUNCTION_ADDRESSES[index],
@@ -1378,8 +1454,7 @@ DetectEptHooksInKeyFunctions()
 
                         /* close game etc. */
                 }
-                else
-                {
+                else {
                         DEBUG_INFO("No ept hook detected at function: %llx",
                                    PROTECTED_FUNCTION_ADDRESSES[index]);
                 }
@@ -1427,8 +1502,9 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
         ImpKeUnstackDetachProcess(&apc_state);
 
         if (!NT_SUCCESS(status))
-                DEBUG_ERROR("StoreModuleExecutableRegionsInBuffer-x86 failed with status %x",
-                            status);
+                DEBUG_ERROR(
+                    "StoreModuleExecutableRegionsInBuffer-x86 failed with status %x",
+                    status);
 
         return status;
 }
@@ -1436,31 +1512,32 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
 VOID
 DeferredModuleHashingCallback()
 {
-        NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
-        RTL_MODULE_EXTENDED_INFO module        = {0};
-        PDRIVER_LIST_HEAD        driver_list   = GetDriverList();
-        PLIST_ENTRY              deferred_head = &GetDriverList()->deferred_list;
-        PLIST_ENTRY              list_entry    = NULL;
-        PDRIVER_LIST_ENTRY       entry         = NULL;
+        NTSTATUS                 status      = STATUS_UNSUCCESSFUL;
+        RTL_MODULE_EXTENDED_INFO module      = {0};
+        PDRIVER_LIST_HEAD        driver_list = GetDriverList();
+        PLIST_ENTRY        deferred_head     = &GetDriverList()->deferred_list;
+        PLIST_ENTRY        list_entry        = NULL;
+        PDRIVER_LIST_ENTRY entry             = NULL;
 
         list_entry = RemoveHeadList(deferred_head);
 
         if (list_entry == deferred_head)
                 goto end;
 
-        while (list_entry != deferred_head)
-        {
-                entry = CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
+        while (list_entry != deferred_head) {
+                entry = CONTAINING_RECORD(
+                    list_entry, DRIVER_LIST_ENTRY, deferred_entry);
 
                 DriverListEntryToExtendedModuleInfo(entry, &module);
 
-                DEBUG_VERBOSE("Hashing Deferred Module: %s", module.FullPathName);
+                DEBUG_VERBOSE("Hashing Deferred Module: %s",
+                              module.FullPathName);
 
                 status = HashModule(&module, &entry->text_hash);
 
-                if (!NT_SUCCESS(status))
-                {
-                        DEBUG_ERROR("HashModule-x86 failed with status %x", status);
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR("HashModule-x86 failed with status %x",
+                                    status);
                         entry->hashed = FALSE;
                         list_entry    = RemoveHeadList(deferred_head);
                         continue;
@@ -1490,68 +1567,71 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
 
         ImpRtlInitAnsiString(&ansi_string, Module->FullPathName);
 
-        if (!ansi_string.Buffer)
-        {
+        if (!ansi_string.Buffer) {
                 DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
                 return;
         }
 
         status = ImpRtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "RtlAnsiStringToUnicodeString failed with status %x",
+                    status);
                 goto end;
         }
 
         /*
-         * For win32k and related modules, because they are 32bit for us to read the
-         * memory we need to attach to a 32 bit process. A simple check is that the
-         * 32 bit image base wont be a valid address, while this is hacky it works.
-         * Then we simply attach to a 32 bit address space, in our case winlogon,
-         * which will allow us to perform the copy.
+         * For win32k and related modules, because they are 32bit for us to read
+         * the memory we need to attach to a 32 bit process. A simple check is
+         * that the 32 bit image base wont be a valid address, while this is
+         * hacky it works. Then we simply attach to a 32 bit address space, in
+         * our case winlogon, which will allow us to perform the copy.
          *
-         * Since the driver loads at system startup, our driver is loaded before the WinLogon
-         * process has started, so to combat this return return early with a status code. This will
-         * mark the module as not hashed and x86. We will then queue a work item to hash these
-         * modules later once WinLogon has started.
+         * Since the driver loads at system startup, our driver is loaded before
+         * the WinLogon process has started, so to combat this return return
+         * early with a status code. This will mark the module as not hashed and
+         * x86. We will then queue a work item to hash these modules later once
+         * WinLogon has started.
          */
-        if (!ImpMmIsAddressValid(Module->ImageBase) && !list->can_hash_x86)
-        {
+        if (!ImpMmIsAddressValid(Module->ImageBase) && !list->can_hash_x86) {
                 status = STATUS_INVALID_IMAGE_WIN_32;
                 goto end;
         }
-        else if (!ImpMmIsAddressValid(Module->ImageBase) && list->can_hash_x86)
-        {
+        else if (!ImpMmIsAddressValid(Module->ImageBase) &&
+                 list->can_hash_x86) {
                 /*
-                 * Once the WinLogon process has started, we can then hash new x86 modules.
+                 * Once the WinLogon process has started, we can then hash new
+                 * x86 modules.
                  */
                 status = StoreModuleExecutableRegionsx86(
                     Module, (PVOID)&memory_buffer, &memory_buffer_size);
         }
-        else
-        {
-                status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
-                                                              Module->ImageBase,
-                                                              Module->ImageSize,
-                                                              &memory_buffer_size,
-                                                              FALSE);
+        else {
+                status =
+                    StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
+                                                         Module->ImageBase,
+                                                         Module->ImageSize,
+                                                         &memory_buffer_size,
+                                                         FALSE);
         }
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("StoreModuleExecutableRegionsInbuffer 2 failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR(
+                    "StoreModuleExecutableRegionsInbuffer 2 failed with status %x",
+                    status);
                 goto end;
         }
 
-        status = ComputeHashOfBuffer(memory_buffer->section_base,
-                                     memory_buffer->section_header.SizeOfRawData,
-                                     &memory_hash,
-                                     &memory_hash_size);
+        status =
+            ComputeHashOfBuffer(memory_buffer->section_base,
+                                memory_buffer->section_header.SizeOfRawData,
+                                &memory_hash,
+                                &memory_hash_size);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_VERBOSE("ComputeHashOfSections failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_VERBOSE("ComputeHashOfSections failed with status %x",
+                              status);
                 goto end;
         }
 
@@ -1578,32 +1658,34 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         PDRIVER_LIST_ENTRY entry  = NULL;
         PVOID              hash   = NULL;
 
-        hash = ExAllocatePool2(POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
+        hash = ExAllocatePool2(
+            POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
 
         if (!hash)
                 return;
 
         FindDriverEntryByBaseAddress(Module->ImageBase, &entry);
 
-        if (!entry)
-        {
-                DEBUG_ERROR("FindDriverEntryByBaseAddress failed with no status");
+        if (!entry) {
+                DEBUG_ERROR(
+                    "FindDriverEntryByBaseAddress failed with no status");
                 goto end;
         }
 
         status = HashModule(Module, hash);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("HashModule failed with status %x", status);
                 goto end;
         }
 
         if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH))
-                DEBUG_VERBOSE("Module: %s text regions are valid.", Module->FullPathName);
-        else
-                DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**",
+                DEBUG_VERBOSE("Module: %s text regions are valid.",
                               Module->FullPathName);
+        else
+                DEBUG_WARNING(
+                    "**!!** Module: %s text regions are NOT valid **!!**",
+                    Module->FullPathName);
 
 end:
         if (hash)
@@ -1624,35 +1706,34 @@ ValidateOurDriverImage()
 
         status = GetSystemModuleInformation(&modules);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x",
+                            status);
                 return status;
         }
 
         module_info = FindSystemModuleByName(driver_name, &modules);
 
-        if (!module_info)
-        {
+        if (!module_info) {
                 DEBUG_ERROR("FindSystemModuleByName failed with no status.");
                 goto end;
         }
 
-        memory_hash = ExAllocatePool2(POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
+        memory_hash = ExAllocatePool2(
+            POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
 
         if (!memory_hash)
                 goto end;
 
         FindDriverEntryByBaseAddress(module_info->ImageBase, &entry);
 
-        if (!entry)
-        {
-                DEBUG_ERROR("FindDriverEntryByBaseAddress failed with no status.");
+        if (!entry) {
+                DEBUG_ERROR(
+                    "FindDriverEntryByBaseAddress failed with no status.");
                 goto end;
         }
 
-        if (entry->hashed == FALSE)
-        {
+        if (entry->hashed == FALSE) {
                 DEBUG_WARNING("Our module has not been hashed, returning.");
                 status = STATUS_HASH_NOT_PRESENT;
                 goto end;
@@ -1660,18 +1741,19 @@ ValidateOurDriverImage()
 
         status = HashModule(module_info, memory_hash);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("HashModule failed with status %x", status);
                 goto end;
         }
 
         /*
-         * Since we don't pass a return value, I think we would raise an invalid module error and
-         * stop the users game session ? since module .text section error would be a large red flag
+         * Since we don't pass a return value, I think we would raise an invalid
+         * module error and stop the users game session ? since module .text
+         * section error would be a large red flag
          */
         if (CompareHashes(memory_hash, entry->text_hash, SHA_256_HASH_LENGTH))
-                DEBUG_VERBOSE("Driver image is valid. Integrity check complete");
+                DEBUG_VERBOSE(
+                    "Driver image is valid. Integrity check complete");
         else
                 DEBUG_WARNING("**!!** Driver image is NOT valid. **!!**");
 
@@ -1688,19 +1770,20 @@ end:
 
 STATIC
 VOID
-SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT          DeviceObject,
+SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
                                          _In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
         InterlockedIncrement(&Context->active_thread_count);
 
-        LONG count = InterlockedExchange(&Context->current_count, Context->current_count);
+        LONG count = InterlockedExchange(&Context->current_count,
+                                         Context->current_count);
         LONG max   = count + Context->block_size;
 
-        for (; count < max && count < Context->total_count; count++)
-        {
+        for (; count < max && count < Context->total_count; count++) {
                 if (!InterlockedCompareExchange(
-                        &Context->dispatcher_info[count].validated, TRUE, FALSE))
-                {
+                        &Context->dispatcher_info[count].validated,
+                        TRUE,
+                        FALSE)) {
                         ValidateSystemModule(&Context->module_info[count]);
                 }
         }
@@ -1715,14 +1798,15 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT          DeviceObje
 #define VALIDATION_BLOCK_SIZE 25
 
 /*
- * Multithreaded delayed priority work items improve 1% lows by 25% and reduces average PC latency
- * by 10% compared to traditional multithreading. This is important as having high average fps but
- * low 1% lows just leads to stuttery gameplay which in competitive multiplayer games is simply not
- * alright. Overall still room for improvement but from a statistical and feel standpoint which the
- * gameplay is much smoother (tested in cs2).
+ * Multithreaded delayed priority work items improve 1% lows by 25% and reduces
+ * average PC latency by 10% compared to traditional multithreading. This is
+ * important as having high average fps but low 1% lows just leads to stuttery
+ * gameplay which in competitive multiplayer games is simply not alright.
+ * Overall still room for improvement but from a statistical and feel standpoint
+ * which the gameplay is much smoother (tested in cs2).
  *
- * A potential idea for further improvement is finding the cores with the least cpu usages and
- * setting the worker threads affinity accordingly.
+ * A potential idea for further improvement is finding the cores with the least
+ * cpu usages and setting the worker threads affinity accordingly.
  */
 STATIC
 NTSTATUS
@@ -1734,20 +1818,19 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 
         status = GetSystemModuleInformation(&modules);
 
-        if (!NT_SUCCESS(status))
-        {
-                DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+                DEBUG_ERROR("GetSystemModuleInformation failed with status %x",
+                            status);
                 return status;
         }
 
         DEBUG_VERBOSE("driver count: %lx", modules.module_count);
 
-        dispatcher_array =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                               modules.module_count * sizeof(MODULE_DISPATCHER_HEADER),
-                               POOL_TAG_INTEGRITY);
-        if (!dispatcher_array)
-        {
+        dispatcher_array = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED,
+            modules.module_count * sizeof(MODULE_DISPATCHER_HEADER),
+            POOL_TAG_INTEGRITY);
+        if (!dispatcher_array) {
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
@@ -1769,10 +1852,8 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 VOID
 FreeWorkItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-        for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++)
-        {
-                if (Context->work_items[index])
-                {
+        for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
+                if (Context->work_items[index]) {
                         ImpIoFreeWorkItem(Context->work_items[index]);
                         Context->work_items[index] = NULL;
                 }
@@ -1783,20 +1864,19 @@ STATIC
 VOID
 FreeModuleVerificationItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-        /* if a thread hasnt completed by this point, something catastrophic has gone wrong and
-         * maybe its better not to yield..*/
+        /* if a thread hasnt completed by this point, something catastrophic has
+         * gone wrong and maybe its better not to yield..*/
         while (Context->active_thread_count)
                 YieldProcessor();
 
-        if (Context->module_info)
-        {
+        if (Context->module_info) {
                 ImpExFreePoolWithTag(Context->module_info, SYSTEM_MODULES_POOL);
                 Context->module_info = NULL;
         }
 
-        if (Context->dispatcher_info)
-        {
-                ImpExFreePoolWithTag(Context->dispatcher_info, POOL_TAG_INTEGRITY);
+        if (Context->dispatcher_info) {
+                ImpExFreePoolWithTag(Context->dispatcher_info,
+                                     POOL_TAG_INTEGRITY);
                 Context->dispatcher_info = NULL;
         }
 }
@@ -1817,9 +1897,9 @@ SystemModuleVerificationDispatcher()
         PIO_WORKITEM            work_item = NULL;
         PSYS_MODULE_VAL_CONTEXT context   = GetSystemModuleValidationContext();
 
-        if (context->complete)
-        {
-                DEBUG_VERBOSE("System modules integrity check complete. Freeing items.");
+        if (context->complete) {
+                DEBUG_VERBOSE(
+                    "System modules integrity check complete. Freeing items.");
                 context->active   = FALSE;
                 context->complete = FALSE;
                 FreeModuleVerificationItems(context);
@@ -1827,39 +1907,38 @@ SystemModuleVerificationDispatcher()
                 return STATUS_SUCCESS;
         }
 
-        if (!context->active)
-        {
+        if (!context->active) {
                 DEBUG_VERBOSE("Context not active, generating new one");
 
                 status = InitialiseSystemModuleVerificationContext(context);
 
-                if (!NT_SUCCESS(status))
-                {
+                if (!NT_SUCCESS(status)) {
                         DEBUG_ERROR(
                             "InitialiseSystemModuleVerificationContext failed with status %x",
                             status);
                         return status;
                 }
         }
-        else
-        {
+        else {
                 FreeWorkItems(context);
         }
 
-        for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++)
-        {
+        for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
                 work_item = ImpIoAllocateWorkItem(GetDriverDeviceObject());
 
                 if (!work_item)
                         continue;
 
-                ImpIoQueueWorkItem(
-                    work_item, SystemModuleVerificationDispatchFunction, DelayedWorkQueue, context);
+                ImpIoQueueWorkItem(work_item,
+                                   SystemModuleVerificationDispatchFunction,
+                                   DelayedWorkQueue,
+                                   context);
 
                 context->work_items[index] = work_item;
         }
 
-        DEBUG_VERBOSE("All worker threads dispatched for system module validation.");
+        DEBUG_VERBOSE(
+            "All worker threads dispatched for system module validation.");
 
         return STATUS_SUCCESS;
 }
@@ -1875,8 +1954,7 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
 
         status = ImpRtlGetVersion(&info);
 
-        if (!NT_SUCCESS(status))
-        {
+        if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("RtlGetVersion failed with status %x", status);
                 return status;
         }
@@ -1887,8 +1965,9 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
         VersionInfo->dwOSVersionInfoSize = info.dwOSVersionInfoSize;
         VersionInfo->dwPlatformId        = info.dwPlatformId;
 
-        RtlCopyMemory(
-            VersionInfo->szCSDVersion, info.szCSDVersion, sizeof(VersionInfo->szCSDVersion));
+        RtlCopyMemory(VersionInfo->szCSDVersion,
+                      info.szCSDVersion,
+                      sizeof(VersionInfo->szCSDVersion));
 
         return status;
 }
@@ -1918,11 +1997,12 @@ CalculateCpuCoreUsage(_In_ UINT32 Core)
         kpcrb       = (UINT64)kpcr + KPCR_KPRCB_OFFSET;
         idle_thread = *(UINT64*)((UINT64)kpcrb + KPCRB_IDLE_THREAD_OFFSET);
 
-        idle_time   = *(UINT32*)((UINT64)idle_thread + KTHREAD_IDLE_TIME_OFFSET);
+        idle_time = *(UINT32*)((UINT64)idle_thread + KTHREAD_IDLE_TIME_OFFSET);
         kernel_time = *(UINT32*)((UINT64)kpcrb + KPCRB_KERNEL_TIME_OFFSET);
         user_time   = *(UINT32*)((UINT64)kpcrb + KPCRB_USER_TIME_OFFSET);
 
-        return (100 - (UINT32)(UInt32x32To64(idle_time, 100) / (UINT64)(kernel_time + user_time)));
+        return (100 - (UINT32)(UInt32x32To64(idle_time, 100) /
+                               (UINT64)(kernel_time + user_time)));
 }
 
 BOOLEAN
@@ -1932,9 +2012,9 @@ ValidateOurDriversDispatchRoutines()
 
         if (driver->MajorFunction[IRP_MJ_CREATE] != DeviceCreate ||
             driver->MajorFunction[IRP_MJ_CLOSE] != DeviceClose ||
-            driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] != DeviceControl)
-        {
-                DEBUG_WARNING("**!!** Drivers dispatch routine has been tampered with. **!!**");
+            driver->MajorFunction[IRP_MJ_DEVICE_CONTROL] != DeviceControl) {
+                DEBUG_WARNING(
+                    "**!!** Drivers dispatch routine has been tampered with. **!!**");
                 return FALSE;
         }
 
