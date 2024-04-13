@@ -271,57 +271,50 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten)
         buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
 
         for (ULONG index = 0; index < num_sections - 1; index++) {
-                /* create a function for this instead, check for writeable
-                 * sections use !*/
-                if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) {
-                        /*
-                         * Note: MmCopyMemory will fail on discardable sections.
-                         */
-                        address.VirtualAddress = section;
-
-                        status = ImpMmCopyMemory((UINT64)buffer_base +
-                                                     total_packet_size,
-                                                 address,
-                                                 sizeof(IMAGE_SECTION_HEADER),
-                                                 MM_COPY_MEMORY_VIRTUAL,
-                                                 &bytes_returned);
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "MmCopyMemory failed with status %x",
-                                    status);
-                                ImpExFreePoolWithTag(*Buffer,
-                                                     POOL_TAG_INTEGRITY);
-                                *Buffer = NULL;
-                                return status;
-                        }
-
-                        address.VirtualAddress =
-                            (UINT64)ModuleBase + section->PointerToRawData;
-
-                        status = ImpMmCopyMemory(
-                            (UINT64)buffer_base + total_packet_size +
-                                sizeof(IMAGE_SECTION_HEADER),
-                            address,
-                            section->SizeOfRawData,
-                            MM_COPY_MEMORY_VIRTUAL,
-                            &bytes_returned);
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "MmCopyMemory failed with status %x",
-                                    status);
-                                ImpExFreePoolWithTag(*Buffer,
-                                                     POOL_TAG_INTEGRITY);
-                                *Buffer = NULL;
-                                return status;
-                        }
-
-                        total_packet_size += section->SizeOfRawData +
-                                             sizeof(IMAGE_SECTION_HEADER);
-                        num_executable_sections += 1;
+                if (!(section->Characteristics & IMAGE_SCN_MEM_EXECUTE)) {
+                        section++;
+                        continue;
                 }
 
+                address.VirtualAddress = section;
+
+                status =
+                    ImpMmCopyMemory((UINT64)buffer_base + total_packet_size,
+                                    address,
+                                    sizeof(IMAGE_SECTION_HEADER),
+                                    MM_COPY_MEMORY_VIRTUAL,
+                                    &bytes_returned);
+
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR("MmCopyMemory failed with status %x",
+                                    status);
+                        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+                        *Buffer = NULL;
+                        return status;
+                }
+
+                address.VirtualAddress =
+                    (UINT64)ModuleBase + section->PointerToRawData;
+
+                status =
+                    ImpMmCopyMemory((UINT64)buffer_base + total_packet_size +
+                                        sizeof(IMAGE_SECTION_HEADER),
+                                    address,
+                                    section->SizeOfRawData,
+                                    MM_COPY_MEMORY_VIRTUAL,
+                                    &bytes_returned);
+
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR("MmCopyMemory failed with status %x",
+                                    status);
+                        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+                        *Buffer = NULL;
+                        return status;
+                }
+
+                total_packet_size +=
+                    section->SizeOfRawData + sizeof(IMAGE_SECTION_HEADER);
+                num_executable_sections += 1;
                 section++;
         }
 
@@ -329,8 +322,8 @@ StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten)
         header.executable_section_count = num_executable_sections;
         header.total_packet_size =
             total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
-        RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
 
+        RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
         *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
         return status;
 }
@@ -416,8 +409,6 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle,
                                        PAGE_READONLY);
 
         if (!NT_SUCCESS(status)) {
-                /* caller is responsible for closing handle on success,
-                 * therefore null it */
                 DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
                 ImpZwClose(file_handle);
                 ImpZwClose(*SectionHandle);
@@ -608,11 +599,9 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
         }
 
         Irp->IoStatus.Information = bytes_written;
-
         RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, buffer, bytes_written);
 
 end:
-
         if (buffer)
                 ImpExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
 
@@ -653,9 +642,7 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
                 if (*current_char_in_strings == NULL_TERMINATOR &&
                     *next_char_in_strings == NULL_TERMINATOR) {
                         *CurrentStructure =
-                            (PSMBIOS_TABLE_HEADER)((UINT64)
-                                                       next_char_in_strings +
-                                                   1);
+                            (PSMBIOS_TABLE_HEADER)(next_char_in_strings + 1);
                         return;
                 }
 
@@ -703,11 +690,10 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
                         if (*current_string_char == NULL_TERMINATOR)
                                 return STATUS_SUCCESS;
 
-                        RtlCopyMemory((UINT64)Buffer +
-                                          current_string_char_index,
-                                      current_string_char,
-                                      sizeof(CHAR));
+                        UINT64 dest =
+                            (UINT64)Buffer + current_string_char_index;
 
+                        RtlCopyMemory(dest, current_string_char, sizeof(CHAR));
                         current_string_char_index++;
                         goto increment;
                 }
@@ -718,7 +704,6 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
                 }
 
         increment:
-
                 current_string_char++;
                 next_string_char++;
         }
@@ -880,6 +865,28 @@ typedef struct _VAL_INTEGRITY_HEADER {
 
 } VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
 
+STATIC
+VOID
+ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
+{
+        PPROCESS_MODULE_VALIDATION_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(PROCESS_MODULE_VALIDATION_REPORT),
+                               REPORT_POOL_TAG);
+
+        if (!report)
+                return;
+
+        report->report_code = REPORT_INVALID_PROCESS_MODULE;
+        report->image_base  = Module->module_base;
+        report->image_size  = Module->module_size;
+        RtlCopyMemory(report->module_path,
+                      Module->module_path,
+                      sizeof(report->module_path));
+
+        IrpQueueCompleteIrp(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+}
+
 /*
  * Because the infrastructure has already been setup to validate modules in the
  * driver, that is how I will validate the usermode modules as well. Another
@@ -991,31 +998,8 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
                 goto end;
         }
 
-        if (!CompareHashes(disk_hash, memory_hash, memory_hash_size)) {
-                PPROCESS_MODULE_VALIDATION_REPORT report =
-                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                       sizeof(PROCESS_MODULE_VALIDATION_REPORT),
-                                       REPORT_POOL_TAG);
-
-                if (!report)
-                        goto end;
-
-                report->report_code = REPORT_INVALID_PROCESS_MODULE;
-                report->image_base  = module_info->module_base;
-                report->image_size  = module_info->module_size;
-                RtlCopyMemory(report->module_path,
-                              module_info->module_path,
-                              sizeof(report->module_path));
-
-                status = IrpQueueCompleteIrp(
-                    report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
-
-                if (!NT_SUCCESS(status)) {
-                        DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x",
-                                    status);
-                        goto end;
-                }
-        }
+        if (!CompareHashes(disk_hash, memory_hash, memory_hash_size))
+                ReportInvalidProcessModule(module_info);
 
 end:
 
@@ -1132,25 +1116,20 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
                 goto end;
         }
 
-        if (device_descriptor->SerialNumberOffset > 0) {
-                serial_number = (PCHAR)((UINT64)device_descriptor +
-                                        device_descriptor->SerialNumberOffset);
-                serial_length = strnlen_s(serial_number,
-                                          DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) +
-                                1;
+        if (!device_descriptor->SerialNumberOffset)
+                goto end;
 
-                if (serial_length > ConfigDrive0MaxSize) {
-                        DEBUG_ERROR(
-                            "Serial length is greater then the allocated buffer size for the drives serial number.");
-                        status = STATUS_BUFFER_TOO_SMALL;
-                        goto end;
-                }
+        serial_number = (PCHAR)((UINT64)device_descriptor +
+                                device_descriptor->SerialNumberOffset);
+        serial_length =
+            strnlen_s(serial_number, DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) + 1;
 
-                RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
-
-                DEBUG_VERBOSE(
-                    "Successfully retrieved hard disk serial number.");
+        if (serial_length > ConfigDrive0MaxSize) {
+                status = STATUS_BUFFER_TOO_SMALL;
+                goto end;
         }
+
+        RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
 end:
 
         if (handle)
@@ -1161,54 +1140,6 @@ end:
 
         return status;
 }
-
-// VOID
-// EnumeratePciDevices()
-//{
-//     NTSTATUS status;
-//     PZZWSTR device_interfaces;
-//     PWSTR list_base;
-//     DEVPROPKEY key = { 0 };
-//     UNICODE_STRING symbolic_link = { 0 };
-//     WCHAR device_id[ 512 ];
-//     PZZWSTR current_string = NULL;
-//     SIZE_T string_length = 0;
-//
-//     /* PCI guid */
-//     CONST GUID guid = { 0x5b45201d, 0xf2f2, 0x4f3b, 0x85, 0xbb, 0x30, 0xff,
-//     0x1f, 0x95, 0x35, 0x99 };
-//
-//     status = IoGetDeviceInterfaces(
-//         &guid,
-//         NULL,
-//         NULL,
-//         &device_interfaces
-//     );
-//
-//     if ( !NT_SUCCESS( status ) )
-//     {
-//         DEBUG_VERBOSE( "IoGetDeviceInterfaces failed with status %x", status
-//         ); return;
-//     }
-//
-//     current_string = device_interfaces;
-//
-//     while ( *current_string != NULL_TERMINATOR )
-//     {
-//         string_length = wcslen( current_string );
-//
-//         symbolic_link.Buffer = current_string;
-//         symbolic_link.Length = string_length;
-//         symbolic_link.MaximumLength = string_length;
-//
-//         DEBUG_VERBOSE( "Device Interface: %wZ", symbolic_link );
-//
-//         current_string += symbolic_link.Length + 1;
-//     }
-//
-//     ImpExFreePoolWithTag( device_interfaces, NULL );
-// }
-
 PVOID
 ScanForSignature(_In_ PVOID  BaseAddress,
                  _In_ SIZE_T MaxLength,
@@ -1221,13 +1152,12 @@ ScanForSignature(_In_ PVOID  BaseAddress,
         CHAR current_sig_char = 0;
 
         for (INT index = 0; index < MaxLength; index++) {
-                for (INT sig_index = 0; sig_index < SignatureLength + 1;
-                     sig_index++) {
+                for (INT sig = 0; sig < SignatureLength + 1; sig++) {
                         current_char =
-                            *(PCHAR)((UINT64)BaseAddress + index + sig_index);
-                        current_sig_char = Signature[sig_index];
+                            *(PCHAR)((UINT64)BaseAddress + index + sig);
+                        current_sig_char = Signature[sig];
 
-                        if (sig_index == SignatureLength)
+                        if (sig == SignatureLength)
                                 return (PVOID)((UINT64)BaseAddress + index);
 
                         if (current_char != current_sig_char)
@@ -1453,10 +1383,6 @@ DetectEptHooksInKeyFunctions()
                             instruction_time);
 
                         /* close game etc. */
-                }
-                else {
-                        DEBUG_INFO("No ept hook detected at function: %llx",
-                                   PROTECTED_FUNCTION_ADDRESSES[index]);
                 }
         }
 
@@ -1830,6 +1756,7 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
             POOL_FLAG_NON_PAGED,
             modules.module_count * sizeof(MODULE_DISPATCHER_HEADER),
             POOL_TAG_INTEGRITY);
+
         if (!dispatcher_array) {
                 ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
                 return STATUS_MEMORY_NOT_ALLOCATED;

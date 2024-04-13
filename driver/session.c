@@ -116,6 +116,7 @@ SessionInitialise(_In_ PIRP Irp)
         session->process           = process;
         session->is_session_active = TRUE;
         session->session_cookie    = information->session_cookie;
+
         RtlCopyMemory(session->session_aes_key,
                       information->session_aes_key,
                       AES_128_KEY_SIZE);

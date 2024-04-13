@@ -510,7 +510,6 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                  * any x86 modules that werent hashed.
                  */
                 if (!strcmp(process_name, "winlogon.exe")) {
-                        DEBUG_VERBOSE("Winlogon process has started");
                         driver_list->can_hash_x86 = TRUE;
                         IoQueueWorkItem(driver_list->deferred_work_item,
                                         DeferredModuleHashingCallback,
@@ -644,77 +643,75 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
         if (!protected_process_name || !target_process_name)
                 goto end;
 
-        if (!strcmp(protected_process_name, target_process_name)) {
+        if (strcmp(protected_process_name, target_process_name))
+                goto end;
+        /*
+         * WerFault is some windows 11 application that cries when it
+         * cant get a handle, so well allow it for now... todo; learn
+         * more about it
+         *
+         * todo: perform stricter checks rather then the image name.
+         * perhapds check some certificate or something.
+         */
+        if (!strcmp(process_creator_name, "lsass.exe") ||
+            !strcmp(process_creator_name, "csrss.exe") ||
+            !strcmp(process_creator_name, "WerFault.exe") ||
+            !strcmp(process_creator_name, "MsMpEng.exe") ||
+            !strcmp(process_creator_name, target_process_name)) {
+                /* We will downgrade these handles later */
+                // DEBUG_LOG("Handles created by CSRSS, LSASS and
+                // WerFault are allowed for now...");
+        }
+        else if (target_process == process_creator) {
+                // DEBUG_LOG("handles made by NOTEPAD r okay :)");
+                /* handles created by the game (notepad) are okay */
+        }
+        else {
+                OperationInformation->Parameters->CreateHandleInformation
+                    .DesiredAccess = deny_access;
+                OperationInformation->Parameters->DuplicateHandleInformation
+                    .DesiredAccess = deny_access;
+
                 /*
-                 * WerFault is some windows 11 application that cries when it
-                 * cant get a handle, so well allow it for now... todo; learn
-                 * more about it
-                 *
-                 * todo: perform stricter checks rather then the image name.
-                 * perhapds check some certificate or something.
+                 * These processes will constantly open handles to any
+                 * open process for various reasons, so we will still
+                 * strip them but we won't report them.. for now
+                 * atleast.
                  */
-                if (!strcmp(process_creator_name, "lsass.exe") ||
-                    !strcmp(process_creator_name, "csrss.exe") ||
-                    !strcmp(process_creator_name, "WerFault.exe") ||
-                    !strcmp(process_creator_name, "MsMpEng.exe") ||
-                    !strcmp(process_creator_name, target_process_name)) {
-                        /* We will downgrade these handles later */
-                        // DEBUG_LOG("Handles created by CSRSS, LSASS and
-                        // WerFault are allowed for now...");
-                }
-                else if (target_process == process_creator) {
-                        // DEBUG_LOG("handles made by NOTEPAD r okay :)");
-                        /* handles created by the game (notepad) are okay */
-                }
-                else {
-                        OperationInformation->Parameters
-                            ->CreateHandleInformation.DesiredAccess =
-                            deny_access;
-                        OperationInformation->Parameters
-                            ->DuplicateHandleInformation.DesiredAccess =
-                            deny_access;
 
-                        /*
-                         * These processes will constantly open handles to any
-                         * open process for various reasons, so we will still
-                         * strip them but we won't report them.. for now
-                         * atleast.
-                         */
+                if (!strcmp(process_creator_name, "Discord.exe") ||
+                    !strcmp(process_creator_name, "svchost.exe") ||
+                    !strcmp(process_creator_name, "explorer.exe"))
+                        goto end;
 
-                        if (!strcmp(process_creator_name, "Discord.exe") ||
-                            !strcmp(process_creator_name, "svchost.exe") ||
-                            !strcmp(process_creator_name, "explorer.exe"))
-                                goto end;
+                // POPEN_HANDLE_FAILURE_REPORT report =
+                //     ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                //                        sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                //                        REPORT_POOL_TAG);
 
-                        // POPEN_HANDLE_FAILURE_REPORT report =
-                        //     ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                        //                        sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                        //                        REPORT_POOL_TAG);
+                // if (!report)
+                //         goto end;
 
-                        // if (!report)
-                        //         goto end;
+                // report->report_code      =
+                // REPORT_ILLEGAL_HANDLE_OPERATION;
+                // report->is_kernel_handle =
+                // OperationInformation->KernelHandle;
+                // report->process_id       = process_creator_id;
+                // report->thread_id        = ImpPsGetCurrentThreadId();
+                // report->access =
+                //     OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
 
-                        // report->report_code      =
-                        // REPORT_ILLEGAL_HANDLE_OPERATION;
-                        // report->is_kernel_handle =
-                        // OperationInformation->KernelHandle;
-                        // report->process_id       = process_creator_id;
-                        // report->thread_id        = ImpPsGetCurrentThreadId();
-                        // report->access =
-                        //     OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+                // RtlCopyMemory(report->process_name,
+                //               process_creator_name,
+                //               HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                        // RtlCopyMemory(report->process_name,
-                        //               process_creator_name,
-                        //               HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
-
-                        // if (!NT_SUCCESS(
-                        //         IrpQueueCompleteIrp(report,
-                        //         sizeof(OPEN_HANDLE_FAILURE_REPORT))))
-                        //{
-                        //         DEBUG_ERROR("IrpQueueCompleteIrp failed with
-                        //         no status."); goto end;
-                        // }
-                }
+                // if (!NT_SUCCESS(
+                //         IrpQueueCompleteIrp(report,
+                //         sizeof(OPEN_HANDLE_FAILURE_REPORT))))
+                //{
+                //         DEBUG_ERROR("IrpQueueCompleteIrp failed with
+                //         no status."); goto end;
+                // }
         }
 
 end:
@@ -768,130 +765,129 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         object_type = ImpObGetObjectType(object);
 
         /* TODO: check for threads aswell */
-        if (!ImpRtlCompareUnicodeString(
+        if (ImpRtlCompareUnicodeString(
                 &object_type->Name, &OBJECT_TYPE_PROCESS, TRUE)) {
-                process      = (PEPROCESS)object;
-                process_name = ImpPsGetProcessImageFileName(process);
+                goto end;
+        }
 
-                SessionGetProcess(&protected_process);
+        process      = (PEPROCESS)object;
+        process_name = ImpPsGetProcessImageFileName(process);
 
-                protected_process_name =
-                    ImpPsGetProcessImageFileName(protected_process);
+        SessionGetProcess(&protected_process);
 
-                if (strcmp(process_name, protected_process_name))
-                        goto end;
+        protected_process_name =
+            ImpPsGetProcessImageFileName(protected_process);
 
+        if (strcmp(process_name, protected_process_name))
+                goto end;
+
+        DEBUG_VERBOSE(
+            "Handle references our protected process with access mask: %lx",
+            (ACCESS_MASK)Entry->GrantedAccessBits);
+
+        handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
+
+        /* These permissions can be stripped from every process
+         * including CSRSS and LSASS */
+        if (handle_access_mask & PROCESS_CREATE_PROCESS) {
+                Entry->GrantedAccessBits &= ~PROCESS_CREATE_PROCESS;
+                DEBUG_VERBOSE("Stripped PROCESS_CREATE_PROCESS");
+        }
+
+        if (handle_access_mask & PROCESS_CREATE_THREAD) {
+                Entry->GrantedAccessBits &= ~PROCESS_CREATE_THREAD;
+                DEBUG_VERBOSE("Stripped PROCESS_CREATE_THREAD");
+        }
+
+        if (handle_access_mask & PROCESS_DUP_HANDLE) {
+                Entry->GrantedAccessBits &= ~PROCESS_DUP_HANDLE;
+                DEBUG_VERBOSE("Stripped PROCESS_DUP_HANDLE");
+        }
+
+        if (handle_access_mask & PROCESS_QUERY_INFORMATION) {
+                Entry->GrantedAccessBits &= ~PROCESS_QUERY_INFORMATION;
+                DEBUG_VERBOSE("Stripped PROCESS_QUERY_INFORMATION");
+        }
+
+        if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION) {
+                Entry->GrantedAccessBits &= ~PROCESS_QUERY_LIMITED_INFORMATION;
+                DEBUG_VERBOSE("Stripped PROCESS_QUERY_LIMITED_INFORMATION");
+        }
+
+        if (handle_access_mask & PROCESS_VM_READ) {
+                Entry->GrantedAccessBits &= ~PROCESS_VM_READ;
+                DEBUG_VERBOSE("Stripped PROCESS_VM_READ");
+        }
+
+        if (!strcmp(process_name, "csrss.exe") ||
+            !strcmp(process_name, "lsass.exe")) {
                 DEBUG_VERBOSE(
-                    "Handle references our protected process with access mask: %lx",
-                    (ACCESS_MASK)Entry->GrantedAccessBits);
+                    "Required system process allowed, only stripping some permissions");
+                goto end;
+        }
 
-                handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
+        /* Permissions beyond here can only be stripped from non
+         * critical processes */
+        if (handle_access_mask & PROCESS_SET_INFORMATION) {
+                Entry->GrantedAccessBits &= ~PROCESS_SET_INFORMATION;
+                DEBUG_VERBOSE("Stripped PROCESS_SET_INFORMATION");
+        }
 
-                /* These permissions can be stripped from every process
-                 * including CSRSS and LSASS */
-                if (handle_access_mask & PROCESS_CREATE_PROCESS) {
-                        Entry->GrantedAccessBits &= ~PROCESS_CREATE_PROCESS;
-                        DEBUG_VERBOSE("Stripped PROCESS_CREATE_PROCESS");
-                }
+        if (handle_access_mask & PROCESS_SET_QUOTA) {
+                Entry->GrantedAccessBits &= ~PROCESS_SET_QUOTA;
+                DEBUG_VERBOSE("Stripped PROCESS_SET_QUOTA");
+        }
 
-                if (handle_access_mask & PROCESS_CREATE_THREAD) {
-                        Entry->GrantedAccessBits &= ~PROCESS_CREATE_THREAD;
-                        DEBUG_VERBOSE("Stripped PROCESS_CREATE_THREAD");
-                }
+        if (handle_access_mask & PROCESS_SUSPEND_RESUME) {
+                Entry->GrantedAccessBits &= ~PROCESS_SUSPEND_RESUME;
+                DEBUG_VERBOSE("Stripped PROCESS_SUSPEND_RESUME ");
+        }
 
-                if (handle_access_mask & PROCESS_DUP_HANDLE) {
-                        Entry->GrantedAccessBits &= ~PROCESS_DUP_HANDLE;
-                        DEBUG_VERBOSE("Stripped PROCESS_DUP_HANDLE");
-                }
+        if (handle_access_mask & PROCESS_TERMINATE) {
+                Entry->GrantedAccessBits &= ~PROCESS_TERMINATE;
+                DEBUG_VERBOSE("Stripped PROCESS_TERMINATE");
+        }
 
-                if (handle_access_mask & PROCESS_QUERY_INFORMATION) {
-                        Entry->GrantedAccessBits &= ~PROCESS_QUERY_INFORMATION;
-                        DEBUG_VERBOSE("Stripped PROCESS_QUERY_INFORMATION");
-                }
+        if (handle_access_mask & PROCESS_VM_OPERATION) {
+                Entry->GrantedAccessBits &= ~PROCESS_VM_OPERATION;
+                DEBUG_VERBOSE("Stripped PROCESS_VM_OPERATION");
+        }
 
-                if (handle_access_mask & PROCESS_QUERY_LIMITED_INFORMATION) {
-                        Entry->GrantedAccessBits &=
-                            ~PROCESS_QUERY_LIMITED_INFORMATION;
-                        DEBUG_VERBOSE(
-                            "Stripped PROCESS_QUERY_LIMITED_INFORMATION");
-                }
+        if (handle_access_mask & PROCESS_VM_WRITE) {
+                Entry->GrantedAccessBits &= ~PROCESS_VM_WRITE;
+                DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
+        }
 
-                if (handle_access_mask & PROCESS_VM_READ) {
-                        Entry->GrantedAccessBits &= ~PROCESS_VM_READ;
-                        DEBUG_VERBOSE("Stripped PROCESS_VM_READ");
-                }
+        POPEN_HANDLE_FAILURE_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                               REPORT_POOL_TAG);
 
-                if (!strcmp(process_name, "csrss.exe") ||
-                    !strcmp(process_name, "lsass.exe")) {
-                        DEBUG_VERBOSE(
-                            "Required system process allowed, only stripping some permissions");
-                        goto end;
-                }
+        if (!report)
+                goto end;
 
-                /* Permissions beyond here can only be stripped from non
-                 * critical processes */
-                if (handle_access_mask & PROCESS_SET_INFORMATION) {
-                        Entry->GrantedAccessBits &= ~PROCESS_SET_INFORMATION;
-                        DEBUG_VERBOSE("Stripped PROCESS_SET_INFORMATION");
-                }
+        /*
+         * Using the same report structure as the ObRegisterCallbacks
+         * report since both of these reports are closely related by the
+         * fact they are triggered by a process either opening a handle
+         * to our protected process or have a valid open handle to it. I
+         * also don't think its worth creating another queue
+         * specifically for open handle reports since they will be rare.
+         */
+        report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
+        report->is_kernel_handle = 0;
+        report->process_id       = ImpPsGetProcessId(process);
+        report->thread_id        = 0;
+        report->access           = handle_access_mask;
 
-                if (handle_access_mask & PROCESS_SET_QUOTA) {
-                        Entry->GrantedAccessBits &= ~PROCESS_SET_QUOTA;
-                        DEBUG_VERBOSE("Stripped PROCESS_SET_QUOTA");
-                }
+        RtlCopyMemory(&report->process_name,
+                      process_name,
+                      HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-                if (handle_access_mask & PROCESS_SUSPEND_RESUME) {
-                        Entry->GrantedAccessBits &= ~PROCESS_SUSPEND_RESUME;
-                        DEBUG_VERBOSE("Stripped PROCESS_SUSPEND_RESUME ");
-                }
-
-                if (handle_access_mask & PROCESS_TERMINATE) {
-                        Entry->GrantedAccessBits &= ~PROCESS_TERMINATE;
-                        DEBUG_VERBOSE("Stripped PROCESS_TERMINATE");
-                }
-
-                if (handle_access_mask & PROCESS_VM_OPERATION) {
-                        Entry->GrantedAccessBits &= ~PROCESS_VM_OPERATION;
-                        DEBUG_VERBOSE("Stripped PROCESS_VM_OPERATION");
-                }
-
-                if (handle_access_mask & PROCESS_VM_WRITE) {
-                        Entry->GrantedAccessBits &= ~PROCESS_VM_WRITE;
-                        DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
-                }
-
-                POPEN_HANDLE_FAILURE_REPORT report =
-                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                       sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                       REPORT_POOL_TAG);
-
-                if (!report)
-                        goto end;
-
-                /*
-                 * Using the same report structure as the ObRegisterCallbacks
-                 * report since both of these reports are closely related by the
-                 * fact they are triggered by a process either opening a handle
-                 * to our protected process or have a valid open handle to it. I
-                 * also don't think its worth creating another queue
-                 * specifically for open handle reports since they will be rare.
-                 */
-                report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-                report->is_kernel_handle = 0;
-                report->process_id       = ImpPsGetProcessId(process);
-                report->thread_id        = 0;
-                report->access           = handle_access_mask;
-
-                RtlCopyMemory(&report->process_name,
-                              process_name,
-                              HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
-
-                if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                        report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
-                        DEBUG_ERROR(
-                            "IrpQueueCompleteIrp failed with no status.");
-                        goto end;
-                }
+        if (!NT_SUCCESS(IrpQueueCompleteIrp(
+                report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
+                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+                goto end;
         }
 
 end:

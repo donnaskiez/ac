@@ -127,8 +127,9 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
 
 STATIC
 NTSTATUS
-ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
-                      _Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead);
+ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules,
+                             _Inout_ PINVALID_DRIVERS_HEAD
+                                 InvalidDriverListHead);
 
 STATIC
 NTSTATUS
@@ -172,7 +173,7 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 #        pragma alloc_text(PAGE, EnumerateInvalidDrivers)
 #        pragma alloc_text(PAGE, ValidateDriverObjectHasBackingModule)
 #        pragma alloc_text(PAGE, GetSystemModuleInformation)
-#        pragma alloc_text(PAGE, ValidateDriverObjects)
+#        pragma alloc_text(PAGE, ValidateDriverObjectsWrapper)
 #        pragma alloc_text(PAGE, HandleValidateDriversIOCTL)
 #        pragma alloc_text(PAGE, IsInstructionPointerInInvalidRegion)
 #        pragma alloc_text(PAGE, AnalyseNmiData)
@@ -201,16 +202,12 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
         if (!ModuleName || !SystemModules)
                 return NULL;
 
-        for (INT index = 0; index < SystemModules->module_count; index++) {
-                PRTL_MODULE_EXTENDED_INFO system_module =
-                    (PRTL_MODULE_EXTENDED_INFO)((uintptr_t)
-                                                    SystemModules->address +
-                                                index *
-                                                    sizeof(
-                                                        RTL_MODULE_EXTENDED_INFO));
+        PRTL_MODULE_EXTENDED_INFO modules =
+            (PRTL_MODULE_EXTENDED_INFO)SystemModules->address;
 
-                if (strstr(system_module->FullPathName, ModuleName)) {
-                        return system_module;
+        for (INT index = 0; index < SystemModules->module_count; index++) {
+                if (strstr(modules[index].FullPathName, ModuleName)) {
+                        return &modules[index];
                 }
         }
 
@@ -241,10 +238,10 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
                 region.base                = (UINT64)module->ImageBase;
                 region.end                 = region.base + module->ImageSize;
 
-                RtlCopyMemory((UINT64)Buffer +
-                                  index * sizeof(WHITELISTED_REGIONS),
-                              &region,
-                              sizeof(WHITELISTED_REGIONS));
+                UINT64 destination =
+                    (UINT64)Buffer + index * sizeof(WHITELISTED_REGIONS);
+                RtlCopyMemory(
+                    destination, &region, sizeof(WHITELISTED_REGIONS));
         }
 
         return STATUS_SUCCESS;
@@ -273,14 +270,11 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
         if (dispatch_function == NULL)
                 return STATUS_SUCCESS;
 
-        for (INT index = 0; index < Modules->module_count; index++) {
-                PRTL_MODULE_EXTENDED_INFO system_module =
-                    (PRTL_MODULE_EXTENDED_INFO)((UINT64)Modules->address +
-                                                index *
-                                                    sizeof(
-                                                        RTL_MODULE_EXTENDED_INFO));
+        PRTL_MODULE_EXTENDED_INFO module =
+            (PRTL_MODULE_EXTENDED_INFO)Modules->address;
 
-                if (system_module->ImageBase != Driver->DriverStart)
+        for (INT index = 0; index < Modules->module_count; index++) {
+                if (module[index].ImageBase != Driver->DriverStart)
                         continue;
 
                 /* make sure our driver has a device object which is required
@@ -288,8 +282,8 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
                 if (Driver->DeviceObject == NULL)
                         return STATUS_SUCCESS;
 
-                module_base = (UINT64)system_module->ImageBase;
-                module_end  = module_base + system_module->ImageSize;
+                module_base = (UINT64)module[index].ImageBase;
+                module_end  = module_base + module[index].ImageSize;
 
                 /* firstly, check if its inside its own module */
                 if (dispatch_function >= module_base &&
@@ -320,7 +314,7 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
                 }
 
                 DEBUG_WARNING("Driver with invalid dispatch routine found: %s",
-                              system_module->FullPathName);
+                              module[index].FullPathName);
 
                 *Flag = FALSE;
                 return STATUS_SUCCESS;
@@ -402,18 +396,15 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
         if (!ModuleInformation || !DriverObject || !Result)
                 return STATUS_INVALID_PARAMETER;
 
-        for (INT i = 0; i < ModuleInformation->module_count; i++) {
-                PRTL_MODULE_EXTENDED_INFO system_module =
-                    (PRTL_MODULE_EXTENDED_INFO)((uintptr_t)
-                                                    ModuleInformation->address +
-                                                i * sizeof(
-                                                        RTL_MODULE_EXTENDED_INFO));
+        PRTL_MODULE_EXTENDED_INFO module =
+            (PRTL_MODULE_EXTENDED_INFO)ModuleInformation->address;
 
-                if (system_module->ImageSize == 0 ||
-                    system_module->ImageBase == 0)
+        for (INT index = 0; index < ModuleInformation->module_count; index++) {
+                if (module[index].ImageSize == 0 ||
+                    module[index].ImageBase == 0)
                         return STATUS_INVALID_MEMBER;
 
-                if (system_module->ImageBase == DriverObject->DriverStart) {
+                if (module[index].ImageBase == DriverObject->DriverStart) {
                         *Result = TRUE;
                         return STATUS_SUCCESS;
                 }
@@ -439,10 +430,6 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         ULONG    size   = 0;
         NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-        /*
-         * query system module information without an output buffer to get
-         * number of bytes required to store all module info structures
-         */
         status = RtlQueryModuleInformation(
             &size, sizeof(RTL_MODULE_EXTENDED_INFO), NULL);
 
@@ -452,8 +439,6 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
                 return status;
         }
 
-        /* Allocate a pool equal to the output size of RtlQueryModuleInformation
-         */
         PRTL_MODULE_EXTENDED_INFO driver_information =
             ExAllocatePool2(POOL_FLAG_NON_PAGED, size, SYSTEM_MODULES_POOL);
 
@@ -462,8 +447,6 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
                 return STATUS_MEMORY_NOT_ALLOCATED;
         }
 
-        /* Query the modules again this time passing a pointer to the allocated
-         * buffer */
         status = RtlQueryModuleInformation(
             &size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
 
@@ -481,16 +464,76 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return status;
 }
 
+STATIC
+VOID
+ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
+                      _In_ POBJECT_DIRECTORY_ENTRY  Entry,
+                      _Inout_ PINVALID_DRIVERS_HEAD Head,
+                      _In_ PVOID                    Whitelist)
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+        if (!Entry)
+                return;
+
+        POBJECT_DIRECTORY_ENTRY sub_entry = Entry;
+
+        while (sub_entry) {
+                BOOLEAN        flag           = FALSE;
+                PDRIVER_OBJECT current_driver = sub_entry->Object;
+
+                status = ValidateDriverObjectHasBackingModule(
+                    SystemModules, current_driver, &flag);
+
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR(
+                            "ValidateDriverObjectHasBackingModule failed with status %x",
+                            status);
+                        return;
+                }
+
+                if (!flag) {
+                        status = AddDriverToList(
+                            Head, current_driver, REASON_NO_BACKING_MODULE);
+
+                        if (NT_SUCCESS(status))
+                                Head->count += 1;
+                }
+
+                status = ValidateDriverIOCTLDispatchRegion(
+                    current_driver, SystemModules, Whitelist, &flag);
+
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR(
+                            "ValidateDriverIOCTLDispatchRegion failed with status %x",
+                            status);
+                        return;
+                }
+
+                if (!flag) {
+                        status = AddDriverToList(Head,
+                                                 current_driver,
+                                                 REASON_INVALID_IOCTL_DISPATCH);
+                        if (NT_SUCCESS(status))
+                                Head->count += 1;
+                }
+
+                sub_entry = sub_entry->ChainLink;
+        }
+}
+
 /* TODO: this function needs to be rewritten. Infact, this entire file needs to
- * be rewritten. */
+ * be rewritten.
+ * god this is so bad.
+ */
 STATIC
 NTSTATUS
-ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
-                      _Inout_ PINVALID_DRIVERS_HEAD InvalidDriverListHead)
+ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES          SystemModules,
+                             _Inout_ PINVALID_DRIVERS_HEAD Head)
 {
         PAGED_CODE();
 
-        if (!SystemModules || !InvalidDriverListHead)
+        if (!SystemModules || !Head)
                 return STATUS_INVALID_PARAMETER;
 
         HANDLE            handle                     = NULL;
@@ -563,73 +606,8 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
         for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++) {
                 POBJECT_DIRECTORY_ENTRY entry =
                     directory_object->HashBuckets[index];
-
-                if (!entry)
-                        continue;
-
-                POBJECT_DIRECTORY_ENTRY sub_entry = entry;
-
-                while (sub_entry) {
-                        BOOLEAN        flag           = FALSE;
-                        PDRIVER_OBJECT current_driver = sub_entry->Object;
-
-                        /* validate driver has backing module */
-
-                        status = ValidateDriverObjectHasBackingModule(
-                            SystemModules, current_driver, &flag);
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "ValidateDriverObjectHasBackingModule failed with status %x",
-                                    status);
-                                goto end;
-                        }
-
-                        if (!flag) {
-                                status =
-                                    AddDriverToList(InvalidDriverListHead,
-                                                    current_driver,
-                                                    REASON_NO_BACKING_MODULE);
-
-                                if (!NT_SUCCESS(status))
-                                        DEBUG_ERROR(
-                                            "AddDriverToList failed with status %x",
-                                            status);
-                                else
-                                        InvalidDriverListHead->count += 1;
-                        }
-
-                        /* validate drivers IOCTL dispatch routines */
-
-                        status = ValidateDriverIOCTLDispatchRegion(
-                            current_driver,
-                            SystemModules,
-                            whitelisted_regions_buffer,
-                            &flag);
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "ValidateDriverIOCTLDispatchRegion failed with status %x",
-                                    status);
-                                goto end;
-                        }
-
-                        if (!flag) {
-                                status = AddDriverToList(
-                                    InvalidDriverListHead,
-                                    current_driver,
-                                    REASON_INVALID_IOCTL_DISPATCH);
-
-                                if (!NT_SUCCESS(status))
-                                        DEBUG_ERROR(
-                                            "AddDriverToList failed with status %x",
-                                            status);
-                                else
-                                        InvalidDriverListHead->count += 1;
-                        }
-
-                        sub_entry = sub_entry->ChainLink;
-                }
+                ValidateDriverObjects(
+                    SystemModules, entry, Head, whitelisted_regions_buffer);
         }
 
 end:
@@ -685,7 +663,7 @@ HandleValidateDriversIOCTL()
 
         InitDriverList(head);
 
-        status = ValidateDriverObjects(&system_modules, head);
+        status = ValidateDriverObjectsWrapper(&system_modules, head);
 
         if (!NT_SUCCESS(status)) {
                 DEBUG_ERROR("ValidateDriverObjects failed with status %x",
@@ -698,67 +676,59 @@ HandleValidateDriversIOCTL()
                 ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
                 : head->count;
 
-        if (head->count > 0) {
-                DEBUG_VERBOSE("System has an invalid driver count of: %i",
-                              head->count);
-
-                for (INT index = 0; index < head->count; index++) {
-                        /* make sure we free any non reported modules */
-                        if (index >=
-                            MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT) {
-                                RemoveInvalidDriverFromList(head);
-                                continue;
-                        }
-
-                        PMODULE_VALIDATION_FAILURE report = ImpExAllocatePool2(
-                            POOL_FLAG_NON_PAGED,
-                            sizeof(MODULE_VALIDATION_FAILURE),
-                            POOL_TAG_INTEGRITY);
-
-                        if (!report)
-                                continue;
-
-                        report->report_code = REPORT_MODULE_VALIDATION_FAILURE;
-                        report->report_type = head->first_entry->reason;
-                        report->driver_base_address =
-                            head->first_entry->driver->DriverStart;
-                        report->driver_size =
-                            head->first_entry->driver->DriverSize;
-
-                        ANSI_STRING string = {0};
-                        string.Length      = 0;
-                        string.MaximumLength =
-                            MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
-                        string.Buffer = &report->driver_name;
-
-                        status = ImpRtlUnicodeStringToAnsiString(
-                            &string,
-                            &head->first_entry->driver->DriverName,
-                            FALSE);
-
-                        /* still continue if we fail to get the driver name */
-                        if (!NT_SUCCESS(status))
-                                DEBUG_ERROR(
-                                    "RtlUnicodeStringToAnsiString failed with status %x",
-                                    status);
-
-                        status = IrpQueueCompleteIrp(
-                            report, sizeof(MODULE_VALIDATION_FAILURE));
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "IrpQueueCompleteIrp failed with status %x",
-                                    status);
-                                continue;
-                        }
-
-                        RemoveInvalidDriverFromList(head);
-                }
-        }
-        else {
+        if (head->count == 0) {
                 DEBUG_INFO("Found no invalid drivers on the system.");
+                goto end;
         }
 
+        DEBUG_VERBOSE("System has an invalid driver count of: %i", head->count);
+
+        for (INT index = 0; index < head->count; index++) {
+                /* make sure we free any non reported modules */
+                if (index >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT) {
+                        RemoveInvalidDriverFromList(head);
+                        continue;
+                }
+
+                PMODULE_VALIDATION_FAILURE report =
+                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                       sizeof(MODULE_VALIDATION_FAILURE),
+                                       POOL_TAG_INTEGRITY);
+
+                if (!report)
+                        continue;
+
+                report->report_code = REPORT_MODULE_VALIDATION_FAILURE;
+                report->report_type = head->first_entry->reason;
+                report->driver_base_address =
+                    head->first_entry->driver->DriverStart;
+                report->driver_size = head->first_entry->driver->DriverSize;
+
+                ANSI_STRING string   = {0};
+                string.Length        = 0;
+                string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
+                string.Buffer        = &report->driver_name;
+
+                status = ImpRtlUnicodeStringToAnsiString(
+                    &string, &head->first_entry->driver->DriverName, FALSE);
+
+                /* still continue if we fail to get the driver name */
+                if (!NT_SUCCESS(status))
+                        DEBUG_ERROR(
+                            "RtlUnicodeStringToAnsiString failed with status %x",
+                            status);
+
+                status = IrpQueueCompleteIrp(report,
+                                             sizeof(MODULE_VALIDATION_FAILURE));
+
+                if (!NT_SUCCESS(status)) {
+                        DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x",
+                                    status);
+                        continue;
+                }
+
+                RemoveInvalidDriverFromList(head);
+        }
 end:
         ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
         ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
@@ -780,16 +750,13 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
         if (!RIP || !SystemModules || !Result)
                 return STATUS_INVALID_PARAMETER;
 
-        /* Note that this does not check for HAL or PatchGuard Execution */
-        for (INT i = 0; i < SystemModules->module_count; i++) {
-                PRTL_MODULE_EXTENDED_INFO system_module =
-                    (PRTL_MODULE_EXTENDED_INFO)((uintptr_t)
-                                                    SystemModules->address +
-                                                i * sizeof(
-                                                        RTL_MODULE_EXTENDED_INFO));
+        PRTL_MODULE_EXTENDED_INFO modules =
+            (PRTL_MODULE_EXTENDED_INFO)SystemModules->address;
 
-                UINT64 base = (UINT64)system_module->ImageBase;
-                UINT64 end  = base + system_module->ImageSize;
+        /* Note that this does not check for HAL or PatchGuard Execution */
+        for (INT index = 0; index < SystemModules->module_count; index++) {
+                UINT64 base = (UINT64)modules[index].ImageBase;
+                UINT64 end  = base + modules[index].ImageSize;
 
                 if (RIP >= base && RIP <= end) {
                         *Result = TRUE;
@@ -806,11 +773,6 @@ IsInstructionPointerInsideModule(_In_ UINT64                    Rip,
                                  _In_ PRTL_MODULE_EXTENDED_INFO Module,
                                  _Out_ PBOOLEAN                 Result)
 {
-        PAGED_CODE();
-
-        if (!Rip || !Module || !Result)
-                return STATUS_INVALID_PARAMETER;
-
         UINT64 base = (UINT64)Module->ImageBase;
         UINT64 end  = base + Module->ImageSize;
 
@@ -821,6 +783,66 @@ IsInstructionPointerInsideModule(_In_ UINT64                    Rip,
 
         *Result = FALSE;
         return STATUS_SUCCESS;
+}
+
+STATIC
+VOID
+ReportNmiBlocking()
+{
+        PNMI_CALLBACK_FAILURE report = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(NMI_CALLBACK_FAILURE), REPORT_POOL_TAG);
+
+        if (!report)
+                return STATUS_INSUFFICIENT_RESOURCES;
+
+        report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+        report->kthread_address    = NULL;
+        report->invalid_rip        = NULL;
+        report->were_nmis_disabled = TRUE;
+
+        IrpQueueCompleteIrp(report, sizeof(NMI_CALLBACK_FAILURE));
+}
+
+STATIC
+VOID
+ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
+{
+        DEBUG_WARNING("Thread: %llx was not found in the pspcid table.",
+                      Context->kthread);
+
+        PHIDDEN_SYSTEM_THREAD_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
+                               REPORT_POOL_TAG);
+
+        if (!report)
+                return;
+
+        report->report_code          = REPORT_HIDDEN_SYSTEM_THREAD;
+        report->found_in_kthreadlist = FALSE; // wip
+        report->found_in_pspcidtable = FALSE;
+        report->thread_id            = ImpPsGetThreadId(Context->kthread);
+        report->thread_address       = Context->kthread;
+
+        RtlCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
+        IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+}
+
+STATIC
+VOID
+ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
+{
+        PNMI_CALLBACK_FAILURE report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
+                               REPORT_POOL_TAG);
+
+        report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+        report->kthread_address    = Context->kthread;
+        report->invalid_rip        = Context->interrupted_rip;
+        report->were_nmis_disabled = FALSE;
+
+        IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
 }
 
 /*
@@ -842,29 +864,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
         for (INT core = 0; core < ImpKeQueryActiveProcessorCount(0); core++) {
                 /* Make sure our NMIs were run  */
                 if (!NmiContext[core].callback_count) {
-                        PNMI_CALLBACK_FAILURE report =
-                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                               sizeof(NMI_CALLBACK_FAILURE),
-                                               REPORT_POOL_TAG);
-
-                        if (!report)
-                                return STATUS_INSUFFICIENT_RESOURCES;
-
-                        report->report_code     = REPORT_NMI_CALLBACK_FAILURE;
-                        report->kthread_address = NULL;
-                        report->invalid_rip     = NULL;
-                        report->were_nmis_disabled = TRUE;
-
-                        status = IrpQueueCompleteIrp(
-                            report, sizeof(NMI_CALLBACK_FAILURE));
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "IrpQueueCompleteIrp failed with status %x",
-                                    status);
-                                return status;
-                        }
-
+                        ReportNmiBlocking();
                         return STATUS_SUCCESS;
                 }
 
@@ -898,40 +898,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
 
                 if (!ValidateThreadsPspCidTableEntry(
                         NmiContext[core].kthread)) {
-                        DEBUG_WARNING(
-                            "Thread: %llx was not found in the pspcid table.",
-                            NmiContext[core].kthread);
-
-                        PHIDDEN_SYSTEM_THREAD_REPORT report =
-                            ImpExAllocatePool2(
-                                POOL_FLAG_NON_PAGED,
-                                sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                                REPORT_POOL_TAG);
-
-                        if (!report)
-                                continue;
-
-                        report->report_code = REPORT_HIDDEN_SYSTEM_THREAD;
-                        report->found_in_kthreadlist = FALSE; // wip
-                        report->found_in_pspcidtable = FALSE;
-                        report->thread_id =
-                            ImpPsGetThreadId(NmiContext[core].kthread);
-                        report->thread_address = NmiContext[core].kthread;
-
-                        RtlCopyMemory(report->thread,
-                                      NmiContext[core].kthread,
-                                      sizeof(report->thread));
-
-                        if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                                report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT)))) {
-                                DEBUG_ERROR(
-                                    "IrpQueueCompleteIrp failed with no status.");
-                                continue;
-                        }
-                }
-                else {
-                        DEBUG_VERBOSE("Thread: %llx was found in PspCidTable",
-                                      NmiContext[core].kthread);
+                        ReportMissingCidTableEntry(&NmiContext[core]);
                 }
 
                 if (NmiContext[core].user_thread)
@@ -941,33 +908,11 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
                     NmiContext[core].interrupted_rip, SystemModules, &flag);
 
                 if (!NT_SUCCESS(status)) {
-                        DEBUG_ERROR(
-                            "IsInstructionPointerInInvalidRegion failed with status %x",
-                            status);
                         continue;
                 }
 
                 if (!flag) {
-                        PNMI_CALLBACK_FAILURE report = ImpExAllocatePool2(
-                            POOL_FLAG_NON_PAGED,
-                            sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                            REPORT_POOL_TAG);
-
-                        report->report_code     = REPORT_NMI_CALLBACK_FAILURE;
-                        report->kthread_address = NmiContext[core].kthread;
-                        report->invalid_rip = NmiContext[core].interrupted_rip;
-                        report->were_nmis_disabled = FALSE;
-
-                        status = IrpQueueCompleteIrp(
-                            report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "IrpQueueCompleteIrp failed with status %x",
-                                    status);
-                                return status;
-                        }
-
+                        ReportInvalidRipFoundDuringNmi(&NmiContext[core]);
                         return STATUS_SUCCESS;
                 }
         }
@@ -981,8 +926,8 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
 {
         UNREFERENCED_PARAMETER(Handled);
 
-        PNMI_CONTEXT           nmi_context   = (PNMI_CONTEXT)Context;
-        ULONG                  proc_num      = KeGetCurrentProcessorNumber();
+        PNMI_CONTEXT           context       = (PNMI_CONTEXT)Context;
+        ULONG                  core          = KeGetCurrentProcessorNumber();
         UINT64                 kpcr          = 0;
         TASK_STATE_SEGMENT_64* tss           = NULL;
         PMACHINE_FRAME         machine_frame = NULL;
@@ -1004,16 +949,16 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
         machine_frame = tss->Ist3 - sizeof(MACHINE_FRAME);
 
         if (machine_frame->rip <= WINDOWS_USERMODE_MAX_ADDRESS)
-                nmi_context[proc_num].user_thread = TRUE;
+                context[core].user_thread = TRUE;
 
-        nmi_context[proc_num].interrupted_rip = machine_frame->rip;
-        nmi_context[proc_num].interrupted_rsp = machine_frame->rsp;
-        nmi_context[proc_num].kthread         = PsGetCurrentThread();
-        nmi_context[proc_num].callback_count += 1;
+        context[core].interrupted_rip = machine_frame->rip;
+        context[core].interrupted_rsp = machine_frame->rsp;
+        context[core].kthread         = PsGetCurrentThread();
+        context[core].callback_count++;
 
         DEBUG_VERBOSE(
             "[NMI CALLBACK]: Core Number: %lx, Interrupted RIP: %llx, Interrupted RSP: %llx",
-            proc_num,
+            core,
             machine_frame->rip,
             machine_frame->rsp);
 
@@ -1041,7 +986,6 @@ LaunchNonMaskableInterrupt()
                 ImpKeInitializeAffinityEx(ProcAffinityPool);
                 ImpKeAddProcessorAffinityEx(ProcAffinityPool, core);
 
-                DEBUG_VERBOSE("Sending NMI");
                 HalSendNMI(ProcAffinityPool);
 
                 /*
@@ -1053,7 +997,6 @@ LaunchNonMaskableInterrupt()
         }
 
         ImpExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
-
         return STATUS_SUCCESS;
 }
 
@@ -1067,6 +1010,8 @@ HandleNmiIOCTL()
         SYSTEM_MODULES system_modules  = {0};
         PNMI_CONTEXT   nmi_context     = NULL;
 
+        UINT32 size = ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT);
+
         if (IsNmiInProgress())
                 return STATUS_ALREADY_COMMITTED;
 
@@ -1077,10 +1022,8 @@ HandleNmiIOCTL()
                 DEBUG_ERROR("ValidateHalDispatchTables failed with status %x",
                             status);
 
-        nmi_context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                         ImpKeQueryActiveProcessorCount(0) *
-                                             sizeof(NMI_CONTEXT),
-                                         NMI_CONTEXT_POOL);
+        nmi_context =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED, size, NMI_CONTEXT_POOL);
 
         if (!nmi_context) {
                 UnsetNmiInProgressFlag();
@@ -1135,7 +1078,6 @@ HandleNmiIOCTL()
         ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
         ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
         ImpKeDeregisterNmiCallback(callback_handle);
-
         UnsetNmiInProgressFlag();
         return status;
 }
@@ -1149,8 +1091,24 @@ VOID
 ApcRundownRoutine(_In_ PRKAPC Apc)
 {
         PAGED_CODE();
-
         FreeApcAndDecrementApcCount(Apc, APC_CONTEXT_ID_STACKWALK);
+}
+
+STATIC
+VOID
+ReportApcStackwalkViolation(_In_ UINT64 Rip)
+{
+        PAPC_STACKWALK_REPORT report = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), REPORT_POOL_TAG);
+
+        if (!report)
+                return;
+
+        report->report_code     = REPORT_APC_STACKWALK;
+        report->kthread_address = (UINT64)KeGetCurrentThread();
+        report->invalid_rip     = Rip;
+
+        IrpQueueCompleteIrp(report, sizeof(APC_STACKWALK_REPORT));
 }
 
 /*
@@ -1170,7 +1128,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
         NTSTATUS               status            = STATUS_UNSUCCESSFUL;
         PVOID                  buffer            = NULL;
         INT                    frames_captured   = 0;
-        UINT64                 stack_frame       = 0;
+        PUINT64                frames            = 0;
         BOOLEAN                flag              = FALSE;
         PAPC_STACKWALK_CONTEXT context           = NULL;
         PTHREAD_LIST_ENTRY     thread_list_entry = NULL;
@@ -1196,8 +1154,7 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                 goto free;
 
         for (INT index = 0; index < frames_captured; index++) {
-                stack_frame =
-                    *(UINT64*)((UINT64)buffer + index * sizeof(UINT64));
+                frames = (PUINT64)buffer;
 
                 /*
                  * Apc->NormalContext holds the address of our context data
@@ -1205,35 +1162,14 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
                  * argument.
                  */
                 status = IsInstructionPointerInInvalidRegion(
-                    stack_frame, context->modules, &flag);
+                    frames[index], context->modules, &flag);
 
                 if (!NT_SUCCESS(status)) {
-                        DEBUG_ERROR(
-                            "IsInstructionPointerInInvalidRegion failed with status %x",
-                            status);
                         goto free;
                 }
 
-                if (flag == FALSE) {
-                        PAPC_STACKWALK_REPORT report =
-                            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                               sizeof(APC_STACKWALK_REPORT),
-                                               REPORT_POOL_TAG);
-
-                        if (!report)
-                                goto free;
-
-                        report->report_code     = REPORT_APC_STACKWALK;
-                        report->kthread_address = (UINT64)KeGetCurrentThread();
-                        report->invalid_rip     = stack_frame;
-
-                        if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                                report, sizeof(APC_STACKWALK_REPORT)))) {
-                                DEBUG_ERROR(
-                                    "IrpQueueCompleteIrp failed with no status.");
-                                continue;
-                        }
-                }
+                if (!flag)
+                        ReportApcStackwalkViolation(frames[index]);
         }
 
 free:
@@ -1410,7 +1346,6 @@ FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context)
         if (Context->modules->address)
                 ImpExFreePoolWithTag(Context->modules->address,
                                      SYSTEM_MODULES_POOL);
-
         if (Context->modules)
                 ImpExFreePoolWithTag(Context->modules, POOL_TAG_APC);
 }
@@ -1464,59 +1399,59 @@ CheckForDpcCompletion(_In_ PDPC_CONTEXT Context)
 }
 
 STATIC
-NTSTATUS
+VOID
+ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
+{
+        PDPC_STACKWALK_REPORT report = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(DPC_STACKWALK_REPORT), REPORT_POOL_TAG);
+
+        if (!report)
+                return;
+
+        report->report_code     = REPORT_DPC_STACKWALK;
+        report->kthread_address = PsGetCurrentThread();
+        report->invalid_rip     = Frame;
+
+        // RtlCopyMemory(report->driver,
+        //               (UINT64)Context[core].stack_frame[frame]
+        //               - 0x50,
+        //               APC_STACKWALK_BUFFER_SIZE);
+
+        IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT));
+}
+
+STATIC
+VOID
+ValidateDpcStackFrame(_In_ PDPC_CONTEXT Context, _In_ PSYSTEM_MODULES Modules)
+{
+        NTSTATUS status = STATUS_UNSUCCESSFUL;
+        BOOLEAN  flag   = FALSE;
+
+        for (UINT32 frame = 0; frame < Context->frames_captured; frame++) {
+                UINT64 rip = Context->stack_frame[frame];
+                status =
+                    IsInstructionPointerInInvalidRegion(rip, Modules, &flag);
+
+                if (!NT_SUCCESS(status))
+                        return;
+
+                if (!flag)
+                        ReportDpcStackwalkViolation(Context, rip);
+        }
+}
+
+STATIC
+VOID
 ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules,
                          _In_ PDPC_CONTEXT    Context)
 {
-        NTSTATUS              status = STATUS_UNSUCCESSFUL;
         BOOLEAN               flag   = FALSE;
         PDPC_STACKWALK_REPORT report = NULL;
+        UINT32                count  = ImpKeQueryActiveProcessorCount(0);
 
-        for (UINT32 core = 0; core < ImpKeQueryActiveProcessorCount(0);
-             core++) {
-                for (UINT32 frame = 0; frame < Context[core].frames_captured;
-                     frame++) {
-                        status = IsInstructionPointerInInvalidRegion(
-                            Context[core].stack_frame[frame], Modules, &flag);
-
-                        if (!NT_SUCCESS(status)) {
-                                DEBUG_ERROR(
-                                    "IsInstructionPointerInInvalidRegion failed with status %x",
-                                    status);
-                                continue;
-                        }
-
-                        if (!flag) {
-                                report = ImpExAllocatePool2(
-                                    POOL_FLAG_NON_PAGED,
-                                    sizeof(DPC_STACKWALK_REPORT),
-                                    REPORT_POOL_TAG);
-
-                                if (!report)
-                                        continue;
-
-                                report->report_code     = REPORT_DPC_STACKWALK;
-                                report->kthread_address = PsGetCurrentThread();
-                                report->invalid_rip =
-                                    Context[core].stack_frame[frame];
-
-                                // RtlCopyMemory(report->driver,
-                                //               (UINT64)Context[core].stack_frame[frame]
-                                //               - 0x50,
-                                //               APC_STACKWALK_BUFFER_SIZE);
-
-                                if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                                        report,
-                                        sizeof(DPC_STACKWALK_REPORT)))) {
-                                        DEBUG_ERROR(
-                                            "IrpQueueCompleteIrp failed with no status.");
-                                        continue;
-                                }
-                        }
-                }
+        for (UINT32 core = 0; core < count; core++) {
+                ValidateDpcStackFrame(&Context[core], Modules);
         }
-
-        return status;
 }
 
 /*
@@ -1557,13 +1492,7 @@ DispatchStackwalkToEachCpuViaDpc()
         while (!CheckForDpcCompletion(context))
                 YieldProcessor();
 
-        status = ValidateDpcCapturedStack(&modules, context);
-
-        if (!NT_SUCCESS(status)) {
-                DEBUG_ERROR("ValidateDpcCapturedStack failed with status %x",
-                            status);
-                goto end;
-        }
+        ValidateDpcCapturedStack(&modules, context);
 
         DEBUG_VERBOSE("Finished validating cores via dpc");
 end:

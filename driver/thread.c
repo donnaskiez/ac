@@ -98,29 +98,29 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
          * todo: this is filterless and will just report anything, need to have
          * a look into what processes actually attach to real games
          */
-        if (apc_state->Process == protected_process &&
-            ThreadListEntry->owning_process != protected_process) {
-                DEBUG_WARNING(
-                    "Thread is attached to our protected process: %llx",
-                    (UINT64)ThreadListEntry->thread);
-
-                PATTACH_PROCESS_REPORT report =
-                    ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                       sizeof(ATTACH_PROCESS_REPORT),
-                                       REPORT_POOL_TAG);
-
-                if (!report)
-                        return;
-
-                report->report_code = REPORT_ILLEGAL_ATTACH_PROCESS;
-                report->thread_id   = ImpPsGetThreadId(ThreadListEntry->thread);
-                report->thread_address = ThreadListEntry->thread;
-
-                if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                        report, sizeof(ATTACH_PROCESS_REPORT))))
-                        DEBUG_ERROR(
-                            "IrpQueueCompleteIrp failed with no status.");
+        if (!(apc_state->Process == protected_process &&
+              ThreadListEntry->owning_process != protected_process)) {
+                return;
         }
+
+        DEBUG_WARNING("Thread is attached to our protected process: %llx",
+                      (UINT64)ThreadListEntry->thread);
+
+        PATTACH_PROCESS_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(ATTACH_PROCESS_REPORT),
+                               REPORT_POOL_TAG);
+
+        if (!report)
+                return;
+
+        report->report_code    = REPORT_ILLEGAL_ATTACH_PROCESS;
+        report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
+        report->thread_address = ThreadListEntry->thread;
+
+        if (!NT_SUCCESS(
+                IrpQueueCompleteIrp(report, sizeof(ATTACH_PROCESS_REPORT))))
+                DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
 }
 
 VOID
