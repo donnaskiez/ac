@@ -16,20 +16,20 @@ typedef void (*PROCESSLIST_CALLBACK_ROUTINE)(
 #define SHA_256_HASH_LENGTH 32
 
 typedef struct _DRIVER_LIST_ENTRY {
-        SINGLE_LIST_ENTRY list;
-        PVOID             ImageBase;
-        ULONG             ImageSize;
-        BOOLEAN           hashed;
-        BOOLEAN           x86;
-        CHAR              path[DRIVER_PATH_LENGTH];
-        CHAR              text_hash[SHA_256_HASH_LENGTH];
+    SINGLE_LIST_ENTRY list;
+    PVOID             ImageBase;
+    ULONG             ImageSize;
+    BOOLEAN           hashed;
+    BOOLEAN           x86;
+    CHAR              path[DRIVER_PATH_LENGTH];
+    CHAR              text_hash[SHA_256_HASH_LENGTH];
 
-        /*
-         * This LIST_ENTRY is to be used for modules where the hashing needs to
-         * be deferred. For example, when x86 modules can't be hashed on driver
-         * load.
-         */
-        LIST_ENTRY deferred_entry;
+    /*
+     * This LIST_ENTRY is to be used for modules where the hashing needs to
+     * be deferred. For example, when x86 modules can't be hashed on driver
+     * load.
+     */
+    LIST_ENTRY deferred_entry;
 
 } DRIVER_LIST_ENTRY, *PDRIVER_LIST_ENTRY;
 

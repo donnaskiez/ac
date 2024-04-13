@@ -61,7 +61,7 @@ ExperimentalAutoDetectBinPacking: false
 
 IndentCaseLabels: false
 IndentPPDirectives: AfterHash
-IndentWidth: 8
+IndentWidth: 4
 
 KeepEmptyLinesAtTheStartOfBlocks: false
 Language: Cpp

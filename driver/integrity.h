@@ -6,56 +6,55 @@
 #include "common.h"
 
 typedef struct _MODULE_DISPATCHER_HEADER {
-        volatile UINT32
-              validated; // if this is > 0, a thread is already using it
-        UINT8 result;
+    volatile UINT32 validated; // if this is > 0, a thread is already using it
+    UINT8           result;
 
 } MODULE_DISPATCHER_HEADER, *PMODULE_DISPATCHER_HEADER;
 
 typedef struct _SYSTEM_MODULE_INFORMATION {
-        MODULE_DISPATCHER_HEADER dispatcher_header;
-        RTL_MODULE_EXTENDED_INFO module_information;
+    MODULE_DISPATCHER_HEADER dispatcher_header;
+    RTL_MODULE_EXTENDED_INFO module_information;
 
 } SYSTEM_MODULE_INFORMATION, *PSYSTEM_MODULE_INFORMATION;
 
 #define VERIFICATION_THREAD_COUNT 4
 
 typedef struct _SYS_MODULE_VAL_CONTEXT {
-        /* Stores the number of actively executing worker threads */
-        volatile LONG active_thread_count;
+    /* Stores the number of actively executing worker threads */
+    volatile LONG active_thread_count;
 
-        /* determines whether a validation is in progress */
-        volatile LONG active;
+    /* determines whether a validation is in progress */
+    volatile LONG active;
 
-        /* determines whether a validation is complete */
-        volatile LONG complete;
+    /* determines whether a validation is complete */
+    volatile LONG complete;
 
-        /* current count of validated modules */
-        volatile LONG current_count;
+    /* current count of validated modules */
+    volatile LONG current_count;
 
-        /* total count of modules */
-        UINT32 total_count;
+    /* total count of modules */
+    UINT32 total_count;
 
-        /* number of modules to validate in a single sweep */
-        UINT32 block_size;
+    /* number of modules to validate in a single sweep */
+    UINT32 block_size;
 
-        /* pointer to the buffer containing the system module information */
-        PRTL_MODULE_EXTENDED_INFO module_info;
+    /* pointer to the buffer containing the system module information */
+    PRTL_MODULE_EXTENDED_INFO module_info;
 
-        /* pointer to the array of dispatcher info used to synchonize threads */
-        PMODULE_DISPATCHER_HEADER dispatcher_info;
+    /* pointer to the array of dispatcher info used to synchonize threads */
+    PMODULE_DISPATCHER_HEADER dispatcher_info;
 
-        /* array of pointers to work items, used to free work items when
-         * complete */
-        PIO_WORKITEM work_items[VERIFICATION_THREAD_COUNT];
+    /* array of pointers to work items, used to free work items when
+     * complete */
+    PIO_WORKITEM work_items[VERIFICATION_THREAD_COUNT];
 
 } SYS_MODULE_VAL_CONTEXT, *PSYS_MODULE_VAL_CONTEXT;
 
 typedef enum _SMBIOS_TABLE_INDEX {
-        SmbiosInformation = 0,
-        SystemInformation,
-        VendorSpecificInformation,
-        ChassisInformation
+    SmbiosInformation = 0,
+    SystemInformation,
+    VendorSpecificInformation,
+    ChassisInformation
 
 } SMBIOS_TABLE_INDEX;
 

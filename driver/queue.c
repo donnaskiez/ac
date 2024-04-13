@@ -14,52 +14,52 @@
 VOID
 QueuePush(_Inout_ PQUEUE_HEAD Head, _In_ PVOID Data)
 {
-        ImpKeAcquireGuardedMutex(&Head->lock);
+    ImpKeAcquireGuardedMutex(&Head->lock);
 
-        PQUEUE_NODE temp = ExAllocatePool2(
-            POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
+    PQUEUE_NODE temp = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(QUEUE_NODE), QUEUE_POOL_TAG);
 
-        if (!temp)
-                goto end;
+    if (!temp)
+        goto end;
 
-        Head->entries += 1;
+    Head->entries += 1;
 
-        temp->data = Data;
+    temp->data = Data;
 
-        if (Head->end != NULL)
-                Head->end->next = temp;
+    if (Head->end != NULL)
+        Head->end->next = temp;
 
-        Head->end = temp;
+    Head->end = temp;
 
-        if (Head->start == NULL)
-                Head->start = temp;
+    if (Head->start == NULL)
+        Head->start = temp;
 
 end:
-        ImpKeReleaseGuardedMutex(&Head->lock);
+    ImpKeReleaseGuardedMutex(&Head->lock);
 }
 
 PVOID
 QueuePop(_Inout_ PQUEUE_HEAD Head)
 {
-        ImpKeAcquireGuardedMutex(&Head->lock);
+    ImpKeAcquireGuardedMutex(&Head->lock);
 
-        PVOID       data = NULL;
-        PQUEUE_NODE temp = Head->start;
+    PVOID       data = NULL;
+    PQUEUE_NODE temp = Head->start;
 
-        if (temp == NULL)
-                goto end;
+    if (temp == NULL)
+        goto end;
 
-        Head->entries = Head->entries - 1;
+    Head->entries = Head->entries - 1;
 
-        data        = temp->data;
-        Head->start = temp->next;
+    data        = temp->data;
+    Head->start = temp->next;
 
-        if (Head->end == temp)
-                Head->end = NULL;
+    if (Head->end == temp)
+        Head->end = NULL;
 
-        ImpExFreePoolWithTag(temp, QUEUE_POOL_TAG);
+    ImpExFreePoolWithTag(temp, QUEUE_POOL_TAG);
 
 end:
-        ImpKeReleaseGuardedMutex(&Head->lock);
-        return data;
+    ImpKeReleaseGuardedMutex(&Head->lock);
+    return data;
 }

@@ -29,8 +29,8 @@
 VOID
 ListInit(_Inout_ PSINGLE_LIST_ENTRY Head, _Inout_ PKGUARDED_MUTEX Lock)
 {
-        ImpKeInitializeGuardedMutex(Lock);
-        Head->Next = NULL;
+    ImpKeInitializeGuardedMutex(Lock);
+    Head->Next = NULL;
 }
 
 VOID
@@ -38,14 +38,14 @@ ListInsert(_Inout_ PSINGLE_LIST_ENTRY Head,
            _Inout_ PSINGLE_LIST_ENTRY NewEntry,
            _In_ PKGUARDED_MUTEX       Lock)
 {
-        ImpKeAcquireGuardedMutex(Lock);
+    ImpKeAcquireGuardedMutex(Lock);
 
-        PSINGLE_LIST_ENTRY old_entry = Head->Next;
+    PSINGLE_LIST_ENTRY old_entry = Head->Next;
 
-        Head->Next     = NewEntry;
-        NewEntry->Next = old_entry;
+    Head->Next     = NewEntry;
+    NewEntry->Next = old_entry;
 
-        ImpKeReleaseGuardedMutex(Lock);
+    ImpKeReleaseGuardedMutex(Lock);
 }
 
 /*
@@ -59,22 +59,22 @@ ListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
                    _In_ PKGUARDED_MUTEX             Lock,
                    _In_opt_ FREE_LIST_ITEM_CALLBACK CallbackRoutine)
 {
-        BOOLEAN result = FALSE;
-        ImpKeAcquireGuardedMutex(Lock);
+    BOOLEAN result = FALSE;
+    ImpKeAcquireGuardedMutex(Lock);
 
-        if (Head->Next) {
-                PSINGLE_LIST_ENTRY entry = Head->Next;
+    if (Head->Next) {
+        PSINGLE_LIST_ENTRY entry = Head->Next;
 
-                if (CallbackRoutine)
-                        CallbackRoutine(entry);
+        if (CallbackRoutine)
+            CallbackRoutine(entry);
 
-                Head->Next = Head->Next->Next;
-                ImpExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
-                result = TRUE;
-        }
+        Head->Next = Head->Next->Next;
+        ImpExFreePoolWithTag(entry, POOL_TAG_THREAD_LIST);
+        result = TRUE;
+    }
 
-        ImpKeReleaseGuardedMutex(Lock);
-        return result;
+    ImpKeReleaseGuardedMutex(Lock);
+    return result;
 }
 
 /*
@@ -86,31 +86,31 @@ ListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                 _Inout_ PSINGLE_LIST_ENTRY Entry,
                 _In_ PKGUARDED_MUTEX       Lock)
 {
-        ImpKeAcquireGuardedMutex(Lock);
+    ImpKeAcquireGuardedMutex(Lock);
 
-        PSINGLE_LIST_ENTRY entry = Head->Next;
+    PSINGLE_LIST_ENTRY entry = Head->Next;
 
-        if (!entry)
-                goto unlock;
+    if (!entry)
+        goto unlock;
 
-        if (entry == Entry) {
-                Head->Next = entry->Next;
-                ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
-                goto unlock;
+    if (entry == Entry) {
+        Head->Next = entry->Next;
+        ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
+        goto unlock;
+    }
+
+    while (entry->Next) {
+        if (entry->Next == Entry) {
+            entry->Next = Entry->Next;
+            ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
+            goto unlock;
         }
 
-        while (entry->Next) {
-                if (entry->Next == Entry) {
-                        entry->Next = Entry->Next;
-                        ImpExFreePoolWithTag(Entry, POOL_TAG_THREAD_LIST);
-                        goto unlock;
-                }
-
-                entry = entry->Next;
-        }
+        entry = entry->Next;
+    }
 
 unlock:
-        ImpKeReleaseGuardedMutex(Lock);
+    ImpKeReleaseGuardedMutex(Lock);
 }
 
 VOID
@@ -118,32 +118,32 @@ LookasideListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
                          _Inout_ PSINGLE_LIST_ENTRY Entry,
                          _In_ PKGUARDED_MUTEX       Lock)
 {
-        ImpKeAcquireGuardedMutex(Lock);
+    ImpKeAcquireGuardedMutex(Lock);
 
-        PTHREAD_LIST_HEAD  head  = GetThreadList();
-        PSINGLE_LIST_ENTRY entry = Head->Next;
+    PTHREAD_LIST_HEAD  head  = GetThreadList();
+    PSINGLE_LIST_ENTRY entry = Head->Next;
 
-        if (!entry)
-                goto unlock;
+    if (!entry)
+        goto unlock;
 
-        if (entry == Entry) {
-                Head->Next = entry->Next;
-                ExFreeToLookasideListEx(&head->lookaside_list, Entry);
-                goto unlock;
+    if (entry == Entry) {
+        Head->Next = entry->Next;
+        ExFreeToLookasideListEx(&head->lookaside_list, Entry);
+        goto unlock;
+    }
+
+    while (entry->Next) {
+        if (entry->Next == Entry) {
+            entry->Next = Entry->Next;
+            ExFreeToLookasideListEx(&head->lookaside_list, Entry);
+            goto unlock;
         }
 
-        while (entry->Next) {
-                if (entry->Next == Entry) {
-                        entry->Next = Entry->Next;
-                        ExFreeToLookasideListEx(&head->lookaside_list, Entry);
-                        goto unlock;
-                }
-
-                entry = entry->Next;
-        }
+        entry = entry->Next;
+    }
 
 unlock:
-        ImpKeReleaseGuardedMutex(Lock);
+    ImpKeReleaseGuardedMutex(Lock);
 }
 
 BOOLEAN
@@ -151,22 +151,22 @@ LookasideListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
                             _In_ PKGUARDED_MUTEX             Lock,
                             _In_opt_ FREE_LIST_ITEM_CALLBACK CallbackRoutine)
 {
-        ImpKeAcquireGuardedMutex(Lock);
+    ImpKeAcquireGuardedMutex(Lock);
 
-        PTHREAD_LIST_HEAD head   = GetThreadList();
-        BOOLEAN           result = FALSE;
+    PTHREAD_LIST_HEAD head   = GetThreadList();
+    BOOLEAN           result = FALSE;
 
-        if (Head->Next) {
-                PSINGLE_LIST_ENTRY entry = Head->Next;
+    if (Head->Next) {
+        PSINGLE_LIST_ENTRY entry = Head->Next;
 
-                if (CallbackRoutine)
-                        CallbackRoutine(entry);
+        if (CallbackRoutine)
+            CallbackRoutine(entry);
 
-                Head->Next = Head->Next->Next;
-                ExFreeToLookasideListEx(&head->lookaside_list, entry);
-                result = TRUE;
-        }
+        Head->Next = Head->Next->Next;
+        ExFreeToLookasideListEx(&head->lookaside_list, entry);
+        result = TRUE;
+    }
 
-        ImpKeReleaseGuardedMutex(Lock);
-        return result;
+    ImpKeReleaseGuardedMutex(Lock);
+    return result;
 }

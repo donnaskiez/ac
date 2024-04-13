@@ -67,51 +67,49 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
                                  _Out_ PVOID         Buffer,
                                  _In_ UINT32         BufferLength)
 {
-        NTSTATUS           status            = STATUS_UNSUCCESSFUL;
-        KEVENT             event             = {0};
-        IO_STATUS_BLOCK    io                = {0};
-        PIRP               irp               = NULL;
-        PIO_STACK_LOCATION io_stack_location = NULL;
+    NTSTATUS           status            = STATUS_UNSUCCESSFUL;
+    KEVENT             event             = {0};
+    IO_STATUS_BLOCK    io                = {0};
+    PIRP               irp               = NULL;
+    PIO_STACK_LOCATION io_stack_location = NULL;
 
-        if (BufferLength == 0)
-                return STATUS_BUFFER_TOO_SMALL;
+    if (BufferLength == 0)
+        return STATUS_BUFFER_TOO_SMALL;
 
-        KeInitializeEvent(&event, NotificationEvent, FALSE);
+    KeInitializeEvent(&event, NotificationEvent, FALSE);
 
-        /*
-         * we dont need to free this IRP as the IO manager will free it when the
-         * request is completed
-         */
-        irp = IoBuildSynchronousFsdRequest(
-            IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
+    /*
+     * we dont need to free this IRP as the IO manager will free it when the
+     * request is completed
+     */
+    irp = IoBuildSynchronousFsdRequest(
+        IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
 
-        if (!irp) {
-                DEBUG_ERROR(
-                    "IoBuildSynchronousFsdRequest failed with no status.");
-                return STATUS_INSUFFICIENT_RESOURCES;
-        }
+    if (!irp) {
+        DEBUG_ERROR("IoBuildSynchronousFsdRequest failed with no status.");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
-        io_stack_location                = IoGetNextIrpStackLocation(irp);
-        io_stack_location->MinorFunction = IRP_MN_READ_CONFIG;
-        io_stack_location->Parameters.ReadWriteConfig.WhichSpace =
-            PCI_WHICHSPACE_CONFIG;
-        io_stack_location->Parameters.ReadWriteConfig.Offset = Offset;
-        io_stack_location->Parameters.ReadWriteConfig.Buffer = Buffer;
-        io_stack_location->Parameters.ReadWriteConfig.Length = BufferLength;
+    io_stack_location                = IoGetNextIrpStackLocation(irp);
+    io_stack_location->MinorFunction = IRP_MN_READ_CONFIG;
+    io_stack_location->Parameters.ReadWriteConfig.WhichSpace =
+        PCI_WHICHSPACE_CONFIG;
+    io_stack_location->Parameters.ReadWriteConfig.Offset = Offset;
+    io_stack_location->Parameters.ReadWriteConfig.Buffer = Buffer;
+    io_stack_location->Parameters.ReadWriteConfig.Length = BufferLength;
 
-        status = IoCallDriver(DeviceObject, irp);
+    status = IoCallDriver(DeviceObject, irp);
 
-        if (status = STATUS_PENDING) {
-                KeWaitForSingleObject(
-                    &event, Executive, KernelMode, FALSE, NULL);
-                status = io.Status;
-        }
+    if (status = STATUS_PENDING) {
+        KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+        status = io.Status;
+    }
 
-        if (!NT_SUCCESS(status))
-                DEBUG_ERROR("Failed to read configuration space with status %x",
-                            status);
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("Failed to read configuration space with status %x",
+                    status);
 
-        return status;
+    return status;
 }
 
 /*
@@ -123,45 +121,44 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
                                    _Out_ PDEVICE_OBJECT** DeviceObjectArray,
                                    _Out_ PUINT32          ArrayEntries)
 {
-        NTSTATUS        status       = STATUS_UNSUCCESSFUL;
-        UINT32          object_count = 0;
-        PDEVICE_OBJECT* buffer       = NULL;
-        UINT32          buffer_size  = 0;
+    NTSTATUS        status       = STATUS_UNSUCCESSFUL;
+    UINT32          object_count = 0;
+    PDEVICE_OBJECT* buffer       = NULL;
+    UINT32          buffer_size  = 0;
 
-        *DeviceObjectArray = NULL;
+    *DeviceObjectArray = NULL;
 
-        status =
-            IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
+    status = IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
 
-        if (status != STATUS_BUFFER_TOO_SMALL) {
-                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
-                            status);
-                return status;
-        }
-
-        buffer_size = object_count * sizeof(UINT64);
-        buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_HW);
-
-        if (!buffer)
-                return STATUS_INSUFFICIENT_RESOURCES;
-
-        status = IoEnumerateDeviceObjectList(
-            DriverObject, buffer, buffer_size, &object_count);
-
-        if (!NT_SUCCESS(status)) {
-                DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
-                            status);
-                ExFreePoolWithTag(buffer, POOL_TAG_HW);
-                return status;
-        }
-
-        DEBUG_VERBOSE("EnumerateDriverObjectDeviceObjects: Object Count: %lx",
-                      object_count);
-
-        *DeviceObjectArray = buffer;
-        *ArrayEntries      = object_count;
-
+    if (status != STATUS_BUFFER_TOO_SMALL) {
+        DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
+                    status);
         return status;
+    }
+
+    buffer_size = object_count * sizeof(UINT64);
+    buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_HW);
+
+    if (!buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    status = IoEnumerateDeviceObjectList(
+        DriverObject, buffer, buffer_size, &object_count);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
+                    status);
+        ExFreePoolWithTag(buffer, POOL_TAG_HW);
+        return status;
+    }
+
+    DEBUG_VERBOSE("EnumerateDriverObjectDeviceObjects: Object Count: %lx",
+                  object_count);
+
+    *DeviceObjectArray = buffer;
+    *ArrayEntries      = object_count;
+
+    return status;
 }
 
 /*
@@ -173,7 +170,7 @@ STATIC
 BOOLEAN
 IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
 {
-        return DeviceObject->Flags & DO_BUS_ENUMERATED_DEVICE ? TRUE : FALSE;
+    return DeviceObject->Flags & DO_BUS_ENUMERATED_DEVICE ? TRUE : FALSE;
 }
 
 /*
@@ -197,114 +194,108 @@ NTSTATUS
 EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine,
                           _In_opt_ PVOID           Context)
 {
-        NTSTATUS        status = STATUS_UNSUCCESSFUL;
-        UNICODE_STRING  pci    = RTL_CONSTANT_STRING(L"\\Driver\\pci");
-        PDRIVER_OBJECT  pci_driver_object        = NULL;
-        PDEVICE_OBJECT* pci_device_objects       = NULL;
-        PDEVICE_OBJECT  current_device           = NULL;
-        UINT32          pci_device_objects_count = 0;
-        USHORT          vendor_id                = 0;
+    NTSTATUS        status             = STATUS_UNSUCCESSFUL;
+    UNICODE_STRING  pci                = RTL_CONSTANT_STRING(L"\\Driver\\pci");
+    PDRIVER_OBJECT  pci_driver_object  = NULL;
+    PDEVICE_OBJECT* pci_device_objects = NULL;
+    PDEVICE_OBJECT  current_device     = NULL;
+    UINT32          pci_device_objects_count = 0;
+    USHORT          vendor_id                = 0;
 
-        status = GetDriverObjectByDriverName(&pci, &pci_driver_object);
+    status = GetDriverObjectByDriverName(&pci, &pci_driver_object);
 
-        if (!NT_SUCCESS(status)) {
-                DEBUG_ERROR("GetDriverObjectByDriverName failed with status %x",
-                            status);
-                return status;
-        }
-
-        status = EnumerateDriverObjectDeviceObjects(
-            pci_driver_object, &pci_device_objects, &pci_device_objects_count);
-
-        if (!NT_SUCCESS(status)) {
-                DEBUG_ERROR(
-                    "EnumerateDriverObjectDeviceObjects failed with status %x",
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("GetDriverObjectByDriverName failed with status %x",
                     status);
-                return status;
+        return status;
+    }
+
+    status = EnumerateDriverObjectDeviceObjects(
+        pci_driver_object, &pci_device_objects, &pci_device_objects_count);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("EnumerateDriverObjectDeviceObjects failed with status %x",
+                    status);
+        return status;
+    }
+
+    for (UINT32 index = 0; index < pci_device_objects_count; index++) {
+        current_device = pci_device_objects[index];
+
+        /* make sure we have a valid PDO */
+        if (!IsDeviceObjectValidPdo(current_device)) {
+            ObDereferenceObject(current_device);
+            continue;
         }
 
-        for (UINT32 index = 0; index < pci_device_objects_count; index++) {
-                current_device = pci_device_objects[index];
+        status = CallbackRoutine(current_device, Context);
 
-                /* make sure we have a valid PDO */
-                if (!IsDeviceObjectValidPdo(current_device)) {
-                        ObDereferenceObject(current_device);
-                        continue;
-                }
+        if (!NT_SUCCESS(status))
+            DEBUG_ERROR(
+                "EnumeratePciDeviceObjects CallbackRoutine failed with status %x",
+                status);
 
-                status = CallbackRoutine(current_device, Context);
-
-                if (!NT_SUCCESS(status))
-                        DEBUG_ERROR(
-                            "EnumeratePciDeviceObjects CallbackRoutine failed with status %x",
-                            status);
-
-                ObDereferenceObject(current_device);
-        }
+        ObDereferenceObject(current_device);
+    }
 
 end:
-        if (pci_device_objects)
-                ExFreePoolWithTag(pci_device_objects, POOL_TAG_HW);
+    if (pci_device_objects)
+        ExFreePoolWithTag(pci_device_objects, POOL_TAG_HW);
 
-        return status;
+    return status;
 }
 
 BOOLEAN
 IsPciConfigurationSpaceFlagged(_In_ PPCI_COMMON_HEADER Configuration)
 {
-        for (UINT32 index = 0; index < FLAGGED_DEVICE_ID_COUNT; index++) {
-                if (Configuration->DeviceID == FLAGGED_DEVICE_IDS[index])
-                        return TRUE;
-        }
+    for (UINT32 index = 0; index < FLAGGED_DEVICE_ID_COUNT; index++) {
+        if (Configuration->DeviceID == FLAGGED_DEVICE_IDS[index])
+            return TRUE;
+    }
 
-        return FALSE;
+    return FALSE;
 }
 
 STATIC
 NTSTATUS
 PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
-        NTSTATUS          status = STATUS_UNSUCCESSFUL;
-        PCI_COMMON_HEADER header = {0};
+    NTSTATUS          status = STATUS_UNSUCCESSFUL;
+    PCI_COMMON_HEADER header = {0};
 
-        status = QueryPciDeviceConfigurationSpace(DeviceObject,
-                                                  PCI_VENDOR_ID_OFFSET,
-                                                  &header,
-                                                  sizeof(PCI_COMMON_HEADER));
+    status = QueryPciDeviceConfigurationSpace(
+        DeviceObject, PCI_VENDOR_ID_OFFSET, &header, sizeof(PCI_COMMON_HEADER));
 
-        if (!NT_SUCCESS(status)) {
-                DEBUG_ERROR(
-                    "QueryPciDeviceConfigurationSpace failed with status %x",
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("QueryPciDeviceConfigurationSpace failed with status %x",
                     status);
-                return status;
-        }
-
-        if (IsPciConfigurationSpaceFlagged(&header)) {
-                DEBUG_VERBOSE(
-                    "Flagged DeviceID found. Device: %llx, DeviceId: %lx",
-                    (UINT64)DeviceObject,
-                    header.DeviceID);
-        }
-        else {
-                DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
-                              DeviceObject,
-                              header.DeviceID,
-                              header.VendorID);
-        }
-
         return status;
+    }
+
+    if (IsPciConfigurationSpaceFlagged(&header)) {
+        DEBUG_VERBOSE("Flagged DeviceID found. Device: %llx, DeviceId: %lx",
+                      (UINT64)DeviceObject,
+                      header.DeviceID);
+    }
+    else {
+        DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
+                      DeviceObject,
+                      header.DeviceID,
+                      header.VendorID);
+    }
+
+    return status;
 }
 
 NTSTATUS
 ValidatePciDevices()
 {
-        NTSTATUS status = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-        status = EnumeratePciDeviceObjects(PciDeviceQueryCallback, NULL);
+    status = EnumeratePciDeviceObjects(PciDeviceQueryCallback, NULL);
 
-        if (!NT_SUCCESS(status))
-                DEBUG_ERROR("EnumeratePciDeviceObjects failed with status %x",
-                            status);
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("EnumeratePciDeviceObjects failed with status %x", status);
 
-        return status;
+    return status;
 }
