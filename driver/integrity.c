@@ -1269,7 +1269,7 @@ InitiateEptFunctionAddressArrays()
     }
 
     for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
-        ImpRtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
+        ImpRtlInitUnicodeString(&current_function, PROTECTED_FUNCTIONS[index]);
         PROTECTED_FUNCTION_ADDRESSES[index] =
             ImpMmGetSystemRoutineAddress(&current_function);
 
