@@ -1,8 +1,6 @@
 #include "pe.h"
 
-typedef struct IMAGE_NT_HEADER* PIMAGE_NT_HEADER;
-
-PIMAGE_NT_HEADER
+PNT_HEADER_64
 PeGetNtHeader(_In_ PVOID Image)
 {
     PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)Image;
@@ -10,11 +8,54 @@ PeGetNtHeader(_In_ PVOID Image)
     if (dos->e_magic != IMAGE_DOS_SIGNATURE)
         return NULL;
 
-    return CONVERT_RELATIVE_ADDRESS(PIMAGE_NT_HEADER, Image, dos->e_lfanew);
+    return CONVERT_RELATIVE_ADDRESS(PNT_HEADER_64, Image, dos->e_lfanew);
+}
+
+PIMAGE_DATA_DIRECTORY
+PeGetExportDataDirectory(_In_ PVOID Image)
+{
+    PNT_HEADER_64 nt = PeGetNtHeader(Image);
+
+    if (IMAGE_DIRECTORY_ENTRY_EXPORT >= nt->OptionalHeader.NumberOfRvaAndSizes)
+        return NULL;
+
+    return (PIMAGE_DATA_DIRECTORY)&nt->OptionalHeader
+        .DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
 }
 
 PIMAGE_EXPORT_DIRECTORY
-PeGetExportDirectory(_In_ PVOID Image)
+PeGetExportDirectory(_In_ PVOID                 Image,
+                     _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
 {
-    PIMAGE_NT_HEADER nt = PeGetNtHeader(Image);
+    if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
+        return NULL;
+
+    return CONVERT_RELATIVE_ADDRESS(
+        PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
+}
+
+PVOID
+PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
+{
+    ANSI_STRING           target   = {0};
+    PNT_HEADER_64         nt       = NULL;
+    PIMAGE_DATA_DIRECTORY data     = NULL;
+    PIMAGE_EXPORT_DIRECTORY export = NULL;
+
+    RtlInitAnsiString(&target, Name);
+
+    nt = PeGetNtHeader(Image);
+
+    if (!nt)
+        return NULL;
+
+    data = PeGetExportDataDirectory(Image);
+
+    if (!data)
+        return NULL;
+
+    export = PeGetExportDirectory(Image, data);
+
+    if (!export)
+        return NULL;
 }

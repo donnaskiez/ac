@@ -52,6 +52,12 @@
 #define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
         ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
 
+typedef struct _NT_HEADER_64 {
+    DWORD                   Signature;
+    IMAGE_FILE_HEADER       FileHeader;
+    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+} NT_HEADER_64, *PNT_HEADER_64;
+
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx
  * functions, so all reads and writes to the THREAD_LIST->active flag must be
