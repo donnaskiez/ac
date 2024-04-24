@@ -49,6 +49,9 @@
 
 #define MAX_MODULE_PATH 256
 
+#define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
+        ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
+
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx
  * functions, so all reads and writes to the THREAD_LIST->active flag must be
@@ -219,7 +222,7 @@ typedef struct _ACTIVE_SESSION {
     CHAR   session_aes_key[AES_128_KEY_SIZE];
 
     struct SESSION_STATISTICS {
-        UINT32 irps_processed;
+        UINT32 irps_received;
         UINT32 report_count;
         UINT32 heartbeat_count;
     };

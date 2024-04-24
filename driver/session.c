@@ -160,7 +160,7 @@ VOID
 SessionIncrementIrpsProcessedCount()
 {
     ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
-    GetActiveSession()->irps_processed++;
+    GetActiveSession()->irps_received;
     ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 

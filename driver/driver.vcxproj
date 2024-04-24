@@ -255,6 +255,7 @@
     <ClCompile Include="list.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="hw.c" />
+    <ClCompile Include="pe.c" />
     <ClCompile Include="pool.c" />
     <ClCompile Include="queue.c" />
     <ClCompile Include="session.c" />
@@ -274,6 +275,7 @@
     <ClInclude Include="io.h" />
     <ClInclude Include="list.h" />
     <ClInclude Include="modules.h" />
+    <ClInclude Include="pe.h" />
     <ClInclude Include="pool.h" />
     <ClInclude Include="queue.h" />
     <ClInclude Include="session.h" />

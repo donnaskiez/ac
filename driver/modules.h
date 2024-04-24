@@ -67,6 +67,9 @@ FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread,
                          _In_ ULONG    FlagIndex,
                          _In_ BOOLEAN  NewValue);
 
+PVOID
+FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name);
+
 NTSTATUS
 DispatchStackwalkToEachCpuViaDpc();
 

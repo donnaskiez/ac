@@ -6,31 +6,6 @@
 #include <stdarg.h>
 
 PVOID
-FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
-{
-    PKLDR_DATA_TABLE_ENTRY first =
-        (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
-
-    /* first entry contains invalid data, 2nd entry is the kernel */
-    PKLDR_DATA_TABLE_ENTRY entry =
-        ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)
-            ->InLoadOrderLinks.Flink->Flink;
-
-    while (entry->InLoadOrderLinks.Flink != first) {
-        /* todo: write our own unicode string comparison function, since
-         * the entire point of this is to find exports with no exports.
-         */
-        if (!wcscmp(entry->BaseDllName.Buffer, Name)) {
-            return entry->DllBase;
-        }
-
-        entry = entry->InLoadOrderLinks.Flink;
-    }
-
-    return NULL;
-}
-
-PVOID
 ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
 {
     PVOID                    image_base           = NULL;

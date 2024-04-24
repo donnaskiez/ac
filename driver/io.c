@@ -82,18 +82,21 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
  * note: maybe we should use a spinlock here? Dont really want competing threads
  * sleeping. I think spinlock should be used here.
  */
+STATIC
 VOID
 IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
     KeAcquireSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
+STATIC
 VOID
 IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _In_ KIRQL Irql)
 {
     KeReleaseSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
+STATIC
 PIRP
 IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
@@ -106,6 +109,7 @@ IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
     return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
 }
 
+STATIC
 VOID
 IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -114,12 +118,14 @@ IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
 }
 
+STATIC
 BOOLEAN
 IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
     return Queue->deferred_reports.count > 0 ? TRUE : FALSE;
 }
 
+STATIC
 PDEFERRED_REPORT
 IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
@@ -134,6 +140,7 @@ IrpQueueFreeDeferredReport(_In_ PDEFERRED_REPORT Report)
     ImpExFreePoolWithTag(Report, REPORT_POOL_TAG);
 }
 
+STATIC
 NTSTATUS
 IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
@@ -152,6 +159,7 @@ IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
     return STATUS_SUCCESS;
 }
 
+STATIC
 NTSTATUS
 IrpQueueQueryPendingReports(_In_ PIRP Irp)
 {
@@ -188,6 +196,7 @@ end:
     return status;
 }
 
+STATIC
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -196,6 +205,7 @@ IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     queue->count++;
 }
 
+STATIC
 VOID
 IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -205,6 +215,7 @@ IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
 }
 
+STATIC
 PDEFERRED_REPORT
 IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
@@ -221,6 +232,7 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 
 #define MAX_DEFERRED_REPORTS_COUNT 100
 
+STATIC
 VOID
 IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue,
                     _In_ PVOID           Buffer,
