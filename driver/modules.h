@@ -83,4 +83,7 @@ NTSTATUS
 GetDriverObjectByDriverName(_In_ PUNICODE_STRING  DriverName,
                             _Out_ PDRIVER_OBJECT* DriverObject);
 
+NTSTATUS
+ValidateWin32kDispatchTables();
+
 #endif

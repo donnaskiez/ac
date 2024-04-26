@@ -63,6 +63,7 @@ struct data_table_routine_report {
   uint32_t report_code;
   table_id id;
   uint64_t address;
+  uint32_t index;
   char routine[DATA_TABLE_ROUTINE_BUF_SIZE];
 };
 
@@ -139,10 +140,11 @@ enum ioctl_code
         InsertIrpIntoIrpQueue =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20021, METHOD_BUFFERED, FILE_ANY_ACCESS),
         QueryDeferredReports =                  CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20022, METHOD_BUFFERED, FILE_ANY_ACCESS),
         InitiateSharedMapping =                 CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS),
-        ValidatePciDevices =                    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS)
+        ValidatePciDevices =                    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS),
+        ValidateWin32kDispatchTables =          CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20025, METHOD_BUFFERED, FILE_ANY_ACCESS)
 };
 
-constexpr int SHARED_STATE_OPERATION_COUNT = 9;
+constexpr int SHARED_STATE_OPERATION_COUNT = 10;
 
 enum shared_state_operation_id
 {
@@ -155,6 +157,7 @@ enum shared_state_operation_id
         ssScanForEptHooks,
         ssInitiateDpcStackwalk,
         ssValidateSystemModules,
+        ssValidateWin32kDispatchTables
 };
 
 // clang-format on
@@ -252,5 +255,6 @@ public:
   void send_pending_irp();
   void write_shared_mapping_operation(shared_state_operation_id operation_id);
   void initiate_shared_mapping();
+  void validate_win32k_dispatch_tables();
 };
 } // namespace kernel_interface

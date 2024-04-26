@@ -68,6 +68,8 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_PCI_DEVICES \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_WIN32K_TABLES \
+    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20025, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -470,6 +472,19 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
         if (!NT_SUCCESS(status))
             DEBUG_ERROR("ValidateSystemModules failed with status %x", status);
+
+        break;
+
+    case ssValidateWin32kDispatchTables:
+
+        DEBUG_INFO(
+            "SHARED_STATE_OPERATION_ID: ValidateWin32kDispatchTables Received");
+
+        status = ValidateWin32kDispatchTables();
+
+        if (!NT_SUCCESS(status))
+            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
+                        status);
 
         break;
 
@@ -1063,6 +1078,18 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         break;
 
+    case IOCTL_VALIDATE_WIN32K_TABLES:
+
+        DEBUG_INFO("IOCTL_VALIDATE_WIN32K_TABLES Received");
+
+        status = ValidateWin32kDispatchTables();
+
+        if (!NT_SUCCESS(status))
+            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
+                        status);
+
+        break;
+
     default:
         DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
                       stack_location->Parameters.DeviceIoControl.IoControlCode);
@@ -1099,6 +1126,8 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
+
+    ValidateWin32kDispatchTables();
 
     NTSTATUS status = ValidatePciDevices();
 

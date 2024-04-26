@@ -58,4 +58,20 @@ PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
 
     if (!export)
         return NULL;
+
+    PUINT32 functions =
+        CONVERT_RELATIVE_ADDRESS(PUINT32, Image, export->AddressOfFunctions);
+    PUINT32 names =
+        CONVERT_RELATIVE_ADDRESS(PUINT32, Image, export->AddressOfNames);
+    PUINT16 ordinals =
+        CONVERT_RELATIVE_ADDRESS(PUINT16, Image, export->AddressOfNameOrdinals);
+
+    for (UINT32 index = 0; index < export->NumberOfNames; index++) {
+        PCHAR export = CONVERT_RELATIVE_ADDRESS(PCHAR, Image, names[index]);
+        if (!strcmp(Name, export))
+            return CONVERT_RELATIVE_ADDRESS(
+                PVOID, Image, functions[ordinals[index]]);
+    }
+
+    return NULL;
 }

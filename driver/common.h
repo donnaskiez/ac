@@ -50,13 +50,7 @@
 #define MAX_MODULE_PATH 256
 
 #define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
-        ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
-
-typedef struct _NT_HEADER_64 {
-    DWORD                   Signature;
-    IMAGE_FILE_HEADER       FileHeader;
-    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
-} NT_HEADER_64, *PNT_HEADER_64;
+    ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
 
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx
@@ -1643,5 +1637,11 @@ PsGetNextProcessThread(IN PEPROCESS Process, IN PETHREAD Thread OPTIONAL);
 #define PROCESS_VM_OPERATION              0x0008
 #define PROCESS_VM_READ                   0x0010
 #define PROCESS_VM_WRITE                  0x0020
+
+typedef struct _NT_HEADER_64 {
+    UINT32                  Signature;
+    IMAGE_FILE_HEADER       FileHeader;
+    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+} NT_HEADER_64, *PNT_HEADER_64;
 
 #endif
