@@ -42,29 +42,25 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsInBuffer(_Outptr_result_bytebuffer_(*BytesWritten)
-                                         PVOID*   Buffer,
-                                     _In_ PVOID   ModuleBase,
-                                     _In_ SIZE_T  ModuleSize,
-                                     _Out_        _Deref_out_range_(>, 0)
-                                         PSIZE_T  BytesWritten,
-                                     _In_ BOOLEAN IsModulex86);
+StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
+                                     _In_ PVOID    ModuleBase,
+                                     _In_ SIZE_T   ModuleSize,
+                                     _Out_ PSIZE_T BytesWritten,
+                                     _In_ BOOLEAN  IsModulex86);
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle,
-                                    _Outptr_result_bytebuffer_(*Size)
-                                        PVOID*           Section,
+MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
+                                    _Out_ PVOID*         Section,
                                     _In_ PUNICODE_STRING Path,
-                                    _Out_ _Deref_out_range_(>, 0) PSIZE_T Size);
+                                    _Out_ PSIZE_T        Size);
 
 STATIC
 NTSTATUS
-ComputeHashOfBuffer(_In_ PVOID Buffer,
-                    _In_ ULONG BufferSize,
-                    _Outptr_result_bytebuffer_(*HashResultSize)
-                        PVOID* HashResult,
-                    _Out_ _Deref_out_range_(>, 0) PULONG HashResultSize);
+ComputeHashOfBuffer(_In_ PVOID   Buffer,
+                    _In_ ULONG   BufferSize,
+                    _Out_ PVOID* HashResult,
+                    _Out_ PULONG HashResultSize);
 
 STATIC
 VOID
@@ -319,7 +315,7 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 
         total_packet_size +=
             section->SizeOfRawData + sizeof(IMAGE_SECTION_HEADER);
-        num_executable_sections += 1;
+        num_executable_sections++;
         section++;
     }
 
@@ -1685,16 +1681,73 @@ end:
     return status;
 }
 
+FORCEINLINE
+STATIC
+VOID
+IncrementActiveThreadCount(_Inout_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+    InterlockedIncrement(&Context->active_thread_count);
+}
+
+FORCEINLINE
+STATIC
+VOID
+DecrementActiveThreadCount(_Inout_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+    InterlockedDecrement(&Context->active_thread_count);
+}
+
+FORCEINLINE
+STATIC
+VOID
+SetVerificationBlockAsComplete(_In_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+    InterlockedExchange(&Context->complete, TRUE);
+}
+
+FORCEINLINE
+STATIC
+UINT32
+GetCurrentVerificationIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+    return InterlockedExchange(&Context->current_count, Context->current_count);
+}
+
+FORCEINLINE
+STATIC
+UINT32
+GetCurrentVerificationMaxIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context,
+                               _In_ UINT32                  Count)
+{
+    return Count + Context->block_size;
+}
+
+FORCEINLINE
+STATIC
+VOID
+UpdateCurrentVerificationIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context,
+                               _In_ UINT32                  Count)
+{
+    InterlockedExchange(&Context->current_count, Count);
+}
+
 STATIC
 VOID
 SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
                                          _In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-    InterlockedIncrement(&Context->active_thread_count);
+    IncrementActiveThreadCount(Context);
 
-    LONG count =
-        InterlockedExchange(&Context->current_count, Context->current_count);
-    LONG max = count + Context->block_size;
+    UINT32 count = GetCurrentVerificationIndex(Context);
+
+    /*
+     * theres a race condition here, where if the max is taken after a thread
+     * has alredy completed an iteration, meaning the current_count will be +1
+     * then what the starting thread is expecting, meaning the final iteration
+     * will be off by one. To fix just need to calculate the block max before
+     * threads are dispatched. todo!
+     */
+    UINT32 max = GetCurrentVerificationMaxIndex(Context, count);
 
     for (; count < max && count < Context->total_count; count++) {
         if (!InterlockedCompareExchange(
@@ -1704,10 +1757,10 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
     }
 
     if (count == Context->total_count)
-        InterlockedExchange(&Context->complete, TRUE);
+        SetVerificationBlockAsComplete(Context);
 
-    InterlockedExchange(&Context->current_count, count);
-    InterlockedDecrement(&Context->active_thread_count);
+    UpdateCurrentVerificationIndex(Context, count);
+    DecrementActiveThreadCount(Context);
 }
 
 #define VALIDATION_BLOCK_SIZE 25

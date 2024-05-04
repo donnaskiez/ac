@@ -272,8 +272,7 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
     NTSTATUS        status = STATUS_UNSUCCESSFUL;
     PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
-
-    PIRP irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
+    PIRP            irp    = IoCsqRemoveNextIrp(&queue->csq, NULL);
 
     /*
      * If no irps are available in our queue, lets store it in a deferred
@@ -562,6 +561,21 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
 }
 
 STATIC
+VOID
+InitSharedMappingStructure(_Out_ PSHARED_MAPPING Mapping,
+                           _In_ PVOID            KernelBuffer,
+                           _In_ PVOID            UserBuffer,
+                           _In_ PMDL             Mdl)
+{
+    Mapping->kernel_buffer    = (PSHARED_STATE)KernelBuffer;
+    Mapping->user_buffer      = UserBuffer;
+    Mapping->mdl              = Mdl;
+    Mapping->size             = PAGE_SIZE;
+    Mapping->active           = TRUE;
+    Mapping->work_item_status = FALSE;
+}
+
+STATIC
 NTSTATUS
 SharedMappingInitialise(_In_ PIRP Irp)
 {
@@ -621,13 +635,7 @@ SharedMappingInitialise(_In_ PIRP Irp)
         return status;
     }
 
-    mapping->kernel_buffer    = (PSHARED_STATE)buffer;
-    mapping->user_buffer      = user_buffer;
-    mapping->mdl              = mdl;
-    mapping->size             = PAGE_SIZE;
-    mapping->active           = TRUE;
-    mapping->work_item_status = FALSE;
-
+    InitSharedMappingStructure(mapping, buffer, user_buffer, mdl);
     SharedMappingInitialiseTimer(mapping);
 
     mapping_init = (PSHARED_MAPPING_INIT)Irp->AssociatedIrp.SystemBuffer;
