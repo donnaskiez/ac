@@ -61,6 +61,13 @@ SessionGetCallbackConfiguration(
     ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
+STATIC
+VOID
+SessionTerminateHeartbeat(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    FreeHeartbeatConfiguration(Configuration);
+}
+
 VOID
 SessionTerminate()
 {
@@ -74,6 +81,7 @@ SessionTerminate()
     session->um_handle         = NULL;
     session->process           = NULL;
     session->is_session_active = FALSE;
+    SessionTerminateHeartbeat(&session->heartbeat_config);
     ImpKeReleaseGuardedMutex(&session->lock);
 }
 

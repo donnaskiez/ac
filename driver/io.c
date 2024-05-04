@@ -543,7 +543,7 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
     LARGE_INTEGER due_time = {0};
     LONG          period   = 0;
 
-    due_time.QuadPart = ABSOLUTE(SECONDS(30));
+    due_time.QuadPart = -ABSOLUTE(SECONDS(30));
 
     Mapping->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 

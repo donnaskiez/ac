@@ -213,6 +213,9 @@ typedef struct _IRP_QUEUE_ENTRY {
 
 typedef struct _HEARTBEAT_CONFIGURATION {
     volatile UINT32 counter;
+
+    /* Signifies if a heartbeat callback routine is currently executing. */
+    volatile UINT32 active;
     LARGE_INTEGER   seed;
 
     /*
@@ -220,10 +223,9 @@ typedef struct _HEARTBEAT_CONFIGURATION {
      * time our heartbeat callback routine is run, we can remove the timer and
      * add a new timer. This makes it harder to identify our heartbeat timers.
      */
-    PKTIMER timer;
-    PKDPC   dpc;
+    PKTIMER      timer;
+    PKDPC        dpc;
     PIO_WORKITEM work_item;
-    
 
 } HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
 
@@ -244,7 +246,7 @@ typedef struct _ACTIVE_SESSION {
     };
 
     HEARTBEAT_CONFIGURATION heartbeat_config;
-    KGUARDED_MUTEX lock;
+    KGUARDED_MUTEX          lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
 

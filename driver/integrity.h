@@ -76,10 +76,10 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
                              _In_ SIZE_T   ConfigDrive0MaxSize);
 
 NTSTATUS
-ParseSMBIOSTable(_Out_ PVOID Buffer,
-                 _In_ SIZE_T BufferSize,
-                 _In_ ULONG  TableIndex,
-                 _In_ ULONG  TableSubIndex);
+ParseSMBIOSTable(_Out_ PVOID             Buffer,
+                 _In_ SIZE_T             BufferSize,
+                 _In_ SMBIOS_TABLE_INDEX TableIndex,
+                 _In_ ULONG              TableSubIndex);
 
 NTSTATUS
 DetectEptHooksInKeyFunctions();
@@ -89,9 +89,6 @@ ScanForSignature(_In_ PVOID  BaseAddress,
                  _In_ SIZE_T MaxLength,
                  _In_ LPCSTR Signature,
                  _In_ SIZE_T SignatureLength);
-
-NTSTATUS
-ValidateNtoskrnl();
 
 NTSTATUS
 GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo);
@@ -126,5 +123,8 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context);
 NTSTATUS
 InitialiseHeartbeatConfiguration(
     _Inout_ PHEARTBEAT_CONFIGURATION Configuration);
+
+VOID
+FreeHeartbeatConfiguration(_Inout_ PHEARTBEAT_CONFIGURATION Configuration);
 
 #endif

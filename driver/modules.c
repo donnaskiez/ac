@@ -215,6 +215,17 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
     return NULL;
 }
 
+FORCEINLINE
+STATIC
+VOID
+InitWhitelistedRegionStructure(_Out_ PWHITELISTED_REGIONS Region,
+                               _In_ UINT64                Base,
+                               _In_ UINT64                End)
+{
+    Region->base = Base;
+    Region->end  = End;
+}
+
 STATIC
 NTSTATUS
 PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
@@ -236,8 +247,9 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
             continue;
 
         WHITELISTED_REGIONS region = {0};
-        region.base                = (UINT64)module->ImageBase;
-        region.end                 = region.base + module->ImageSize;
+        InitWhitelistedRegionStructure(&region,
+                                       (UINT64)module->ImageBase,
+                                       region.base + module->ImageSize);
 
         UINT64 destination =
             (UINT64)Buffer + index * sizeof(WHITELISTED_REGIONS);
@@ -245,6 +257,13 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
     }
 
     return STATUS_SUCCESS;
+}
+
+STATIC
+UINT64
+GetDriverMajorDispatchFunction(_In_ PDRIVER_OBJECT Driver)
+{
+    return Driver->MajorFunction[IRP_MJ_DEVICE_CONTROL];
 }
 
 STATIC
@@ -265,7 +284,7 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
 
     *Flag = TRUE;
 
-    dispatch_function = Driver->MajorFunction[IRP_MJ_DEVICE_CONTROL];
+    dispatch_function = GetDriverMajorDispatchFunction(Driver);
 
     if (dispatch_function == NULL)
         return STATUS_SUCCESS;
@@ -413,6 +432,17 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+VOID
+InitSystemModulesStructure(_Out_ PSYSTEM_MODULES Modules,
+                           _In_ PVOID            Buffer,
+                           _In_ INT              Count)
+{
+    Modules->address      = Buffer;
+    Modules->module_count = Count;
+}
+
 // https://imphash.medium.com/windows-process-internals-a-few-concepts-to-know-before-jumping-on-memory-forensics-part-3-4a0e195d947b
 NTSTATUS
 GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
@@ -433,26 +463,26 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return status;
     }
 
-    PRTL_MODULE_EXTENDED_INFO driver_information =
+    PRTL_MODULE_EXTENDED_INFO buffer =
         ExAllocatePool2(POOL_FLAG_NON_PAGED, size, SYSTEM_MODULES_POOL);
 
-    if (!driver_information) {
+    if (!buffer) {
         DEBUG_ERROR("Failed to allocate pool LOL");
         return STATUS_MEMORY_NOT_ALLOCATED;
     }
 
     status = RtlQueryModuleInformation(
-        &size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
+        &size, sizeof(RTL_MODULE_EXTENDED_INFO), buffer);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlQueryModuleInformation 2 failed with status %x",
                     status);
-        ExFreePoolWithTag(driver_information, SYSTEM_MODULES_POOL);
+        ExFreePoolWithTag(buffer, SYSTEM_MODULES_POOL);
         return STATUS_ABANDONED;
     }
 
-    ModuleInformation->address      = driver_information;
-    ModuleInformation->module_count = size / sizeof(RTL_MODULE_EXTENDED_INFO);
+    InitSystemModulesStructure(
+        ModuleInformation, buffer, size / sizeof(RTL_MODULE_EXTENDED_INFO));
 
     return status;
 }
@@ -610,16 +640,54 @@ end:
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+INT
+GetModuleCount(_In_ PINVALID_DRIVERS_HEAD Head)
+{
+    return Head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+               ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+               : Head->count;
+}
+
+STATIC
+VOID
+ReportInvalidDriverObject(_In_ PINVALID_DRIVERS_HEAD Head)
+{
+    PMODULE_VALIDATION_FAILURE report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                           sizeof(MODULE_VALIDATION_FAILURE),
+                           POOL_TAG_INTEGRITY);
+
+    if (!report)
+        return;
+
+    report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
+    report->report_type         = Head->first_entry->reason;
+    report->driver_base_address = Head->first_entry->driver->DriverStart;
+    report->driver_size         = Head->first_entry->driver->DriverSize;
+
+    ANSI_STRING string   = {0};
+    string.Length        = 0;
+    string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
+    string.Buffer        = &report->driver_name;
+
+    /* Continue regardless of result */
+    ImpRtlUnicodeStringToAnsiString(
+        &string, &Head->first_entry->driver->DriverName, FALSE);
+
+    IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
+}
+
 NTSTATUS
 HandleValidateDriversIOCTL()
 {
     PAGED_CODE();
 
-    NTSTATUS                         status         = STATUS_UNSUCCESSFUL;
-    ULONG                            buffer_size    = 0;
-    SYSTEM_MODULES                   system_modules = {0};
-    MODULE_VALIDATION_FAILURE_HEADER header         = {0};
-    PINVALID_DRIVERS_HEAD            head           = NULL;
+    NTSTATUS              status         = STATUS_UNSUCCESSFUL;
+    ULONG                 buffer_size    = 0;
+    SYSTEM_MODULES        system_modules = {0};
+    PINVALID_DRIVERS_HEAD head           = NULL;
 
     /* Fix annoying visual studio linting error */
     RtlZeroMemory(&system_modules, sizeof(SYSTEM_MODULES));
@@ -656,17 +724,10 @@ HandleValidateDriversIOCTL()
         goto end;
     }
 
-    header.module_count =
-        head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-            ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-            : head->count;
-
     if (head->count == 0) {
         DEBUG_INFO("Found no invalid drivers on the system.");
         goto end;
     }
-
-    DEBUG_VERBOSE("System has an invalid driver count of: %i", head->count);
 
     for (INT index = 0; index < head->count; index++) {
         /* make sure we free any non reported modules */
@@ -675,42 +736,12 @@ HandleValidateDriversIOCTL()
             continue;
         }
 
-        PMODULE_VALIDATION_FAILURE report =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                               sizeof(MODULE_VALIDATION_FAILURE),
-                               POOL_TAG_INTEGRITY);
-
-        if (!report)
-            continue;
-
-        report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
-        report->report_type         = head->first_entry->reason;
-        report->driver_base_address = head->first_entry->driver->DriverStart;
-        report->driver_size         = head->first_entry->driver->DriverSize;
-
-        ANSI_STRING string   = {0};
-        string.Length        = 0;
-        string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
-        string.Buffer        = &report->driver_name;
-
-        status = ImpRtlUnicodeStringToAnsiString(
-            &string, &head->first_entry->driver->DriverName, FALSE);
-
-        /* still continue if we fail to get the driver name */
-        if (!NT_SUCCESS(status))
-            DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
-                        status);
-
-        status = IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
-
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
-            continue;
-        }
-
+        ReportInvalidDriverObject(head);
         RemoveInvalidDriverFromList(head);
     }
+
 end:
+
     ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
     ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
 
@@ -894,8 +925,31 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+TASK_STATE_SEGMENT_64*
+GetTaskStateSegment(_In_ UINT64 Kpcr)
+{
+    return *(TASK_STATE_SEGMENT_64**)(Kpcr + KPCR_TSS_BASE_OFFSET);
+}
+
+FORCEINLINE
+STATIC
+PMACHINE_FRAME
+GetIsrMachineFrame(_In_ TASK_STATE_SEGMENT_64* TaskStateSegment)
+{
+    return TaskStateSegment->Ist3 - sizeof(MACHINE_FRAME);
+}
+
+FORCEINLINE
 STATIC
 BOOLEAN
+IsUserModeAddress(_In_ UINT64 Rip)
+{
+    return Rip <= WINDOWS_USERMODE_MAX_ADDRESS ? TRUE : FALSE;
+}
+
+STATIC BOOLEAN
 NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
 {
     UNREFERENCED_PARAMETER(Handled);
@@ -919,10 +973,10 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
      * the ISR stack to find the interrupted rip.
      */
     kpcr          = __readmsr(IA32_GS_BASE);
-    tss           = *(TASK_STATE_SEGMENT_64**)(kpcr + KPCR_TSS_BASE_OFFSET);
-    machine_frame = tss->Ist3 - sizeof(MACHINE_FRAME);
+    tss           = GetTaskStateSegment(kpcr);
+    machine_frame = GetIsrMachineFrame(tss);
 
-    if (machine_frame->rip <= WINDOWS_USERMODE_MAX_ADDRESS)
+    if (IsUserModeAddress(machine_frame->rip))
         context[core].user_thread = TRUE;
 
     context[core].interrupted_rip = machine_frame->rip;
@@ -1252,6 +1306,19 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     IncrementApcCount(APC_CONTEXT_ID_STACKWALK);
 }
 
+FORCEINLINE
+STATIC
+VOID
+SetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
+{
+    Context->header.allocation_in_progress = TRUE;
+}
+
+UnsetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
+{
+    Context->header.allocation_in_progress = FALSE;
+}
+
 /*
  * Since NMIs are only executed on the thread that is running on each logical
  * core, it makes sense to make use of APCs that, while can be masked off,
@@ -1301,11 +1368,10 @@ ValidateThreadsViaKernelApc()
 
     InsertApcContext(context);
 
-    context->header.allocation_in_progress = TRUE;
+    SetApcAllocationInProgress(context);
     EnumerateThreadListWithCallbackRoutine(ValidateThreadViaKernelApcCallback,
                                            context);
-    context->header.allocation_in_progress = FALSE;
-
+    UnsetApcAllocationInProgress(context);
     return status;
 }
 
