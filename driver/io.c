@@ -68,6 +68,8 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20023, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_VALIDATE_PCI_DEVICES \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20024, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VALIDATE_WIN32K_TABLES \
+    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x20025, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define APC_OPERATION_STACKWALK 0x1
 
@@ -82,18 +84,21 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
  * note: maybe we should use a spinlock here? Dont really want competing threads
  * sleeping. I think spinlock should be used here.
  */
+STATIC
 VOID
 IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
     KeAcquireSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
+STATIC
 VOID
 IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _In_ KIRQL Irql)
 {
     KeReleaseSpinLock(&GetIrpQueueHead()->lock, Irql);
 }
 
+STATIC
 PIRP
 IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
@@ -106,6 +111,7 @@ IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
     return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
 }
 
+STATIC
 VOID
 IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -114,12 +120,14 @@ IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
 }
 
+STATIC
 BOOLEAN
 IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
     return Queue->deferred_reports.count > 0 ? TRUE : FALSE;
 }
 
+STATIC
 PDEFERRED_REPORT
 IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
 {
@@ -134,6 +142,7 @@ IrpQueueFreeDeferredReport(_In_ PDEFERRED_REPORT Report)
     ImpExFreePoolWithTag(Report, REPORT_POOL_TAG);
 }
 
+STATIC
 NTSTATUS
 IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
@@ -152,6 +161,7 @@ IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
     return STATUS_SUCCESS;
 }
 
+STATIC
 NTSTATUS
 IrpQueueQueryPendingReports(_In_ PIRP Irp)
 {
@@ -188,6 +198,7 @@ end:
     return status;
 }
 
+STATIC
 VOID
 IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -196,6 +207,7 @@ IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     queue->count++;
 }
 
+STATIC
 VOID
 IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
@@ -205,6 +217,7 @@ IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
     ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
 }
 
+STATIC
 PDEFERRED_REPORT
 IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
@@ -221,6 +234,7 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 
 #define MAX_DEFERRED_REPORTS_COUNT 100
 
+STATIC
 VOID
 IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue,
                     _In_ PVOID           Buffer,
@@ -258,8 +272,7 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
     NTSTATUS        status = STATUS_UNSUCCESSFUL;
     PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
-
-    PIRP irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
+    PIRP            irp    = IoCsqRemoveNextIrp(&queue->csq, NULL);
 
     /*
      * If no irps are available in our queue, lets store it in a deferred
@@ -461,6 +474,19 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
         break;
 
+    case ssValidateWin32kDispatchTables:
+
+        DEBUG_INFO(
+            "SHARED_STATE_OPERATION_ID: ValidateWin32kDispatchTables Received");
+
+        status = ValidateWin32kDispatchTables();
+
+        if (!NT_SUCCESS(status))
+            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
+                        status);
+
+        break;
+
     default: DEBUG_ERROR("Invalid SHARED_STATE_OPERATION_ID Received");
     }
 
@@ -516,7 +542,7 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
     LARGE_INTEGER due_time = {0};
     LONG          period   = 0;
 
-    due_time.QuadPart = ABSOLUTE(SECONDS(30));
+    due_time.QuadPart = -ABSOLUTE(SECONDS(30));
 
     Mapping->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 
@@ -532,6 +558,21 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
 
     DEBUG_VERBOSE("Initialised shared mapping event timer.");
     return STATUS_SUCCESS;
+}
+
+STATIC
+VOID
+InitSharedMappingStructure(_Out_ PSHARED_MAPPING Mapping,
+                           _In_ PVOID            KernelBuffer,
+                           _In_ PVOID            UserBuffer,
+                           _In_ PMDL             Mdl)
+{
+    Mapping->kernel_buffer    = (PSHARED_STATE)KernelBuffer;
+    Mapping->user_buffer      = UserBuffer;
+    Mapping->mdl              = Mdl;
+    Mapping->size             = PAGE_SIZE;
+    Mapping->active           = TRUE;
+    Mapping->work_item_status = FALSE;
 }
 
 STATIC
@@ -594,13 +635,7 @@ SharedMappingInitialise(_In_ PIRP Irp)
         return status;
     }
 
-    mapping->kernel_buffer    = (PSHARED_STATE)buffer;
-    mapping->user_buffer      = user_buffer;
-    mapping->mdl              = mdl;
-    mapping->size             = PAGE_SIZE;
-    mapping->active           = TRUE;
-    mapping->work_item_status = FALSE;
-
+    InitSharedMappingStructure(mapping, buffer, user_buffer, mdl);
     SharedMappingInitialiseTimer(mapping);
 
     mapping_init = (PSHARED_MAPPING_INIT)Irp->AssociatedIrp.SystemBuffer;
@@ -1048,6 +1083,18 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         if (!NT_SUCCESS(status))
             DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
+
+        break;
+
+    case IOCTL_VALIDATE_WIN32K_TABLES:
+
+        DEBUG_INFO("IOCTL_VALIDATE_WIN32K_TABLES Received");
+
+        status = ValidateWin32kDispatchTables();
+
+        if (!NT_SUCCESS(status))
+            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
+                        status);
 
         break;
 

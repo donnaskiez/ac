@@ -7,6 +7,7 @@
 #include "imports.h"
 #include "apc.h"
 #include "thread.h"
+#include "pe.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -214,6 +215,17 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
     return NULL;
 }
 
+FORCEINLINE
+STATIC
+VOID
+InitWhitelistedRegionStructure(_Out_ PWHITELISTED_REGIONS Region,
+                               _In_ UINT64                Base,
+                               _In_ UINT64                End)
+{
+    Region->base = Base;
+    Region->end  = End;
+}
+
 STATIC
 NTSTATUS
 PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
@@ -235,8 +247,9 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
             continue;
 
         WHITELISTED_REGIONS region = {0};
-        region.base                = (UINT64)module->ImageBase;
-        region.end                 = region.base + module->ImageSize;
+        InitWhitelistedRegionStructure(&region,
+                                       (UINT64)module->ImageBase,
+                                       region.base + module->ImageSize);
 
         UINT64 destination =
             (UINT64)Buffer + index * sizeof(WHITELISTED_REGIONS);
@@ -244,6 +257,13 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
     }
 
     return STATUS_SUCCESS;
+}
+
+STATIC
+UINT64
+GetDriverMajorDispatchFunction(_In_ PDRIVER_OBJECT Driver)
+{
+    return Driver->MajorFunction[IRP_MJ_DEVICE_CONTROL];
 }
 
 STATIC
@@ -264,7 +284,7 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
 
     *Flag = TRUE;
 
-    dispatch_function = Driver->MajorFunction[IRP_MJ_DEVICE_CONTROL];
+    dispatch_function = GetDriverMajorDispatchFunction(Driver);
 
     if (dispatch_function == NULL)
         return STATUS_SUCCESS;
@@ -412,6 +432,17 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+VOID
+InitSystemModulesStructure(_Out_ PSYSTEM_MODULES Modules,
+                           _In_ PVOID            Buffer,
+                           _In_ INT              Count)
+{
+    Modules->address      = Buffer;
+    Modules->module_count = Count;
+}
+
 // https://imphash.medium.com/windows-process-internals-a-few-concepts-to-know-before-jumping-on-memory-forensics-part-3-4a0e195d947b
 NTSTATUS
 GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
@@ -432,26 +463,26 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return status;
     }
 
-    PRTL_MODULE_EXTENDED_INFO driver_information =
+    PRTL_MODULE_EXTENDED_INFO buffer =
         ExAllocatePool2(POOL_FLAG_NON_PAGED, size, SYSTEM_MODULES_POOL);
 
-    if (!driver_information) {
+    if (!buffer) {
         DEBUG_ERROR("Failed to allocate pool LOL");
         return STATUS_MEMORY_NOT_ALLOCATED;
     }
 
     status = RtlQueryModuleInformation(
-        &size, sizeof(RTL_MODULE_EXTENDED_INFO), driver_information);
+        &size, sizeof(RTL_MODULE_EXTENDED_INFO), buffer);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlQueryModuleInformation 2 failed with status %x",
                     status);
-        ExFreePoolWithTag(driver_information, SYSTEM_MODULES_POOL);
+        ExFreePoolWithTag(buffer, SYSTEM_MODULES_POOL);
         return STATUS_ABANDONED;
     }
 
-    ModuleInformation->address      = driver_information;
-    ModuleInformation->module_count = size / sizeof(RTL_MODULE_EXTENDED_INFO);
+    InitSystemModulesStructure(
+        ModuleInformation, buffer, size / sizeof(RTL_MODULE_EXTENDED_INFO));
 
     return status;
 }
@@ -489,7 +520,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
                 AddDriverToList(Head, current_driver, REASON_NO_BACKING_MODULE);
 
             if (NT_SUCCESS(status))
-                Head->count += 1;
+                Head->count++;
         }
 
         status = ValidateDriverIOCTLDispatchRegion(
@@ -506,7 +537,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
             status = AddDriverToList(
                 Head, current_driver, REASON_INVALID_IOCTL_DISPATCH);
             if (NT_SUCCESS(status))
-                Head->count += 1;
+                Head->count++;
         }
 
         sub_entry = sub_entry->ChainLink;
@@ -609,16 +640,54 @@ end:
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+INT
+GetModuleCount(_In_ PINVALID_DRIVERS_HEAD Head)
+{
+    return Head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+               ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
+               : Head->count;
+}
+
+STATIC
+VOID
+ReportInvalidDriverObject(_In_ PINVALID_DRIVERS_HEAD Head)
+{
+    PMODULE_VALIDATION_FAILURE report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                           sizeof(MODULE_VALIDATION_FAILURE),
+                           POOL_TAG_INTEGRITY);
+
+    if (!report)
+        return;
+
+    report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
+    report->report_type         = Head->first_entry->reason;
+    report->driver_base_address = Head->first_entry->driver->DriverStart;
+    report->driver_size         = Head->first_entry->driver->DriverSize;
+
+    ANSI_STRING string   = {0};
+    string.Length        = 0;
+    string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
+    string.Buffer        = &report->driver_name;
+
+    /* Continue regardless of result */
+    ImpRtlUnicodeStringToAnsiString(
+        &string, &Head->first_entry->driver->DriverName, FALSE);
+
+    IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
+}
+
 NTSTATUS
 HandleValidateDriversIOCTL()
 {
     PAGED_CODE();
 
-    NTSTATUS                         status         = STATUS_UNSUCCESSFUL;
-    ULONG                            buffer_size    = 0;
-    SYSTEM_MODULES                   system_modules = {0};
-    MODULE_VALIDATION_FAILURE_HEADER header         = {0};
-    PINVALID_DRIVERS_HEAD            head           = NULL;
+    NTSTATUS              status         = STATUS_UNSUCCESSFUL;
+    ULONG                 buffer_size    = 0;
+    SYSTEM_MODULES        system_modules = {0};
+    PINVALID_DRIVERS_HEAD head           = NULL;
 
     /* Fix annoying visual studio linting error */
     RtlZeroMemory(&system_modules, sizeof(SYSTEM_MODULES));
@@ -655,17 +724,10 @@ HandleValidateDriversIOCTL()
         goto end;
     }
 
-    header.module_count =
-        head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-            ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-            : head->count;
-
     if (head->count == 0) {
         DEBUG_INFO("Found no invalid drivers on the system.");
         goto end;
     }
-
-    DEBUG_VERBOSE("System has an invalid driver count of: %i", head->count);
 
     for (INT index = 0; index < head->count; index++) {
         /* make sure we free any non reported modules */
@@ -674,42 +736,12 @@ HandleValidateDriversIOCTL()
             continue;
         }
 
-        PMODULE_VALIDATION_FAILURE report =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                               sizeof(MODULE_VALIDATION_FAILURE),
-                               POOL_TAG_INTEGRITY);
-
-        if (!report)
-            continue;
-
-        report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
-        report->report_type         = head->first_entry->reason;
-        report->driver_base_address = head->first_entry->driver->DriverStart;
-        report->driver_size         = head->first_entry->driver->DriverSize;
-
-        ANSI_STRING string   = {0};
-        string.Length        = 0;
-        string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
-        string.Buffer        = &report->driver_name;
-
-        status = ImpRtlUnicodeStringToAnsiString(
-            &string, &head->first_entry->driver->DriverName, FALSE);
-
-        /* still continue if we fail to get the driver name */
-        if (!NT_SUCCESS(status))
-            DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
-                        status);
-
-        status = IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
-
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("IrpQueueCompleteIrp failed with status %x", status);
-            continue;
-        }
-
+        ReportInvalidDriverObject(head);
         RemoveInvalidDriverFromList(head);
     }
+
 end:
+
     ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
     ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
 
@@ -748,21 +780,17 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
+BOOLEAN
 IsInstructionPointerInsideModule(_In_ UINT64                    Rip,
-                                 _In_ PRTL_MODULE_EXTENDED_INFO Module,
-                                 _Out_ PBOOLEAN                 Result)
+                                 _In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
     UINT64 base = (UINT64)Module->ImageBase;
     UINT64 end  = base + Module->ImageSize;
 
-    if (Rip >= base && Rip <= end) {
-        *Result = TRUE;
-        return STATUS_SUCCESS;
-    }
+    if (Rip >= base && Rip <= end)
+        return TRUE;
 
-    *Result = FALSE;
-    return STATUS_SUCCESS;
+    return FALSE;
 }
 
 STATIC
@@ -890,17 +918,38 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
             continue;
         }
 
-        if (!flag) {
+        if (!flag)
             ReportInvalidRipFoundDuringNmi(&NmiContext[core]);
-            return STATUS_SUCCESS;
-        }
     }
 
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+TASK_STATE_SEGMENT_64*
+GetTaskStateSegment(_In_ UINT64 Kpcr)
+{
+    return *(TASK_STATE_SEGMENT_64**)(Kpcr + KPCR_TSS_BASE_OFFSET);
+}
+
+FORCEINLINE
+STATIC
+PMACHINE_FRAME
+GetIsrMachineFrame(_In_ TASK_STATE_SEGMENT_64* TaskStateSegment)
+{
+    return TaskStateSegment->Ist3 - sizeof(MACHINE_FRAME);
+}
+
+FORCEINLINE
 STATIC
 BOOLEAN
+IsUserModeAddress(_In_ UINT64 Rip)
+{
+    return Rip <= WINDOWS_USERMODE_MAX_ADDRESS ? TRUE : FALSE;
+}
+
+STATIC BOOLEAN
 NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
 {
     UNREFERENCED_PARAMETER(Handled);
@@ -924,10 +973,10 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
      * the ISR stack to find the interrupted rip.
      */
     kpcr          = __readmsr(IA32_GS_BASE);
-    tss           = *(TASK_STATE_SEGMENT_64**)(kpcr + KPCR_TSS_BASE_OFFSET);
-    machine_frame = tss->Ist3 - sizeof(MACHINE_FRAME);
+    tss           = GetTaskStateSegment(kpcr);
+    machine_frame = GetIsrMachineFrame(tss);
 
-    if (machine_frame->rip <= WINDOWS_USERMODE_MAX_ADDRESS)
+    if (IsUserModeAddress(machine_frame->rip))
         context[core].user_thread = TRUE;
 
     context[core].interrupted_rip = machine_frame->rip;
@@ -1257,6 +1306,19 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     IncrementApcCount(APC_CONTEXT_ID_STACKWALK);
 }
 
+FORCEINLINE
+STATIC
+VOID
+SetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
+{
+    Context->header.allocation_in_progress = TRUE;
+}
+
+UnsetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
+{
+    Context->header.allocation_in_progress = FALSE;
+}
+
 /*
  * Since NMIs are only executed on the thread that is running on each logical
  * core, it makes sense to make use of APCs that, while can be masked off,
@@ -1306,11 +1368,10 @@ ValidateThreadsViaKernelApc()
 
     InsertApcContext(context);
 
-    context->header.allocation_in_progress = TRUE;
+    SetApcAllocationInProgress(context);
     EnumerateThreadListWithCallbackRoutine(ValidateThreadViaKernelApcCallback,
                                            context);
-    context->header.allocation_in_progress = FALSE;
-
+    UnsetApcAllocationInProgress(context);
     return status;
 }
 
@@ -1866,4 +1927,311 @@ end:
     ImpObDereferenceObject(directory);
     ImpZwClose(handle);
     return STATUS_SUCCESS;
+}
+
+PVOID
+FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
+{
+    PKLDR_DATA_TABLE_ENTRY first =
+        (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
+
+    /* first entry contains invalid data, 2nd entry is the kernel */
+    PKLDR_DATA_TABLE_ENTRY entry =
+        ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)
+            ->InLoadOrderLinks.Flink->Flink;
+
+    while (entry->InLoadOrderLinks.Flink != first) {
+        /* todo: write our own unicode string comparison function, since
+         * the entire point of this is to find exports with no exports.
+         */
+        if (!wcscmp(entry->BaseDllName.Buffer, Name)) {
+            return entry->DllBase;
+        }
+
+        entry = entry->InLoadOrderLinks.Flink;
+    }
+
+    return NULL;
+}
+
+STATIC
+VOID
+ValidateDispatchTableRoutines(_In_ PVOID* Table, _In_ UINT32 Entries)
+{
+}
+
+PRTL_MODULE_EXTENDED_INFO
+FindModuleByName(_In_ PSYSTEM_MODULES Modules, _In_ PCHAR ModuleName)
+{
+    for (UINT32 index = 0; index < Modules->module_count; index++) {
+        PRTL_MODULE_EXTENDED_INFO entry =
+            &((PRTL_MODULE_EXTENDED_INFO)(Modules->address))[index];
+        if (strstr(entry->FullPathName, ModuleName))
+            return entry;
+    }
+
+    return NULL;
+}
+
+#define KERNEL_LOW_ADDRESS  0xFFFF000000000000
+#define KERNEL_HIGH_ADDRESS 0xFFFFFFFFFFFFFFFF
+
+BOOLEAN
+IsValidKernelAddress(_In_ UINT64 Address)
+{
+    if (!(Address >= KERNEL_LOW_ADDRESS && Address <= KERNEL_HIGH_ADDRESS))
+        return FALSE;
+    if (!MmIsAddressValid(Address))
+        return FALSE;
+
+    return TRUE;
+}
+
+/*
+ * Follows a chain of valid pointers until a pointer is no longer present in the
+ * chain, and returns the final pointer. Assumes the argument "Start" contains a
+ * valid pointer at its address.
+ *
+ * The try catch here is also useless. We can work on making this more secure
+ * later.
+ */
+PVOID
+FindChainedPointerEnding(_In_ PVOID* Start)
+{
+    PVOID* current = *Start;
+    PVOID  prev    = Start;
+
+    while (IsValidKernelAddress(current)) {
+        __try {
+            prev    = current;
+            current = *current;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return prev;
+        }
+    }
+
+    return prev;
+}
+
+#define WIN32KBASE_DXGKRNL_INTERFACE_FUNC_COUNT 98
+
+// clang-format off
+/*
+* ffffa135`fa847828  fffff805`5c7ccf60
+* ffffa135`fa847828  fffff805`5c7ccf60 dxgkrnl!DXG_GUEST_COMPOSITIONOBJECTCHANNEL::ChannelStarted
+* ffffa135`fa847830  fffff805`5c7ccf60 dxgkrnl!DXG_GUEST_COMPOSITIONOBJECTCHANNEL::ChannelStarted
+* ffffa135`fa847838  fffff805`5c7e4ca0 dxgkrnl!DxgkProcessCallout
+* ffffa135`fa847840  fffff805`5c7b2580 dxgkrnl!DxgkNotifyProcessFreezeCallout
+* ffffa135`fa847848  fffff805`5c7b2430 dxgkrnl!DxgkNotifyProcessThawCallout
+* ffffa135`fa847850  fffff805`5c7daf30 dxgkrnl!DxgkOpenAdapter
+* ffffa135`fa847858  fffff805`5c7ff6e0 dxgkrnl!DxgkEnumAdapters2Impl
+* ffffa135`fa847860  fffff805`5c839f00 dxgkrnl!DxgkGetMaximumAdapterCount
+* ffffa135`fa847868  fffff805`5c7e37c0 dxgkrnl!DxgkCloseAdapterImpl
+* ffffa135`fa847870  fffff805`5c7b3970 dxgkrnl!DxgkDestroyDevice
+* ffffa135`fa847878  fffff805`5c7c8370 dxgkrnl!DxgkEscape
+* ffffa135`fa847880  fffff805`5c7c58d0 dxgkrnl!DxgkGetPresentHistoryInternal
+* ffffa135`fa847888  fffff805`5c9569a0 dxgkrnl!DxgkReleaseProcessVidPnSourceOwners
+* ffffa135`fa847890  fffff805`5c8f4de0 dxgkrnl!DxgkPollDisplayChildrenInternal
+* ffffa135`fa847898  fffff805`5c837390 dxgkrnl!DxgkFlushPresentHistory
+* ffffa135`fa8478a0  fffff805`5c802e00 dxgkrnl!DxgkGetPathsModality
+* ffffa135`fa8478a8  fffff805`5c82e7c0 dxgkrnl!DxgkFunctionalizePathsModality
+* ffffa135`fa8478b0  fffff805`5c82e6d0 dxgkrnl!DxgkApplyPathsModality
+* ffffa135`fa8478b8  fffff805`5c819740 dxgkrnl!DxgkFinalizePathsModality
+* ffffa135`fa8478c0  fffff805`5c7b01c0 dxgkrnl!DxgkPersistPathsModality
+* ffffa135`fa8478c8  fffff805`5c839d80 dxgkrnl!DxgkFreePathsModality
+* ffffa135`fa8478d0  fffff805`5c816870 dxgkrnl!DxgkAugmentCdsj
+* ffffa135`fa8478d8  fffff805`5c821270 dxgkrnl!DxgkGetPresentHistoryReadyEvent
+* ffffa135`fa8478e0  fffff805`5c806eb0 dxgkrnl!DxgkGetDisplayConfigBufferSizes
+* ffffa135`fa8478e8  fffff805`5c8070e0 dxgkrnl!DxgkQueryDisplayConfig
+* ffffa135`fa8478f0  fffff805`5c9677d0 dxgkrnl!DxgkHandleForceProjectionMonitor
+* ffffa135`fa8478f8  fffff805`5c838f10 dxgkrnl!DxgkUpdateCddDevmodeExtraData
+* ffffa135`fa847900  fffff805`5c967ca0 dxgkrnl!DxgkProcessDisplayCalloutBatch
+* ffffa135`fa847908  fffff805`5c7f8880 dxgkrnl!DxgkDisplayConfigDeviceInfo
+* ffffa135`fa847910  fffff805`5c7e11f0 dxgkrnl!DxgkGetAdapterDeviceDesc
+* ffffa135`fa847918  fffff805`5c7e9200 dxgkrnl!DxgkGetMonitorInternalInfo
+* ffffa135`fa847920  fffff805`5c82a4f0 dxgkrnl!DxgkBeginTopologyTransition
+* ffffa135`fa847928  fffff805`5c829f50 dxgkrnl!DxgkCompleteTopologyTransition
+* ffffa135`fa847930  fffff805`5c8f4130 dxgkrnl!DxgkNeedToEnableCddPrimary
+* ffffa135`fa847938  fffff805`5c82a090 dxgkrnl!DxgkInvalidateMonitorConnections
+* ffffa135`fa847940  fffff805`5c807340 dxgkrnl!DxgkWriteDiagEntry
+* ffffa135`fa847948  fffff805`5c815800 dxgkrnl!DxgkGetAdapterDefaultScaling
+* ffffa135`fa847950  fffff805`5c816240 dxgkrnl!DxgkConvertDisplayConfigCScalingToDdiScaling
+* ffffa135`fa847958  fffff805`5c8397e0 dxgkrnl!DxgkGetGlobalRawmodeFlag
+* ffffa135`fa847960  fffff805`5c967e70 dxgkrnl!DxgkSetGlobalRawmodeFlag
+* ffffa135`fa847968  fffff805`5c839530 dxgkrnl!DxgkQueryModeListCacheLuid
+* ffffa135`fa847970  fffff805`5c826ff0 dxgkrnl!DxgkThreadCallout
+* ffffa135`fa847978  fffff805`5c829c40 dxgkrnl!DxgkSessionConnected
+* ffffa135`fa847980  fffff805`5c829a60 dxgkrnl!DxgkPreSessionDisconnected
+* ffffa135`fa847988  fffff805`5c829b90 dxgkrnl!DxgkSessionDisconnected
+* ffffa135`fa847990  fffff805`5c844420 dxgkrnl!DxgkSessionReconnected
+* ffffa135`fa847998  fffff805`5c8440f0 dxgkrnl!DxgkGetAdapter
+* ffffa135`fa8479a0  fffff805`5c844290 dxgkrnl!DxgkReleaseAdapter
+* ffffa135`fa8479a8  fffff805`5c82c200 dxgkrnl!DxgkDesktopSwitch
+* ffffa135`fa8479b0  fffff805`5c811860 dxgkrnl!DxgkStatusChangeNotify
+* ffffa135`fa8479b8  fffff805`5c928fd0 dxgkrnl!DxgkEnableUnorderedWaitsForDevice
+* ffffa135`fa8479c0  fffff805`5c839670 dxgkrnl!DxgkCddVerifyCddDevMode
+* ffffa135`fa8479c8  fffff805`5c93bf30 dxgkrnl!DxgkIsVidPnSourceOwnerDwm
+* ffffa135`fa8479d0  fffff805`5c8377a0 dxgkrnl!DxgkIsVidPnSourceOwnerExclusive
+* ffffa135`fa8479d8  fffff805`5c7f8720 dxgkrnl!DxgkGetMonitorDeviceObject
+* ffffa135`fa8479e0  fffff805`5c831680 dxgkrnl!DxgkRegisterDwmProcess
+* ffffa135`fa8479e8  fffff805`5c8fa0a0 dxgkrnl!DxgkGetSharedResourceAdapterLuid
+* ffffa135`fa8479f0  fffff805`5c8e7590 dxgkrnl!DxgkNotifyMonitorDimming
+* ffffa135`fa8479f8  fffff805`5c820d10 dxgkrnl!DxgkGetSharedAllocationObjectType
+* ffffa135`fa847a00  fffff805`5c820d20 dxgkrnl!DxgkGetSharedSyncObjectType
+* ffffa135`fa847a08  fffff805`5c83b1b0 dxgkrnl!DxgkGetDisplayManagerObjectType
+* ffffa135`fa847a10  fffff805`5c93be10 dxgkrnl!DxgkGetProcessInterferenceCount
+* ffffa135`fa847a18  fffff805`5c839cd0 dxgkrnl!DxgkGetGpuUsageStatistics
+* ffffa135`fa847a20  fffff805`5c815320 dxgkrnl!DxgkUpdateGdiInfo
+* ffffa135`fa847a28  fffff805`5c8393d0 dxgkrnl!DxgkSetPresenterViewMode
+* ffffa135`fa847a30  fffff805`5c836930 dxgkrnl!DxgkGetPresenterViewMode
+* ffffa135`fa847a38  fffff805`5c827820 dxgkrnl!DxgkSetProcessStatus
+* ffffa135`fa847a40  fffff805`5c7fa180 dxgkrnl!DxgkConvertLegacyQDCAdapterAndIdToActual
+* ffffa135`fa847a48  fffff805`5c81b510 dxgkrnl!DxgkDisplayOnOff
+* ffffa135`fa847a50  fffff805`5c815c30 dxgkrnl!DxgkIsVirtualizationDisabledForTarget
+* ffffa135`fa847a58  fffff805`5c8378f0 dxgkrnl!DxgkIsSourceInHardwareClone
+* ffffa135`fa847a60  fffff805`5c96d7d0 dxgkrnl!DxgkProcessLockScreen
+* ffffa135`fa847a68  fffff805`5c964bd0 dxgkrnl!DxgkCopyPathsModality
+* ffffa135`fa847a70  fffff805`5c964b30 dxgkrnl!DxgkApplyCdsjToPathsModality
+* ffffa135`fa847a78  fffff805`5c979410 dxgkrnl!DxgkUpdateDpiInfoForNewOverride
+* ffffa135`fa847a80  fffff805`5c839a00 dxgkrnl!DxgkInitializeDpi
+* ffffa135`fa847a88  fffff805`5c839930 dxgkrnl!DxgkGetDpiOverrideForSource
+* ffffa135`fa847a90  fffff805`5c980420 dxgkrnl!DxgkGetLegacyDpiInfo
+* ffffa135`fa847a98  fffff805`5c94e0e0 dxgkrnl!DxgkWin32kSetPointerPosition
+* ffffa135`fa847aa0  fffff805`5c94e240 dxgkrnl!DxgkWin32kSetPointerShape
+* ffffa135`fa847aa8  fffff805`5c844730 dxgkrnl!DxgkGetUseHWGPUInRemoteSession
+* ffffa135`fa847ab0  fffff805`5c945520 dxgkrnl!DxgkLPMDisplayControl
+* ffffa135`fa847ab8  fffff805`5c945470 dxgkrnl!DxgkEnableHighPrecisionBrightness
+* ffffa135`fa847ac0  fffff805`5c945640 dxgkrnl!DxgkSetHighPrecisionBrightness
+* ffffa135`fa847ac8  fffff805`5c844670 dxgkrnl!DxgkChangeD3RequestsState
+* ffffa135`fa847ad0  fffff805`5c836b90 dxgkrnl!DxgkGetMonitorEdid
+* ffffa135`fa847ad8  fffff805`5c967620 dxgkrnl!DxgkConvertPathsModalityToDisplayConfig
+* ffffa135`fa847ae0  fffff805`5c815d40 dxgkrnl!DxgkConvertDisplayConfigToDevMode
+* ffffa135`fa847ae8  fffff805`5c7febd0 dxgkrnl!DxgkDDisplayEnumInternal
+* ffffa135`fa847af0  fffff805`5c9677a0 dxgkrnl!DxgkGetMonitorDisplayId
+* ffffa135`fa847af8  fffff805`5c964c60 dxgkrnl!DxgkEnumerateModesForPathsModality
+* ffffa135`fa847b00  fffff805`5c8f0e70 dxgkrnl!DxgCreateLiveDumpWithWdLogs
+* ffffa135`fa847b08  fffff805`5c9818d0 dxgkrnl!DxgkDispMgrReferenceObjectByHandle
+* ffffa135`fa847b10  fffff805`5c9818b0 dxgkrnl!DxgkDispMgrIsTargetOwned
+* ffffa135`fa847b18  fffff805`5c98bb20 dxgkrnl!DxgkCheckDisplayState
+* ffffa135`fa847b20  fffff805`5c8363c0 dxgkrnl!DxgkSetKernelDisplayPolicy
+* ffffa135`fa847b28  fffff805`5c839720 dxgkrnl!DxgkSendDisplayBrokerMessage
+* ffffa135`fa847b30  fffff805`5c96fb30 dxgkrnl!DxgkGetWddmRemoteSessionGdiViewRange
+*/
+// clang-format on
+
+STATIC
+VOID
+ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
+                                       _In_ UINT64 Address)
+{
+    PDATA_TABLE_ROUTINE_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                           sizeof(DATA_TABLE_ROUTINE_REPORT),
+                           REPORT_POOL_TAG);
+
+    if (!report)
+        return;
+
+    report->id      = REPORT_DATA_TABLE_ROUTINE;
+    report->address = Address;
+    report->id      = Win32kBase_gDxgInterface;
+    report->index   = TableIndex;
+    // todo! report->routine = ??
+
+    IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT));
+}
+
+STATIC
+NTSTATUS
+ValidateWin32kBase_gDxgInterface()
+{
+    NTSTATUS                  status        = STATUS_UNSUCCESSFUL;
+    SYSTEM_MODULES            modules       = {0};
+    PRTL_MODULE_EXTENDED_INFO win32kbase    = NULL;
+    PRTL_MODULE_EXTENDED_INFO dxgkrnl       = NULL;
+    KAPC_STATE                apc           = {0};
+    PKPROCESS                 winlogon      = NULL;
+    PVOID*                    dxg_interface = NULL;
+
+    status = GetSystemModuleInformation(&modules);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("GetSystemModuleInformation failed %x", status);
+        return status;
+    }
+
+    win32kbase = FindModuleByName(&modules, "win32kbase.sys");
+
+    if (!win32kbase) {
+        status = STATUS_UNSUCCESSFUL;
+        goto end;
+    }
+
+    EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &winlogon);
+
+    if (!winlogon) {
+        status = STATUS_UNSUCCESSFUL;
+        goto end;
+    }
+
+    KeStackAttachProcess(winlogon, &apc);
+    dxg_interface = PeFindExportByName(win32kbase->ImageBase, "gDxgkInterface");
+
+    if (!dxg_interface) {
+        status = STATUS_UNSUCCESSFUL;
+        goto detatch;
+    }
+
+    /* The functions in this table reside in dxgkrnl.sys */
+    dxgkrnl = FindModuleByName(&modules, "dxgkrnl.sys");
+
+    if (!dxgkrnl) {
+        status = STATUS_UNSUCCESSFUL;
+        goto detatch;
+    }
+
+    /* first 3 qwords are housekeeping. */
+    for (UINT32 index = 3; index < WIN32KBASE_DXGKRNL_INTERFACE_FUNC_COUNT + 3;
+         index++) {
+        if (!dxg_interface[index])
+            continue;
+
+        PVOID entry = FindChainedPointerEnding(dxg_interface[index]);
+
+#if DEBUG
+        DEBUG_INFO("chain entry test: %p", entry);
+        DEBUG_INFO("regular entry: %p", dxg_interface[index]);
+#endif
+
+        if (!IsInstructionPointerInsideModule(entry, dxgkrnl)) {
+            DEBUG_ERROR("invalid entry!!!");
+            ReportWin32kBase_DxgInterfaceViolation(index, entry);
+        }
+    }
+
+detatch:
+    KeUnstackDetachProcess(&apc);
+
+end:
+    if (modules.address)
+        ExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
+    return status;
+}
+
+/* todo: win32kEngInterface */
+NTSTATUS
+ValidateWin32kDispatchTables()
+{
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+    status = ValidateWin32kBase_gDxgInterface();
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("ValidateWin32kBase_gDxgInterface: %x", status);
+        return status;
+    }
+
+    return status;
 }

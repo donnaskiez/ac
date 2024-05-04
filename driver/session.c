@@ -61,6 +61,13 @@ SessionGetCallbackConfiguration(
     ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
+STATIC
+VOID
+SessionTerminateHeartbeat(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    FreeHeartbeatConfiguration(Configuration);
+}
+
 VOID
 SessionTerminate()
 {
@@ -74,6 +81,7 @@ SessionTerminate()
     session->um_handle         = NULL;
     session->process           = NULL;
     session->is_session_active = FALSE;
+    SessionTerminateHeartbeat(&session->heartbeat_config);
     ImpKeReleaseGuardedMutex(&session->lock);
 }
 
@@ -119,6 +127,13 @@ SessionInitialise(_In_ PIRP Irp)
                   information->session_aes_key,
                   AES_128_KEY_SIZE);
 
+    status = InitialiseHeartbeatConfiguration(&session->heartbeat_config);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("InitialiseHeartbeatConfiguration %x", status);
+        goto end;
+    }
+
 end:
     ImpKeReleaseGuardedMutex(&session->lock);
     return status;
@@ -160,7 +175,7 @@ VOID
 SessionIncrementIrpsProcessedCount()
 {
     ImpKeAcquireGuardedMutex(&GetActiveSession()->lock);
-    GetActiveSession()->irps_processed++;
+    GetActiveSession()->irps_received;
     ImpKeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 

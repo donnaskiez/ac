@@ -17,7 +17,8 @@
 typedef enum _TABLE_ID
 {
         HalDispatch = 0,
-        HalPrivateDispatch
+        HalPrivateDispatch,
+        Win32kBase_gDxgInterface
 } TABLE_ID;
 
 typedef struct _HYPERVISOR_DETECTION_REPORT
@@ -64,6 +65,7 @@ typedef struct _DATA_TABLE_ROUTINE_REPORT
         UINT32   report_code;
         TABLE_ID id;
         UINT64   address;
+        UINT32   index;
         CHAR     routine[DATA_TABLE_ROUTINE_BUF_SIZE];
 
 } DATA_TABLE_ROUTINE_REPORT, *PDATA_TABLE_ROUTINE_REPORT;

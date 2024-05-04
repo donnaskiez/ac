@@ -49,6 +49,9 @@
 
 #define MAX_MODULE_PATH 256
 
+#define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
+    ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
+
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx
  * functions, so all reads and writes to the THREAD_LIST->active flag must be
@@ -208,6 +211,24 @@ typedef struct _IRP_QUEUE_ENTRY {
 
 #define AES_128_KEY_SIZE 16
 
+typedef struct _HEARTBEAT_CONFIGURATION {
+    volatile UINT32 counter;
+
+    /* Signifies if a heartbeat callback routine is currently executing. */
+    volatile UINT32 active;
+    LARGE_INTEGER   seed;
+
+    /*
+     * We actually want the timer and DPC objects to be allocated, so that each
+     * time our heartbeat callback routine is run, we can remove the timer and
+     * add a new timer. This makes it harder to identify our heartbeat timers.
+     */
+    PKTIMER      timer;
+    PKDPC        dpc;
+    PIO_WORKITEM work_item;
+
+} HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
+
 typedef struct _ACTIVE_SESSION {
     BOOLEAN             is_session_active;
     PVOID               um_handle;
@@ -219,12 +240,13 @@ typedef struct _ACTIVE_SESSION {
     CHAR   session_aes_key[AES_128_KEY_SIZE];
 
     struct SESSION_STATISTICS {
-        UINT32 irps_processed;
+        UINT32 irps_received;
         UINT32 report_count;
         UINT32 heartbeat_count;
     };
 
-    KGUARDED_MUTEX lock;
+    HEARTBEAT_CONFIGURATION heartbeat_config;
+    KGUARDED_MUTEX          lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
 
@@ -235,6 +257,7 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_APC                   'apcc'
 #define POOL_TAG_HW                    'hwhw'
 #define POOL_TAG_DPC                   'apcc'
+#define POOL_TAG_HEARTBEAT             'teab'
 #define SYSTEM_MODULES_POOL            'halb'
 #define THREAD_DATA_POOL               'doof'
 #define PROC_AFFINITY_POOL             'eeee'
@@ -1634,5 +1657,11 @@ PsGetNextProcessThread(IN PEPROCESS Process, IN PETHREAD Thread OPTIONAL);
 #define PROCESS_VM_OPERATION              0x0008
 #define PROCESS_VM_READ                   0x0010
 #define PROCESS_VM_WRITE                  0x0020
+
+typedef struct _NT_HEADER_64 {
+    UINT32                  Signature;
+    IMAGE_FILE_HEADER       FileHeader;
+    IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+} NT_HEADER_64, *PNT_HEADER_64;
 
 #endif

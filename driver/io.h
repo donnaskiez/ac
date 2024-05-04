@@ -22,7 +22,7 @@ typedef enum _SHARED_STATE_OPERATION_ID {
     ssScanForEptHooks,
     ssInitiateDpcStackwalk,
     ssValidateSystemModules,
-
+    ssValidateWin32kDispatchTables
 } SHARED_STATE_OPERATION_ID;
 
 typedef struct _SHARED_STATE {

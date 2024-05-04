@@ -91,8 +91,11 @@ typedef struct _DRIVER_CONFIG {
     KGUARDED_MUTEX         lock;
     SYS_MODULE_VAL_CONTEXT sys_val_context;
     IRP_QUEUE_HEAD         irp_queue;
+
+    /* terrible name..lol what is tis timer for ?? */
     TIMER_OBJECT           timer;
-    ACTIVE_SESSION         active_session;
+
+    ACTIVE_SESSION         session_information;
     THREAD_LIST_HEAD       thread_list;
     DRIVER_LIST_HEAD       driver_list;
     PROCESS_LIST_HEAD      process_list;
@@ -174,7 +177,7 @@ IsDriverUnloading()
 PACTIVE_SESSION
 GetActiveSession()
 {
-    return &g_DriverConfig->active_session;
+    return &g_DriverConfig->session_information;
 }
 
 LPCSTR
