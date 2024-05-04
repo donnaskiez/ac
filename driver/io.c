@@ -1127,8 +1127,6 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
 
-    ValidateWin32kDispatchTables();
-
     NTSTATUS status = ValidatePciDevices();
 
     if (!NT_SUCCESS(status))

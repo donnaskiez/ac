@@ -211,6 +211,22 @@ typedef struct _IRP_QUEUE_ENTRY {
 
 #define AES_128_KEY_SIZE 16
 
+typedef struct _HEARTBEAT_CONFIGURATION {
+    volatile UINT32 counter;
+    LARGE_INTEGER   seed;
+
+    /*
+     * We actually want the timer and DPC objects to be allocated, so that each
+     * time our heartbeat callback routine is run, we can remove the timer and
+     * add a new timer. This makes it harder to identify our heartbeat timers.
+     */
+    PKTIMER timer;
+    PKDPC   dpc;
+    PIO_WORKITEM work_item;
+    
+
+} HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
+
 typedef struct _ACTIVE_SESSION {
     BOOLEAN             is_session_active;
     PVOID               um_handle;
@@ -227,6 +243,7 @@ typedef struct _ACTIVE_SESSION {
         UINT32 heartbeat_count;
     };
 
+    HEARTBEAT_CONFIGURATION heartbeat_config;
     KGUARDED_MUTEX lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
@@ -238,6 +255,7 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_APC                   'apcc'
 #define POOL_TAG_HW                    'hwhw'
 #define POOL_TAG_DPC                   'apcc'
+#define POOL_TAG_HEARTBEAT             'teab'
 #define SYSTEM_MODULES_POOL            'halb'
 #define THREAD_DATA_POOL               'doof'
 #define PROC_AFFINITY_POOL             'eeee'

@@ -260,6 +260,7 @@
     <ClCompile Include="queue.c" />
     <ClCompile Include="session.c" />
     <ClCompile Include="thread.c" />
+    <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="apc.h" />
@@ -281,6 +282,7 @@
     <ClInclude Include="session.h" />
     <ClInclude Include="thread.h" />
     <ClInclude Include="types\types.h" />
+    <ClInclude Include="util.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="arch.asm" />

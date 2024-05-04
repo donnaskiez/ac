@@ -23,20 +23,15 @@ open source anti cheat (lol) which I made for fun.
 - HalDispatch and HalPrivateDispatch routine validation
 - Dynamic import resolving & encryption
 - Malicious PCI device detection via configuration space scanning
+- Win32kBase_DxgInterface routine validation
+
+# architecuture
+
+For an overview of the architecture, see architecture.md.
 
 # planned features
 
-- Heartbeat
-- ntoskrnl integrity checks
-- cr3 protection 
-- string, packet and other encryption
-- tpm ek extraction
-- tpm spoofer detection
-- pcileech firmware detection 
-- testing program to test the features
-- simple user mode logger + usermode logging overhaul
-- data ptr detction (+ chained data ptr walking)
-- lots more which I cant think of
+Theres a long list of features I still want to implement, the question is whether I can be bothored implementing them. I would say I'd accept pull requests for new features but I would expect high quality code and thorough testing with verifier (both inside a vm and bare metal).
 
 # example
 

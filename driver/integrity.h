@@ -123,4 +123,8 @@ DeferredModuleHashingCallback();
 VOID
 FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context);
 
+NTSTATUS
+InitialiseHeartbeatConfiguration(
+    _Inout_ PHEARTBEAT_CONFIGURATION Configuration);
+
 #endif

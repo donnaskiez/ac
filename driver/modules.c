@@ -490,7 +490,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
                 AddDriverToList(Head, current_driver, REASON_NO_BACKING_MODULE);
 
             if (NT_SUCCESS(status))
-                Head->count += 1;
+                Head->count++;
         }
 
         status = ValidateDriverIOCTLDispatchRegion(
@@ -507,7 +507,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
             status = AddDriverToList(
                 Head, current_driver, REASON_INVALID_IOCTL_DISPATCH);
             if (NT_SUCCESS(status))
-                Head->count += 1;
+                Head->count++;
         }
 
         sub_entry = sub_entry->ChainLink;
@@ -887,10 +887,8 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
             continue;
         }
 
-        if (!flag) {
+        if (!flag)
             ReportInvalidRipFoundDuringNmi(&NmiContext[core]);
-            return STATUS_SUCCESS;
-        }
     }
 
     return STATUS_SUCCESS;
@@ -2135,13 +2133,14 @@ ValidateWin32kBase_gDxgInterface()
 
         PVOID entry = FindChainedPointerEnding(dxg_interface[index]);
 
+#if DEBUG
         DEBUG_INFO("chain entry test: %p", entry);
         DEBUG_INFO("regular entry: %p", dxg_interface[index]);
+#endif
 
         if (!IsInstructionPointerInsideModule(entry, dxgkrnl)) {
             DEBUG_ERROR("invalid entry!!!");
             ReportWin32kBase_DxgInterfaceViolation(index, entry);
-            continue;
         }
     }
 
@@ -2163,8 +2162,7 @@ ValidateWin32kDispatchTables()
 
     status = ValidateWin32kBase_gDxgInterface();
 
-    if (!NT_SUCCESS(status))
-    {
+    if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateWin32kBase_gDxgInterface: %x", status);
         return status;
     }

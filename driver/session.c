@@ -119,6 +119,13 @@ SessionInitialise(_In_ PIRP Irp)
                   information->session_aes_key,
                   AES_128_KEY_SIZE);
 
+    status = InitialiseHeartbeatConfiguration(&session->heartbeat_config);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("InitialiseHeartbeatConfiguration %x", status);
+        goto end;
+    }
+
 end:
     ImpKeReleaseGuardedMutex(&session->lock);
     return status;

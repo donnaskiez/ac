@@ -7,6 +7,7 @@
 #include "io.h"
 #include "imports.h"
 #include "session.h"
+#include "util.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -80,6 +81,13 @@ STATIC
 NTSTATUS
 GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
                             _Out_ PUINT64 AverageTime);
+
+STATIC
+VOID
+HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
+                    _In_opt_ PVOID DeferredContext,
+                    _In_opt_ PVOID SystemArgument1,
+                    _In_opt_ PVOID SystemArgument2);
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, GetDriverImageSize)
@@ -1890,4 +1898,164 @@ ValidateOurDriversDispatchRoutines()
     }
 
     return TRUE;
+}
+
+STATIC
+VOID
+FreeHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    if (Configuration->dpc) {
+        ImpExFreePoolWithTag(Configuration->dpc, POOL_TAG_HEARTBEAT);
+        Configuration->dpc = NULL;
+    }
+
+    if (Configuration->timer) {
+        ImpExFreePoolWithTag(Configuration->timer, POOL_TAG_HEARTBEAT);
+        Configuration->timer = NULL;
+    }
+}
+
+STATIC
+NTSTATUS
+AllocateHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    Configuration->dpc = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(KDPC), POOL_TAG_HEARTBEAT);
+
+    if (!Configuration->dpc)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Configuration->timer = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(KTIMER), POOL_TAG_HEARTBEAT);
+
+    if (!Configuration->timer) {
+        ImpExFreePoolWithTag(Configuration->dpc, POOL_TAG_HEARTBEAT);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+#define HEARTBEAT_NANOSECONDS_LOW \
+    (60ULL * 10000000ULL) // 1 minute in 100-nanosecond intervals
+#define HEARTBEAT_NANOSECONDS_HIGH \
+    (240ULL * 10000000ULL) // 4 minutes in 100-nanosecond intervals
+
+#define TICKS_TO_100_NS_INTERVALS(tick_count) ((tick_count) * 100000)
+
+/* Generate a random due time between 1 and 4 minutes in 100-nanosecond
+ * intervals. */
+STATIC
+LARGE_INTEGER
+GenerateHeartbeatDueTime(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    LARGE_INTEGER ticks = {0};
+    KeQueryTickCount(&ticks);
+
+    UINT64 interval =
+        HEARTBEAT_NANOSECONDS_LOW +
+        (TICKS_TO_100_NS_INTERVALS(ticks.QuadPart) %
+         (HEARTBEAT_NANOSECONDS_HIGH - HEARTBEAT_NANOSECONDS_LOW));
+
+    LARGE_INTEGER due_time = {.QuadPart = -interval};
+    return due_time;
+}
+
+FORCEINLINE
+STATIC
+VOID
+InitialiseHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    KeInitializeDpc(Configuration->dpc, HeartbeatDpcRoutine, Configuration);
+    KeInitializeTimer(Configuration->timer);
+    KeSetTimer(Configuration->timer,
+               GenerateHeartbeatDueTime(Configuration),
+               Configuration->dpc);
+}
+
+STATIC
+VOID
+HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    if (!ARGUMENT_PRESENT(Context))
+        return;
+
+    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
+    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)Context;
+
+    DEBUG_INFO("heartbeat work routine called");
+
+    KeFlushQueuedDpcs();
+    FreeHeartbeatObjects(config);
+
+    status = AllocateHeartbeatObjects(config);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
+        return;
+    }
+
+    InitialiseHeartbeatObjects(config);
+}
+
+STATIC
+VOID
+HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
+                    _In_opt_ PVOID DeferredContext,
+                    _In_opt_ PVOID SystemArgument1,
+                    _In_opt_ PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    if (!ARGUMENT_PRESENT(DeferredContext))
+        return;
+
+    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
+
+    DEBUG_INFO("heartbeat called!");
+    config->counter++;
+
+    IoQueueWorkItem(
+        config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
+}
+
+/*
+ * The premise behind this initial heartbeat monitor is that at a random
+ * interval a timer will be set. Once this timer is set, a dpc routine will
+ * run that will insert a heartbeat packet into the io queue which will be
+ * processed by user mode. Once the heartbeat is inserted, we queue a work
+ * item which will wait until the dpc routine is finished, free the current
+ * timer and work item (this is safe as the timer is removed from the timer
+ * queue when its alerted) and allocate a new timer and dpc object. We will
+ * then initalise them and insert them with another random value.
+ *
+ * The goal of this is to make reverse engineering the heartbeat process as
+ * hard as possible. And while it is only a start, I think its a start in
+ * the right direction.
+ */
+NTSTATUS
+InitialiseHeartbeatConfiguration(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+    Configuration->counter   = 0;
+    Configuration->seed      = GenerateRandSeed();
+    Configuration->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
+
+    if (!Configuration->work_item)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    status = AllocateHeartbeatObjects(Configuration);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
+        return status;
+    }
+
+    InitialiseHeartbeatObjects(Configuration);
+    return status;
 }
