@@ -1866,6 +1866,24 @@ CleanupValidationContextOnUnload(_In_ PSYS_MODULE_VAL_CONTEXT Context)
     FreeModuleVerificationItems(Context);
 }
 
+STATIC
+VOID
+DispatchVerificationWorkerThreads(_In_ PSYS_MODULE_VAL_CONTEXT Context)
+{
+    for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
+        Context->work_items[index] =
+            ImpIoAllocateWorkItem(GetDriverDeviceObject());
+
+        if (!Context->work_items[index])
+            continue;
+
+        ImpIoQueueWorkItem(Context->work_items[index],
+                           SystemModuleVerificationDispatchFunction,
+                           DelayedWorkQueue,
+                           Context);
+    }
+}
+
 NTSTATUS
 SystemModuleVerificationDispatcher()
 {
@@ -1899,19 +1917,7 @@ SystemModuleVerificationDispatcher()
         FreeWorkItems(context);
     }
 
-    for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
-        work_item = ImpIoAllocateWorkItem(GetDriverDeviceObject());
-
-        if (!work_item)
-            continue;
-
-        ImpIoQueueWorkItem(work_item,
-                           SystemModuleVerificationDispatchFunction,
-                           DelayedWorkQueue,
-                           context);
-
-        context->work_items[index] = work_item;
-    }
+    DispatchVerificationWorkerThreads(context);
 
     DEBUG_VERBOSE(
         "All worker threads dispatched for system module validation.");
