@@ -57,15 +57,9 @@ ValidateThreadsViaKernelApc();
 VOID
 FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context);
 
-NTSTATUS
+BOOLEAN
 IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
-                                    _In_ PSYSTEM_MODULES SystemModules,
-                                    _Out_ PBOOLEAN       Result);
-
-VOID
-FlipKThreadMiscFlagsFlag(_In_ PKTHREAD Thread,
-                         _In_ ULONG    FlagIndex,
-                         _In_ BOOLEAN  NewValue);
+                                    _In_ PSYSTEM_MODULES SystemModules);
 
 PVOID
 FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name);

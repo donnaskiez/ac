@@ -15,7 +15,7 @@
 #endif
 
 BOOLEAN
-ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread)
+DoesThreadHaveValidCidEntry(_In_ PETHREAD Thread)
 {
     PAGED_CODE();
 

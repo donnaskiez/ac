@@ -7,7 +7,7 @@
 #include "callbacks.h"
 
 BOOLEAN
-ValidateThreadsPspCidTableEntry(_In_ PETHREAD Thread);
+DoesThreadHaveValidCidEntry(_In_ PETHREAD Thread);
 
 VOID
 DetectThreadsAttachedToProtectedProcess();
