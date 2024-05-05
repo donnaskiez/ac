@@ -1390,7 +1390,6 @@ ValidateThreadsViaKernelApc()
     SetApcAllocationInProgress(context);
     EnumerateThreadListWithCallbackRoutine(ValidateThreadViaKernelApcCallback,
                                            context);
-    __debugbreak();
     UnsetApcAllocationInProgress(context);
     return status;
 }
