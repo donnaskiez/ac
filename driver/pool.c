@@ -680,7 +680,7 @@ FindUnlinkedProcesses()
 
     PUINT64                            allocation_address = NULL;
     PROCESS_SCAN_CONTEXT               context            = {0};
-    PINVALID_PROCESS_ALLOCATION_REPORT report_buffer      = NULL;
+    PINVALID_PROCESS_ALLOCATION_REPORT report             = NULL;
 
     EnumerateProcessListWithCallbackRoutine(IncrementProcessCounter, &context);
 
@@ -722,22 +722,22 @@ FindUnlinkedProcesses()
             "Potentially found an unlinked process allocation at address: %llx",
             allocation);
 
-        report_buffer =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                               sizeof(INVALID_PROCESS_ALLOCATION_REPORT),
-                               REPORT_POOL_TAG);
+        report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                    sizeof(INVALID_PROCESS_ALLOCATION_REPORT),
+                                    REPORT_POOL_TAG);
 
-        if (!report_buffer)
+        if (!report)
             continue;
 
-        report_buffer->report_code = REPORT_INVALID_PROCESS_ALLOCATION;
+        INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+        INIT_REPORT_HEADER(
+            &report->report_header, REPORT_INVALID_PROCESS_ALLOCATION, 0);
 
-        RtlCopyMemory(report_buffer->process,
-                      allocation,
-                      REPORT_INVALID_PROCESS_BUFFER_SIZE);
+        RtlCopyMemory(
+            report->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
         if (!NT_SUCCESS(IrpQueueCompleteIrp(
-                report_buffer, sizeof(INVALID_PROCESS_ALLOCATION_REPORT)))) {
+                report, sizeof(INVALID_PROCESS_ALLOCATION_REPORT)))) {
             DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
             continue;
         }

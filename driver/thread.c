@@ -112,7 +112,10 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     if (!report)
         return;
 
-    report->report_code    = REPORT_ILLEGAL_ATTACH_PROCESS;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(
+        &report->report_header, REPORT_ILLEGAL_ATTACH_PROCESS, 0);
+
     report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
     report->thread_address = ThreadListEntry->thread;
 

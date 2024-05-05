@@ -662,8 +662,15 @@ ReportInvalidDriverObject(_In_ PINVALID_DRIVERS_HEAD Head)
     if (!report)
         return;
 
-    report->report_code         = REPORT_MODULE_VALIDATION_FAILURE;
-    report->report_type         = Head->first_entry->reason;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header,
+                       REPORT_MODULE_VALIDATION_FAILURE,
+                       Head->first_entry->reason);
+
+    DEBUG_INFO("packet type: %hx", report->header.packet_type);
+    DEBUG_INFO("report code: %lx", report->report_header.report_code);
+    DEBUG_INFO("report subcode: %lx", report->report_header.report_sub_type);
+
     report->driver_base_address = Head->first_entry->driver->DriverStart;
     report->driver_size         = Head->first_entry->driver->DriverSize;
 
@@ -803,7 +810,9 @@ ReportNmiBlocking()
     if (!report)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_NMI_CALLBACK_FAILURE, 0);
+
     report->kthread_address    = NULL;
     report->invalid_rip        = NULL;
     report->were_nmis_disabled = TRUE;
@@ -826,7 +835,9 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
     if (!report)
         return;
 
-    report->report_code          = REPORT_HIDDEN_SYSTEM_THREAD;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_HIDDEN_SYSTEM_THREAD, 0);
+
     report->found_in_kthreadlist = FALSE; // wip
     report->found_in_pspcidtable = FALSE;
     report->thread_id            = ImpPsGetThreadId(Context->kthread);
@@ -845,7 +856,12 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
                            sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
                            REPORT_POOL_TAG);
 
-    report->report_code        = REPORT_NMI_CALLBACK_FAILURE;
+    if (!report)
+        return;
+
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_NMI_CALLBACK_FAILURE, 0);
+
     report->kthread_address    = Context->kthread;
     report->invalid_rip        = Context->interrupted_rip;
     report->were_nmis_disabled = FALSE;
@@ -1130,9 +1146,12 @@ ReportApcStackwalkViolation(_In_ UINT64 Rip)
     if (!report)
         return;
 
-    report->report_code     = REPORT_APC_STACKWALK;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_APC_STACKWALK, 0);
+
     report->kthread_address = (UINT64)KeGetCurrentThread();
     report->invalid_rip     = Rip;
+    // report->driver ?? todo!
 
     IrpQueueCompleteIrp(report, sizeof(APC_STACKWALK_REPORT));
 }
@@ -1441,7 +1460,9 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
     if (!report)
         return;
 
-    report->report_code     = REPORT_DPC_STACKWALK;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_DPC_STACKWALK, 0);
+
     report->kthread_address = PsGetCurrentThread();
     report->invalid_rip     = Frame;
 
@@ -1805,9 +1826,12 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
                   TableId,
                   Address);
 
-    report->address = Address;
-    report->id      = TableId;
-    report->id      = REPORT_DATA_TABLE_ROUTINE;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_DATA_TABLE_ROUTINE, 0);
+
+    report->address  = Address;
+    report->table_id = TableId;
+    report->index    = 0;
     RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
     if (!NT_SUCCESS(
@@ -2133,11 +2157,14 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
     if (!report)
         return;
 
-    report->id      = REPORT_DATA_TABLE_ROUTINE;
-    report->address = Address;
-    report->id      = Win32kBase_gDxgInterface;
-    report->index   = TableIndex;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header, REPORT_DATA_TABLE_ROUTINE, 0);
+
+    report->address  = Address;
+    report->table_id = Win32kBase_gDxgInterface;
+    report->index    = TableIndex;
     // todo! report->routine = ??
+    // todo: maybe get routine by name from index ?
 
     IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT));
 }

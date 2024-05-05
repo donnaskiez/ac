@@ -867,9 +867,12 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
     if (!report)
         return;
 
-    report->report_code = REPORT_INVALID_PROCESS_MODULE;
-    report->image_base  = Module->module_base;
-    report->image_size  = Module->module_size;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(
+        &report->report_header, REPORT_INVALID_PROCESS_MODULE, 0);
+
+    report->image_base = Module->module_base;
+    report->image_size = Module->module_size;
     RtlCopyMemory(
         report->module_path, Module->module_path, sizeof(report->module_path));
 
@@ -2099,7 +2102,7 @@ VOID
 WaitForHeartbeatCompletion(_In_ PHEARTBEAT_CONFIGURATION Configuration)
 {
     while (Configuration->active)
-        ;
+        YieldProcessor();
 }
 
 STATIC
@@ -2131,6 +2134,26 @@ HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
     SetheartbeatInactive(config);
 }
 
+FORCEINLINE
+STATIC
+VOID
+IncrementHeartbeatCounter(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    InterlockedIncrement(&Configuration->counter);
+}
+
+FORCEINLINE
+STATIC
+PHEARTBEAT_PACKET
+BuildHeartbeatPacket(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+{
+    PHEARTBEAT_PACKET packet = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(HEARTBEAT_PACKET), POOL_TAG_HEARTBEAT);
+
+    if (!packet)
+        return NULL;
+}
+
 STATIC
 VOID
 HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
@@ -2149,8 +2172,13 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
 
     SetHeartbeatActive(config);
 
+#if DEBUG
     DEBUG_INFO("heartbeat called!");
-    config->counter++;
+#endif
+
+    IncrementHeartbeatCounter(config);
+
+end:
 
     IoQueueWorkItem(
         config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
