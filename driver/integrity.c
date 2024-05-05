@@ -876,7 +876,7 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
     RtlCopyMemory(
         report->module_path, Module->module_path, sizeof(report->module_path));
 
-    IrpQueueCompleteIrp(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+    IrpQueueCompletePacket(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
 }
 
 /*
@@ -2147,11 +2147,23 @@ STATIC
 PHEARTBEAT_PACKET
 BuildHeartbeatPacket(_In_ PHEARTBEAT_CONFIGURATION Configuration)
 {
+    PIRP_QUEUE_HEAD   queue  = GetIrpQueueHead();
     PHEARTBEAT_PACKET packet = ImpExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(HEARTBEAT_PACKET), POOL_TAG_HEARTBEAT);
 
     if (!packet)
         return NULL;
+
+    INIT_PACKET_HEADER(&packet->header, PACKET_TYPE_HEARTBEAT);
+
+    /* This routine always runs at DPC level */
+    KeAcquireSpinLockAtDpcLevel(&queue->lock);
+    packet->total_heartbeats_completed = queue->total_heartbeats_completed;
+    packet->total_irps_completed       = queue->total_irps_completed;
+    packet->total_reports_completed    = queue->total_reports_completed;
+    KeReleaseSpinLockFromDpcLevel(&queue->lock);
+
+    return packet;
 }
 
 STATIC
@@ -2169,14 +2181,18 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
         return;
 
     PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
+    PHEARTBEAT_PACKET        packet = NULL;
+
+    DEBUG_VERBOSE("Heartbeat timer alerted. Generating heartbeat packet.");
 
     SetHeartbeatActive(config);
 
-#if DEBUG
-    DEBUG_INFO("heartbeat called!");
-#endif
+    packet = BuildHeartbeatPacket(config);
 
-    IncrementHeartbeatCounter(config);
+    if (packet) {
+        IrpQueueCompletePacket(packet, sizeof(HEARTBEAT_PACKET));
+        IncrementHeartbeatCounter(config);
+    }
 
 end:
 

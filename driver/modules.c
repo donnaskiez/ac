@@ -683,7 +683,7 @@ ReportInvalidDriverObject(_In_ PINVALID_DRIVERS_HEAD Head)
     ImpRtlUnicodeStringToAnsiString(
         &string, &Head->first_entry->driver->DriverName, FALSE);
 
-    IrpQueueCompleteIrp(report, sizeof(MODULE_VALIDATION_FAILURE));
+    IrpQueueCompletePacket(report, sizeof(MODULE_VALIDATION_FAILURE));
 }
 
 NTSTATUS
@@ -817,7 +817,7 @@ ReportNmiBlocking()
     report->invalid_rip        = NULL;
     report->were_nmis_disabled = TRUE;
 
-    IrpQueueCompleteIrp(report, sizeof(NMI_CALLBACK_FAILURE));
+    IrpQueueCompletePacket(report, sizeof(NMI_CALLBACK_FAILURE));
 }
 
 STATIC
@@ -844,7 +844,7 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
     report->thread_address       = Context->kthread;
 
     RtlCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
-    IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    IrpQueueCompletePacket(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
 }
 
 STATIC
@@ -866,7 +866,7 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
     report->invalid_rip        = Context->interrupted_rip;
     report->were_nmis_disabled = FALSE;
 
-    IrpQueueCompleteIrp(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    IrpQueueCompletePacket(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
 }
 
 /*
@@ -1153,7 +1153,7 @@ ReportApcStackwalkViolation(_In_ UINT64 Rip)
     report->invalid_rip     = Rip;
     // report->driver ?? todo!
 
-    IrpQueueCompleteIrp(report, sizeof(APC_STACKWALK_REPORT));
+    IrpQueueCompletePacket(report, sizeof(APC_STACKWALK_REPORT));
 }
 
 /*
@@ -1471,7 +1471,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
     //               - 0x50,
     //               APC_STACKWALK_BUFFER_SIZE);
 
-    IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT));
+    IrpQueueCompletePacket(report, sizeof(DPC_STACKWALK_REPORT));
 }
 
 STATIC
@@ -1835,7 +1835,7 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
     RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
     if (!NT_SUCCESS(
-            IrpQueueCompleteIrp(report, sizeof(DATA_TABLE_ROUTINE_REPORT))))
+            IrpQueueCompletePacket(report, sizeof(DATA_TABLE_ROUTINE_REPORT))))
         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
 }
 
@@ -2166,7 +2166,7 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
     // todo! report->routine = ??
     // todo: maybe get routine by name from index ?
 
-    IrpQueueCompleteIrp(report, sizeof(DPC_STACKWALK_REPORT));
+    IrpQueueCompletePacket(report, sizeof(DPC_STACKWALK_REPORT));
 }
 
 STATIC

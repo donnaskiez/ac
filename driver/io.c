@@ -122,34 +122,61 @@ IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 
 STATIC
 BOOLEAN
-IrpQueueIsThereDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
+IrpQueueIsThereDeferredPackets(_In_ PIRP_QUEUE_HEAD Queue)
 {
     return Queue->deferred_reports.count > 0 ? TRUE : FALSE;
 }
 
 STATIC
 PDEFERRED_REPORT
-IrpQueueRemoveDeferredReport(_In_ PIRP_QUEUE_HEAD Queue)
+IrpQueueRemoveDeferredPacket(_In_ PIRP_QUEUE_HEAD Queue)
 {
     return RemoveHeadList(&Queue->deferred_reports.head);
 }
 
 STATIC
 VOID
-IrpQueueFreeDeferredReport(_In_ PDEFERRED_REPORT Report)
+IrpQueueFreeDeferredPacket(_In_ PDEFERRED_REPORT Report)
 {
     ImpExFreePoolWithTag(Report->buffer, REPORT_POOL_TAG);
     ImpExFreePoolWithTag(Report, REPORT_POOL_TAG);
 }
 
+FORCEINLINE
+STATIC
+UINT16
+GetPacketType(_In_ PVOID Buffer)
+{
+    PPACKET_HEADER header = (PPACKET_HEADER)Buffer;
+    return header->packet_type;
+}
+
+FORCEINLINE
+STATIC
+VOID
+IncrementPacketMetics(_In_ PIRP_QUEUE_HEAD Queue, UINT16 Type)
+{
+    if (Type == PACKET_TYPE_REPORT)
+        Queue->total_reports_completed++;
+
+    if (Type == PACKET_TYPE_HEARTBEAT)
+        Queue->total_heartbeats_completed++;
+
+    Queue->total_irps_completed++;
+}
+
 STATIC
 NTSTATUS
-IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
+IrpQueueCompleteDeferredPacket(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
-    NTSTATUS status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
+    NTSTATUS        status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
+    PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
+    UINT16          type   = GetPacketType(Report->buffer);
 
     if (!NT_SUCCESS(status))
         return status;
+
+    IncrementPacketMetics(queue, type);
 
     RtlCopyMemory(
         Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
@@ -157,13 +184,13 @@ IrpQueueCompleteDeferredReport(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
     Irp->IoStatus.Status      = STATUS_SUCCESS;
     Irp->IoStatus.Information = Report->buffer_size;
     IofCompleteRequest(Irp, IO_NO_INCREMENT);
-    IrpQueueFreeDeferredReport(Report);
+    IrpQueueFreeDeferredPacket(Report);
     return STATUS_SUCCESS;
 }
 
 STATIC
 NTSTATUS
-IrpQueueQueryPendingReports(_In_ PIRP Irp)
+IrpQueueQueryPendingPackets(_In_ PIRP Irp)
 {
     PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
     PDEFERRED_REPORT report = NULL;
@@ -180,12 +207,12 @@ IrpQueueQueryPendingReports(_In_ PIRP Irp)
      */
     KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
 
-    if (IrpQueueIsThereDeferredReport(queue)) {
-        report = IrpQueueRemoveDeferredReport(queue);
-        status = IrpQueueCompleteDeferredReport(report, Irp);
+    if (IrpQueueIsThereDeferredPackets(queue)) {
+        report = IrpQueueRemoveDeferredPacket(queue);
+        status = IrpQueueCompleteDeferredPacket(report, Irp);
 
         if (!NT_SUCCESS(status)) {
-            IrpQueueFreeDeferredReport(report);
+            IrpQueueFreeDeferredPacket(report);
             goto end;
         }
 
@@ -219,7 +246,7 @@ IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 
 STATIC
 PDEFERRED_REPORT
-IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
+IrpQueueAllocateDeferredPacket(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
     PDEFERRED_REPORT report = ImpExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(DEFERRED_REPORT), REPORT_POOL_TAG);
@@ -236,7 +263,7 @@ IrpQueueAllocateDeferredReport(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 
 STATIC
 VOID
-IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue,
+IrpQueueDeferPacket(_In_ PIRP_QUEUE_HEAD Queue,
                     _In_ PVOID           Buffer,
                     _In_ UINT32          BufferSize)
 {
@@ -251,7 +278,7 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue,
         return;
     }
 
-    report = IrpQueueAllocateDeferredReport(Buffer, BufferSize);
+    report = IrpQueueAllocateDeferredPacket(Buffer, BufferSize);
 
     if (!report)
         return;
@@ -268,11 +295,12 @@ IrpQueueDeferReport(_In_ PIRP_QUEUE_HEAD Queue,
  * IMPORTANT: All report buffers must be allocated in non paged memory.
  */
 NTSTATUS
-IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
+IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
     NTSTATUS        status = STATUS_UNSUCCESSFUL;
     PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
     PIRP            irp    = IoCsqRemoveNextIrp(&queue->csq, NULL);
+    UINT16          type   = GetPacketType(Buffer);
 
     /*
      * If no irps are available in our queue, lets store it in a deferred
@@ -280,7 +308,7 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
      * into the queue.
      */
     if (!irp) {
-        IrpQueueDeferReport(queue, Buffer, BufferSize);
+        IrpQueueDeferPacket(queue, Buffer, BufferSize);
         return STATUS_SUCCESS;
     }
 
@@ -298,6 +326,8 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
         return status;
     }
 
+    IncrementPacketMetics(queue, type);
+
     irp->IoStatus.Status      = STATUS_SUCCESS;
     irp->IoStatus.Information = BufferSize;
     RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
@@ -307,7 +337,7 @@ IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 }
 
 VOID
-IrpQueueFreeDeferredReports()
+IrpQueueFreeDeferredPackets()
 {
     PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
     PDEFERRED_REPORT report = NULL;
@@ -316,9 +346,9 @@ IrpQueueFreeDeferredReports()
     /* just in case... */
     KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
 
-    while (IrpQueueIsThereDeferredReport(queue)) {
-        report = IrpQueueRemoveDeferredReport(queue);
-        IrpQueueFreeDeferredReport(report);
+    while (IrpQueueIsThereDeferredPackets(queue)) {
+        report = IrpQueueRemoveDeferredPacket(queue);
+        IrpQueueFreeDeferredPacket(report);
     }
 
     KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
@@ -1048,7 +1078,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         /* before we queue our IRP, check if we can complete a deferred
          * report */
-        status = IrpQueueQueryPendingReports(Irp);
+        status = IrpQueueQueryPendingPackets(Irp);
 
         /* if we return success, weve completed the irp, we can return
          * success */

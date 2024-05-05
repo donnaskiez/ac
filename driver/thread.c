@@ -119,7 +119,7 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
     report->thread_address = ThreadListEntry->thread;
 
-    if (!NT_SUCCESS(IrpQueueCompleteIrp(report, sizeof(ATTACH_PROCESS_REPORT))))
+    if (!NT_SUCCESS(IrpQueueCompletePacket(report, sizeof(ATTACH_PROCESS_REPORT))))
         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
 }
 

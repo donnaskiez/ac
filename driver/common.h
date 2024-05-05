@@ -194,6 +194,7 @@ typedef struct _IRP_QUEUE_HEAD {
     volatile UINT32       irp_count;
     volatile UINT32       total_reports_completed;
     volatile UINT32       total_irps_completed;
+    volatile UINT32       total_heartbeats_completed;
     IO_CSQ                csq;
     KSPIN_LOCK            lock;
     DEFERRED_REPORTS_LIST deferred_reports;

@@ -169,7 +169,9 @@ typedef struct _PROCESS_MODULE_VALIDATION_REPORT {
 typedef struct _HEARTBEAT_PACKET {
     PACKET_HEADER header;
     UINT32        heartbeat_count;
-    UINT32        last_report_id;
+    UINT32        total_reports_completed;
+    UINT32        total_irps_completed;
+    UINT32        total_heartbeats_completed;
 
 } HEARTBEAT_PACKET, *PHEARTBEAT_PACKET;
 

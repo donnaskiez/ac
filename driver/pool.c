@@ -736,7 +736,7 @@ FindUnlinkedProcesses()
         RtlCopyMemory(
             report->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
-        if (!NT_SUCCESS(IrpQueueCompleteIrp(
+        if (!NT_SUCCESS(IrpQueueCompletePacket(
                 report, sizeof(INVALID_PROCESS_ALLOCATION_REPORT)))) {
             DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
             continue;

@@ -63,6 +63,6 @@ NTSTATUS
 IrpQueueInitialise();
 
 NTSTATUS
-IrpQueueCompleteIrp(_In_ PVOID Buffer, _In_ ULONG BufferSize);
+IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize);
 
 #endif

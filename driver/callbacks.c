@@ -695,7 +695,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                        process_creator_name,
                        HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-         IrpQueueCompleteIrp(report,
+         IrpQueueCompletePacket(report,
                  sizeof(OPEN_HANDLE_FAILURE_REPORT));
     }
 
@@ -871,7 +871,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                   HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
     if (!NT_SUCCESS(
-            IrpQueueCompleteIrp(report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
+            IrpQueueCompletePacket(report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
         goto end;
     }
