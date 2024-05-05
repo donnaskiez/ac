@@ -34,6 +34,12 @@ PeGetExportDirectory(_In_ PVOID                 Image,
         PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
 }
 
+UINT32
+GetSectionCount(_In_ PNT_HEADER_64 Header)
+{
+    return Header->FileHeader.NumberOfSections;
+}
+
 PVOID
 PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
 {

@@ -8,6 +8,7 @@
 #include "imports.h"
 #include "session.h"
 #include "util.h"
+#include "pe.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -205,6 +206,33 @@ IsSectionExecutable(_In_ PIMAGE_SECTION_HEADER Section)
     return Section->Characteristics & IMAGE_SCN_MEM_EXECUTE ? TRUE : FALSE;
 }
 
+FORCEINLINE
+STATIC
+BOOLEAN
+IsModuleAddressSafe(_In_ PVOID Base, _In_ BOOLEAN x86)
+{
+    return !MmIsAddressValid(Base) && !x86 ? FALSE : TRUE;
+}
+
+FORCEINLINE
+STATIC
+UINT32
+GetSectionTotalPacketSize(_In_ PIMAGE_SECTION_HEADER Section)
+{
+    return Section->SizeOfRawData + sizeof(IMAGE_SECTION_HEADER);
+}
+
+FORCEINLINE
+STATIC
+VOID
+InitIntegrityCheckHeader(_Out_ PINTEGRITY_CHECK_HEADER Header,
+                         _In_ UINT32                   SectionCount,
+                         _In_ UINT32                   TotalSize)
+{
+    Header->executable_section_count = SectionCount;
+    Header->total_packet_size = TotalSize + sizeof(INTEGRITY_CHECK_HEADER);
+}
+
 STATIC
 NTSTATUS
 StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
@@ -215,20 +243,23 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 {
     PAGED_CODE();
 
-    NTSTATUS              status                  = STATUS_UNSUCCESSFUL;
-    PIMAGE_DOS_HEADER     dos_header              = NULL;
-    PLOCAL_NT_HEADER      nt_header               = NULL;
-    PIMAGE_SECTION_HEADER section                 = NULL;
-    ULONG                 total_packet_size       = 0;
-    ULONG                 num_sections            = 0;
-    ULONG                 num_executable_sections = 0;
-    UINT64                buffer_base             = 0;
-    ULONG                 bytes_returned          = 0;
-    MM_COPY_ADDRESS       address                 = {0};
-    ULONG                 buffer_size             = 0;
+    NTSTATUS               status                  = STATUS_UNSUCCESSFUL;
+    PIMAGE_DOS_HEADER      dos_header              = NULL;
+    PNT_HEADER_64          nt_header               = NULL;
+    PIMAGE_SECTION_HEADER  section                 = NULL;
+    ULONG                  total_packet_size       = 0;
+    ULONG                  num_sections            = 0;
+    ULONG                  num_executable_sections = 0;
+    UINT64                 buffer_base             = 0;
+    ULONG                  bytes_returned          = 0;
+    MM_COPY_ADDRESS        address                 = {0};
+    INTEGRITY_CHECK_HEADER header                  = {0};
 
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
+
+    if (!IsModuleAddressSafe(ModuleBase, IsModulex86))
+        return STATUS_UNSUCCESSFUL;
 
     /*
      * The reason we allocate a buffer to temporarily hold the section data
@@ -237,37 +268,20 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
      * our reponse until we enumerate and count all executable sections for
      * the file.
      */
-    buffer_size = ModuleSize + sizeof(INTEGRITY_CHECK_HEADER);
-
     *BytesWritten = 0;
-    *Buffer       = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, buffer_size, POOL_TAG_INTEGRITY);
+    *Buffer       = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                 ModuleSize + sizeof(INTEGRITY_CHECK_HEADER),
+                                 POOL_TAG_INTEGRITY);
 
     if (*Buffer == NULL)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
     /*
-     * Note: Verifier doesn't like it when we map the module so rather then
-     * mapping it to our address space we will simply use MmCopyMemory on
-     * the module to avoid upsetting verifier
-     * :)
-     */
-    dos_header = (PIMAGE_DOS_HEADER)ModuleBase;
-
-    if (!MmIsAddressValid(dos_header) && !IsModulex86) {
-        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
-        *Buffer = NULL;
-        return STATUS_INVALID_ADDRESS;
-    }
-
-    /*
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
      * IMAGE_NT_HEADER from the base of the image.
      */
-    nt_header = (struct _IMAGE_NT_HEADERS64*)((UINT64)ModuleBase +
-                                              dos_header->e_lfanew);
-
-    num_sections = nt_header->FileHeader.NumberOfSections;
+    nt_header    = PeGetNtHeader(ModuleBase);
+    num_sections = GetSectionCount(nt_header);
 
     /*
      * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns
@@ -283,7 +297,6 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
         }
 
         address.VirtualAddress = section;
-
         status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size,
                                  address,
                                  sizeof(IMAGE_SECTION_HEADER),
@@ -291,14 +304,12 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
                                  &bytes_returned);
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("MmCopyMemory failed with status %x", status);
             ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
             *Buffer = NULL;
             return status;
         }
 
         address.VirtualAddress = (UINT64)ModuleBase + section->PointerToRawData;
-
         status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size +
                                      sizeof(IMAGE_SECTION_HEADER),
                                  address,
@@ -307,22 +318,18 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
                                  &bytes_returned);
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("MmCopyMemory failed with status %x", status);
             ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
             *Buffer = NULL;
             return status;
         }
 
-        total_packet_size +=
-            section->SizeOfRawData + sizeof(IMAGE_SECTION_HEADER);
+        total_packet_size += GetSectionTotalPacketSize(section);
         num_executable_sections++;
         section++;
     }
 
-    INTEGRITY_CHECK_HEADER header   = {0};
-    header.executable_section_count = num_executable_sections;
-    header.total_packet_size =
-        total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
+    InitIntegrityCheckHeader(
+        &header, num_executable_sections, total_packet_size);
 
     RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
     *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
@@ -331,11 +338,10 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE SectionHandle,
-                                    _Outptr_result_bytebuffer_(*Size)
-                                        PVOID*           Section,
+MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
+                                    _Out_ PVOID*         Section,
                                     _In_ PUNICODE_STRING Path,
-                                    _Out_ _Deref_out_range_(>, 0) PSIZE_T Size)
+                                    _Out_ PSIZE_T        Size)
 {
     PAGED_CODE();
 
@@ -1197,20 +1203,18 @@ UINT64
 MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
 {
     UINT64 read_average = 0;
-    UINT64 old_irql     = 0;
+    KIRQL  irql         = {0};
 
     MeasureInstructionRead(Address);
 
-    old_irql = __readcr8();
-    __writecr8(HIGH_LEVEL);
-
+    KeRaiseIrql(HIGH_LEVEL, &irql);
     _disable();
 
     for (ULONG iteration = 0; iteration < Count; iteration++)
         read_average += MeasureInstructionRead(Address);
 
     _enable();
-    __writecr8(old_irql);
+    KeLowerIrql(irql);
 
     DEBUG_VERBOSE("EPT Detection - Read Average: %llx", read_average);
 

@@ -75,9 +75,9 @@ typedef struct _NMI_CONTEXT {
 } NMI_CONTEXT, *PNMI_CONTEXT;
 
 STATIC
-NTSTATUS
-PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
-                                _In_ PSYSTEM_MODULES SystemModules);
+VOID
+PopulateWhitelistedModuleBuffer(_Inout_ PWHITELISTED_REGIONS Whitelist,
+                                _In_ PSYSTEM_MODULES         SystemModules);
 
 STATIC
 NTSTATUS
@@ -160,48 +160,27 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
     return NULL;
 }
 
-FORCEINLINE
 STATIC
 VOID
-InitWhitelistedRegionStructure(_Out_ PWHITELISTED_REGIONS Region,
-                               _In_ UINT64                Base,
-                               _In_ UINT64                End)
-{
-    Region->base = Base;
-    Region->end  = End;
-}
-
-STATIC
-NTSTATUS
-PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
-                                _In_ PSYSTEM_MODULES SystemModules)
+PopulateWhitelistedModuleBuffer(_Inout_ PWHITELISTED_REGIONS Whitelist,
+                                _In_ PSYSTEM_MODULES         SystemModules)
 {
     PAGED_CODE();
 
-    if (!Buffer || !SystemModules)
-        return STATUS_INVALID_PARAMETER;
-
     for (INT index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
-        LPCSTR name = WHITELISTED_MODULES[index];
+        LPCSTR entry = WHITELISTED_MODULES[index];
 
         PRTL_MODULE_EXTENDED_INFO module =
-            FindSystemModuleByName(name, SystemModules);
+            FindSystemModuleByName(entry, SystemModules);
 
         /* not everyone will contain all whitelisted modules */
         if (!module)
             continue;
 
-        WHITELISTED_REGIONS region = {0};
-        InitWhitelistedRegionStructure(&region,
-                                       (UINT64)module->ImageBase,
-                                       region.base + module->ImageSize);
-
-        UINT64 destination =
-            (UINT64)Buffer + index * sizeof(WHITELISTED_REGIONS);
-        RtlCopyMemory(destination, &region, sizeof(WHITELISTED_REGIONS));
+        PWHITELISTED_REGIONS region = &Whitelist[index];
+        region->base                = (UINT64)module->ImageBase;
+        region->end = (UINT64)module->ImageBase + module->ImageSize;
     }
-
-    return STATUS_SUCCESS;
 }
 
 STATIC
@@ -400,7 +379,7 @@ STATIC
 VOID
 ValidateDriverObjects(_In_ PSYSTEM_MODULES         Modules,
                       _In_ POBJECT_DIRECTORY_ENTRY Entry,
-                      _In_ PVOID                   Whitelist)
+                      _In_ PWHITELISTED_REGIONS    Whitelist)
 {
     NTSTATUS                status = STATUS_UNSUCCESSFUL;
     POBJECT_DIRECTORY_ENTRY entry  = Entry;
@@ -412,7 +391,7 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES         Modules,
             ReportInvalidDriverObject(driver, REPORT_SUBTYPE_NO_BACKING_MODULE);
         }
 
-        if (!DoesDriverHaveInvalidDispatchRoutine(driver, Modules, Whitelist)) {
+        if (DoesDriverHaveInvalidDispatchRoutine(driver, Modules, Whitelist)) {
             ReportInvalidDriverObject(driver, REPORT_SUBTYPE_INVALID_DISPATCH);
         }
 
@@ -430,13 +409,13 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
 {
     PAGED_CODE();
 
-    HANDLE            handle                     = NULL;
-    OBJECT_ATTRIBUTES attributes                 = {0};
-    PVOID             directory                  = {0};
-    UNICODE_STRING    directory_name             = {0};
-    PVOID             whitelisted_regions_buffer = NULL;
-    NTSTATUS          status                     = STATUS_UNSUCCESSFUL;
-    POBJECT_DIRECTORY directory_object           = NULL;
+    HANDLE               handle           = NULL;
+    OBJECT_ATTRIBUTES    attributes       = {0};
+    PVOID                directory        = {0};
+    UNICODE_STRING       directory_name   = {0};
+    PWHITELISTED_REGIONS whitelist        = NULL;
+    NTSTATUS             status           = STATUS_UNSUCCESSFUL;
+    POBJECT_DIRECTORY    directory_object = NULL;
 
     ImpRtlInitUnicodeString(&directory_name, L"\\Driver");
 
@@ -477,16 +456,15 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
 
     ImpExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
 
-    whitelisted_regions_buffer =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           WHITELISTED_MODULE_COUNT * MODULE_MAX_STRING_SIZE,
-                           WHITELISTED_MODULE_TAG);
+    whitelist = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                   WHITELISTED_MODULE_COUNT *
+                                       sizeof(WHITELISTED_REGIONS),
+                                   WHITELISTED_MODULE_TAG);
 
-    if (!whitelisted_regions_buffer)
+    if (!whitelist)
         goto end;
 
-    status = PopulateWhitelistedModuleBuffer(whitelisted_regions_buffer,
-                                             SystemModules);
+    PopulateWhitelistedModuleBuffer(whitelist, SystemModules);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("PopulateWhitelistedModuleBuffer failed with status %x",
@@ -496,13 +474,12 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
 
     for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++) {
         POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[index];
-        ValidateDriverObjects(SystemModules, entry, whitelisted_regions_buffer);
+        ValidateDriverObjects(SystemModules, entry, whitelist);
     }
 
 end:
-    if (whitelisted_regions_buffer)
-        ImpExFreePoolWithTag(whitelisted_regions_buffer,
-                             WHITELISTED_MODULE_TAG);
+    if (whitelist)
+        ImpExFreePoolWithTag(whitelist, WHITELISTED_MODULE_TAG);
 
     ImpExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
     ImpObDereferenceObject(directory);
