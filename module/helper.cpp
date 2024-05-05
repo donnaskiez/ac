@@ -13,8 +13,9 @@ void helper::sleep_thread(int seconds) {
 
 int helper::get_report_id_from_buffer(void *buffer) {
   kernel_interface::report_header *header =
-      reinterpret_cast<kernel_interface::report_header *>(buffer);
-  return header->report_id;
+      reinterpret_cast<kernel_interface::report_header *>(
+          (uint64_t)buffer + sizeof(kernel_interface::report_header));
+  return header->report_code;
 }
 
 kernel_interface::report_id helper::get_kernel_report_type(void *buffer) {
@@ -49,12 +50,18 @@ kernel_interface::report_id helper::get_kernel_report_type(void *buffer) {
 }
 
 void helper::print_kernel_report(void *buffer) {
-  switch (get_kernel_report_type(buffer)) {
+  kernel_interface::packet_header *header =
+      reinterpret_cast<kernel_interface::packet_header *>(buffer);
+  LOG_INFO("packet type: %lx", header->packet_type);
+  kernel_interface::report_header *report_header =
+      reinterpret_cast<kernel_interface::report_header *>(
+          (uint64_t)buffer + sizeof(kernel_interface::packet_header));
+  LOG_INFO("report code: %lx", report_header->report_code);
+  LOG_INFO("report sub code: %lx", report_header->report_sub_type);
+  switch (report_header->report_code) {
   case kernel_interface::report_id::report_nmi_callback_failure: {
     kernel_interface::nmi_callback_failure *r1 =
         reinterpret_cast<kernel_interface::nmi_callback_failure *>(buffer);
-    LOG_INFO("report type: nmi_callback_failure");
-    LOG_INFO("report code: %lx", r1->report_code);
     LOG_INFO("were_nmis_disabled: %lx", r1->were_nmis_disabled);
     LOG_INFO("kthread_address: %llx", r1->kthread_address);
     LOG_INFO("invalid_rip: %llx", r1->invalid_rip);
@@ -65,8 +72,6 @@ void helper::print_kernel_report(void *buffer) {
     kernel_interface::invalid_process_allocation_report *r2 =
         reinterpret_cast<kernel_interface::invalid_process_allocation_report *>(
             buffer);
-    LOG_INFO("report type: invalid_process_allocation_report");
-    LOG_INFO("report code: %d", r2->report_code);
     LOG_INFO("********************************");
     break;
   }
@@ -74,8 +79,6 @@ void helper::print_kernel_report(void *buffer) {
     kernel_interface::hidden_system_thread_report *r3 =
         reinterpret_cast<kernel_interface::hidden_system_thread_report *>(
             buffer);
-    LOG_INFO("report type: hidden_system_thread_report");
-    LOG_INFO("report code: %lx", r3->report_code);
     LOG_INFO("found_in_kthreadlist: %lx", r3->found_in_kthreadlist);
     LOG_INFO("found_in_pspcidtable: %lx", r3->found_in_pspcidtable);
     LOG_INFO("thread_address: %llx", r3->thread_address);
@@ -97,8 +100,6 @@ void helper::print_kernel_report(void *buffer) {
     kernel_interface::open_handle_failure_report *r5 =
         reinterpret_cast<kernel_interface::open_handle_failure_report *>(
             buffer);
-    LOG_INFO("report type: open_handle_failure_report");
-    LOG_INFO("report code: %lx", r5->report_code);
     LOG_INFO("is_kernel_handle: %lx", r5->is_kernel_handle);
     LOG_INFO("process_id: %lx", r5->process_id);
     LOG_INFO("thread_id: %lx", r5->thread_id);
@@ -111,8 +112,6 @@ void helper::print_kernel_report(void *buffer) {
     kernel_interface::process_module_validation_report *r6 =
         reinterpret_cast<kernel_interface::process_module_validation_report *>(
             buffer);
-    LOG_INFO("report type: process_module_validation_report");
-    LOG_INFO("report code: %d", r6->report_code);
     LOG_INFO("image_base: %llx", r6->image_base);
     LOG_INFO("image_size: %u", r6->image_size);
     LOG_INFO("module_path: %ls", r6->module_path);
@@ -122,8 +121,6 @@ void helper::print_kernel_report(void *buffer) {
   case kernel_interface::report_id::report_apc_stackwalk: {
     kernel_interface::apc_stackwalk_report *r7 =
         reinterpret_cast<kernel_interface::apc_stackwalk_report *>(buffer);
-    LOG_INFO("report type: apc_stackwalk_report");
-    LOG_INFO("report code: %d", r7->report_code);
     LOG_INFO("kthread_address: %llx", r7->kthread_address);
     LOG_INFO("invalid_rip: %llx", r7->invalid_rip);
     LOG_INFO("********************************");
@@ -132,8 +129,6 @@ void helper::print_kernel_report(void *buffer) {
   case kernel_interface::report_id::report_dpc_stackwalk: {
     kernel_interface::dpc_stackwalk_report *r8 =
         reinterpret_cast<kernel_interface::dpc_stackwalk_report *>(buffer);
-    LOG_INFO("report type: dpc_stackwalk_report");
-    LOG_INFO("report code: %d", r8->report_code);
     LOG_INFO("kthread_address: %llx", r8->kthread_address);
     LOG_INFO("invalid_rip: %llx", r8->invalid_rip);
     LOG_INFO("********************************");
@@ -142,8 +137,6 @@ void helper::print_kernel_report(void *buffer) {
   case kernel_interface::report_id::report_data_table_routine: {
     kernel_interface::data_table_routine_report *r9 =
         reinterpret_cast<kernel_interface::data_table_routine_report *>(buffer);
-    LOG_INFO("report type: data_table_routine_report");
-    LOG_INFO("report code: %d", r9->report_code);
     LOG_INFO("id: %d", r9->id);
     LOG_INFO("address: %llx", r9->address);
     LOG_INFO("routine: %s", r9->routine);
@@ -153,9 +146,6 @@ void helper::print_kernel_report(void *buffer) {
   case kernel_interface::report_id::report_module_validation_failure: {
     kernel_interface::module_validation_failure *r10 =
         reinterpret_cast<kernel_interface::module_validation_failure *>(buffer);
-    LOG_INFO("report type: module_validation_failure");
-    LOG_INFO("report code: %lx", r10->report_code);
-    LOG_INFO("report type: %lx", r10->report_type);
     LOG_INFO("driver_base_address: %llx", r10->driver_base_address);
     LOG_INFO("driver_size: %llx", r10->driver_size);
     LOG_INFO("driver_name: %s", r10->driver_name);

@@ -105,7 +105,7 @@ IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
     UNREFERENCED_PARAMETER(Context);
     PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
-    if (queue->count == 0)
+    if (queue->irp_count == 0)
         return NULL;
 
     return CONTAINING_RECORD(queue->queue.Flink, IRP, Tail.Overlay.ListEntry);
@@ -116,7 +116,7 @@ VOID
 IrpQueueRemove(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
     UNREFERENCED_PARAMETER(Csq);
-    GetIrpQueueHead()->count--;
+    GetIrpQueueHead()->irp_count--;
     RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
 }
 
@@ -204,7 +204,7 @@ IrpQueueInsert(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
     PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     InsertTailList(&queue->queue, &Irp->Tail.Overlay.ListEntry);
-    queue->count++;
+    queue->irp_count++;
 }
 
 STATIC

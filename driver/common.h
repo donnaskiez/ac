@@ -8,7 +8,7 @@
 #include "types/types.h"
 
 /*
- * For numbers < 32, these are equivalent to 0ul < x.
+ * For numbers < 32, these are equivalent to 0ul << x.
  *
  * For an item to be printed, its bitwise AND'd with the set filter. If the
  * result is non zero the log will be printed.
@@ -191,7 +191,9 @@ typedef struct _DEFERRED_REPORTS_LIST {
 
 typedef struct _IRP_QUEUE_HEAD {
     LIST_ENTRY            queue;
-    volatile UINT32       count;
+    volatile UINT32       irp_count;
+    volatile UINT32       total_reports_completed;
+    volatile UINT32       total_irps_completed;
     IO_CSQ                csq;
     KSPIN_LOCK            lock;
     DEFERRED_REPORTS_LIST deferred_reports;

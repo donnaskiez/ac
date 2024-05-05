@@ -25,8 +25,13 @@ enum report_id {
   report_invalid_process_module = 140
 };
 
+struct packet_header {
+  uint16_t packet_type;
+};
+
 struct report_header {
-  int report_id;
+  uint32_t report_code;
+  uint32_t report_sub_type;
 };
 
 constexpr int APC_STACKWALK_BUFFER_SIZE = 500;
@@ -36,22 +41,24 @@ constexpr int HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH = 64;
 constexpr int MODULE_PATH_LEN = 256;
 
 struct apc_stackwalk_report {
-  int report_code;
+  packet_header header;
+  report_header report_header;
   uint64_t kthread_address;
   uint64_t invalid_rip;
   char driver[APC_STACKWALK_BUFFER_SIZE];
 };
 
 struct dpc_stackwalk_report {
-  uint32_t report_code;
+  packet_header header;
+  report_header report_header;
   uint64_t kthread_address;
   uint64_t invalid_rip;
   char driver[APC_STACKWALK_BUFFER_SIZE];
 };
 
 struct module_validation_failure {
-  int report_code;
-  int report_type;
+  packet_header header;
+  report_header report_header;
   uint64_t driver_base_address;
   uint64_t driver_size;
   char driver_name[128];
@@ -60,7 +67,8 @@ struct module_validation_failure {
 enum table_id { hal_dispatch = 0, hal_private_dispatch };
 
 struct data_table_routine_report {
-  uint32_t report_code;
+  packet_header header;
+  report_header report_header;
   table_id id;
   uint64_t address;
   uint32_t index;
@@ -68,23 +76,26 @@ struct data_table_routine_report {
 };
 
 struct nmi_callback_failure {
-  int report_code;
-  int were_nmis_disabled;
+  packet_header header;
+  report_header report_header;
+  uint8_t were_nmis_disabled;
   uint64_t kthread_address;
   uint64_t invalid_rip;
 };
 
 struct invalid_process_allocation_report {
-  int report_code;
+  packet_header header;
+  report_header report_header;
   char process[REPORT_INVALID_PROCESS_BUFFER_SIZE];
 };
 
 struct hidden_system_thread_report {
-  int report_code;
-  int found_in_kthreadlist;
-  int found_in_pspcidtable;
+  packet_header header;
+  report_header report_header;
+  uint8_t found_in_kthreadlist;
+  uint8_t found_in_pspcidtable;
   uint64_t thread_address;
-  long thread_id;
+  uint32_t thread_id;
   char thread[500];
 };
 
@@ -94,23 +105,19 @@ struct attach_process_report {
   uint64_t thread_address;
 };
 
-struct kprcb_thread_validation_ctx {
-  uint64_t thread;
-  bool thread_found_in_pspcidtable;
-  bool finished;
-};
-
 struct open_handle_failure_report {
-  int report_code;
-  int is_kernel_handle;
-  long process_id;
-  long thread_id;
-  long access;
+  packet_header header;
+  report_header report_header;
+  uint8_t is_kernel_handle;
+  uint32_t process_id;
+  uint32_t thread_id;
+  uint32_t access;
   char process_name[HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH];
 };
 
 struct process_module_validation_report {
-  int report_code;
+  packet_header header;
+  report_header report_header;
   uint64_t image_base;
   uint32_t image_size;
   wchar_t module_path[MODULE_PATH_LEN];

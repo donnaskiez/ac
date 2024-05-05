@@ -669,34 +669,34 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
             !strcmp(process_creator_name, "explorer.exe"))
             goto end;
 
-        // POPEN_HANDLE_FAILURE_REPORT report =
-        //     ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-        //                        sizeof(OPEN_HANDLE_FAILURE_REPORT),
-        //                        REPORT_POOL_TAG);
+         POPEN_HANDLE_FAILURE_REPORT report =
+             ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                                REPORT_POOL_TAG);
 
-        // if (!report)
-        //         goto end;
+         if (!report)
+                 goto end;
 
-        // report->report_code      =
-        // REPORT_ILLEGAL_HANDLE_OPERATION;
-        // report->is_kernel_handle =
-        // OperationInformation->KernelHandle;
-        // report->process_id       = process_creator_id;
-        // report->thread_id        = ImpPsGetCurrentThreadId();
-        // report->access =
-        //     OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+         INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+         INIT_REPORT_HEADER(&report->report_header,
+                            REPORT_ILLEGAL_HANDLE_OPERATION, 0);
 
-        // RtlCopyMemory(report->process_name,
-        //               process_creator_name,
-        //               HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+         DEBUG_INFO("packet type: %hx", report->header.packet_type);
+         DEBUG_INFO("report code: %lx", report->report_header.report_code);
+         DEBUG_INFO("report subcode: %lx", report->report_header.report_sub_type);
 
-        // if (!NT_SUCCESS(
-        //         IrpQueueCompleteIrp(report,
-        //         sizeof(OPEN_HANDLE_FAILURE_REPORT))))
-        //{
-        //         DEBUG_ERROR("IrpQueueCompleteIrp failed with
-        //         no status."); goto end;
-        // }
+         report->is_kernel_handle = OperationInformation->KernelHandle;
+         report->process_id       = process_creator_id;
+         report->thread_id        = ImpPsGetCurrentThreadId();
+         report->access =
+             OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+
+         RtlCopyMemory(report->process_name,
+                       process_creator_name,
+                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+
+         IrpQueueCompleteIrp(report,
+                 sizeof(OPEN_HANDLE_FAILURE_REPORT));
     }
 
 end:
@@ -857,8 +857,11 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
      * also don't think its worth creating another queue
      * specifically for open handle reports since they will be rare.
      */
-    report->report_code      = REPORT_ILLEGAL_HANDLE_OPERATION;
-    report->is_kernel_handle = 0;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(
+        &report->report_header, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
+
+    report->is_kernel_handle = Entry->Attributes & OBJ_KERNEL_HANDLE;
     report->process_id       = ImpPsGetProcessId(process);
     report->thread_id        = 0;
     report->access           = handle_access_mask;
@@ -977,7 +980,7 @@ InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
     LARGE_INTEGER due_time = {0};
     LONG          period   = 0;
 
-    due_time.QuadPart = ABSOLUTE(SECONDS(5));
+    due_time.QuadPart = -ABSOLUTE(SECONDS(5));
 
     Timer->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 

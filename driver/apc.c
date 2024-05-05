@@ -121,16 +121,17 @@ FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
+  AcquireDriverConfigLock();
+
     for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
         PAPC_CONTEXT_HEADER entry = NULL;
         GetApcContextByIndex(&entry, index);
-        AcquireDriverConfigLock();
 
         if (!entry)
-            goto increment;
+          continue;
 
         if (entry->count > 0 || entry->allocation_in_progress == TRUE)
-            goto increment;
+          continue;
 
         switch (entry->context_id) {
         case APC_CONTEXT_ID_STACKWALK:
@@ -138,10 +139,9 @@ QueryActiveApcContextsForCompletion()
             FreeApcContextStructure(entry);
             break;
         }
-
-    increment:
-        ReleaseDriverConfigLock();
     }
+
+    ReleaseDriverConfigLock();
     return STATUS_SUCCESS;
 }
 
@@ -211,7 +211,7 @@ DrvUnloadFreeAllApcContextStructures()
             return FALSE;
         }
 
-        ImpExFreePoolWithTag(entry, POOL_TAG_APC);
+        ImpExFreePoolWithTag(context, POOL_TAG_APC);
     }
 unlock:
     ReleaseDriverConfigLock();
