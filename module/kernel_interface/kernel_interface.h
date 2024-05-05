@@ -123,6 +123,14 @@ struct process_module_validation_report {
   wchar_t module_path[MODULE_PATH_LEN];
 };
 
+struct heartbeat_packet {
+    packet_header header;
+    uint32_t        heartbeat_count;
+    uint32_t        total_reports_completed;
+    uint32_t        total_irps_completed;
+    uint32_t        total_heartbeats_completed;
+};
+
 enum apc_operation { operation_stackwalk = 0x1 };
 
 // clang-format off

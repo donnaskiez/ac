@@ -2117,8 +2117,6 @@ HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
     NTSTATUS                 status = STATUS_UNSUCCESSFUL;
     PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)Context;
 
-    DEBUG_INFO("heartbeat work routine called");
-
     /* Ensure we wait until our heartbeats DPC has terminated. */
     KeFlushQueuedDpcs();
     FreeHeartbeatObjects(config);

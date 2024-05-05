@@ -53,6 +53,20 @@ void helper::print_kernel_report(void *buffer) {
   kernel_interface::packet_header *header =
       reinterpret_cast<kernel_interface::packet_header *>(buffer);
   LOG_INFO("packet type: %lx", header->packet_type);
+
+  if (header->packet_type == 1)
+  {
+      kernel_interface::heartbeat_packet* hb =
+          reinterpret_cast<kernel_interface::heartbeat_packet*>(buffer);
+      LOG_INFO("Heartbeat Count: %lx", hb->heartbeat_count);
+      LOG_INFO("Total Reports Completed: %lx", hb->total_reports_completed);
+      LOG_INFO("Total IRPs Completed: %lx", hb->total_irps_completed);
+      LOG_INFO("Total Heartbeats Completed: %lx",
+               hb->total_heartbeats_completed);
+      LOG_INFO("********************************");
+      return;
+  }
+
   kernel_interface::report_header *report_header =
       reinterpret_cast<kernel_interface::report_header *>(
           (uint64_t)buffer + sizeof(kernel_interface::packet_header));

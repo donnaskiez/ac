@@ -156,11 +156,10 @@ STATIC
 VOID
 IncrementPacketMetics(_In_ PIRP_QUEUE_HEAD Queue, UINT16 Type)
 {
-    if (Type == PACKET_TYPE_REPORT)
-        Queue->total_reports_completed++;
-
-    if (Type == PACKET_TYPE_HEARTBEAT)
-        Queue->total_heartbeats_completed++;
+    switch (Type) {
+    case PACKET_TYPE_HEARTBEAT: Queue->total_heartbeats_completed++; break;
+    case PACKET_TYPE_REPORT: Queue->total_reports_completed++; break;
+    }
 
     Queue->total_irps_completed++;
 }
