@@ -216,7 +216,6 @@ IrpQueueQueryPendingPackets(_In_ PIRP Irp)
         }
 
         queue->deferred_reports.count--;
-        goto end;
     }
 
 end:
@@ -335,6 +334,7 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
     return status;
 }
 
+STATIC
 VOID
 IrpQueueFreeDeferredPackets()
 {
