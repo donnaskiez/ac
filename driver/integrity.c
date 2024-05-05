@@ -2156,6 +2156,12 @@ BuildHeartbeatPacket(_In_ PHEARTBEAT_CONFIGURATION Configuration)
 
     /* This routine always runs at DPC level */
     KeAcquireSpinLockAtDpcLevel(&queue->lock);
+
+    /*
+     * Its important to remember that since we query the packet metrics before
+     * the metrics are incremented for the current packets they will always be 1
+     * less then whats noted.
+     */
     packet->total_heartbeats_completed = queue->total_heartbeats_completed;
     packet->total_irps_completed       = queue->total_irps_completed;
     packet->total_reports_completed    = queue->total_reports_completed;

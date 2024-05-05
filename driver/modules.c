@@ -43,9 +43,6 @@ CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] = {
 
 #define MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE 128
 
-#define REASON_NO_BACKING_MODULE      1
-#define REASON_INVALID_IOCTL_DISPATCH 2
-
 #define SYSTEM_IDLE_PROCESS_ID 0
 #define SYSTEM_PROCESS_ID      4
 #define SVCHOST_PROCESS_ID     8
@@ -77,19 +74,6 @@ typedef struct _NMI_CONTEXT {
 
 } NMI_CONTEXT, *PNMI_CONTEXT;
 
-typedef struct _INVALID_DRIVER {
-    struct _INVALID_DRIVER* next;
-    INT                     reason;
-    PDRIVER_OBJECT          driver;
-
-} INVALID_DRIVER, *PINVALID_DRIVER;
-
-typedef struct _INVALID_DRIVERS_HEAD {
-    PINVALID_DRIVER first_entry;
-    INT             count;
-
-} INVALID_DRIVERS_HEAD, *PINVALID_DRIVERS_HEAD;
-
 STATIC
 NTSTATUS
 PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
@@ -97,40 +81,7 @@ PopulateWhitelistedModuleBuffer(_Inout_ PVOID        Buffer,
 
 STATIC
 NTSTATUS
-ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
-                                  _In_ PSYSTEM_MODULES      Modules,
-                                  _In_ PWHITELISTED_REGIONS WhitelistedRegions,
-                                  _Out_ PBOOLEAN            Flag);
-
-STATIC
-VOID
-InitDriverList(_Inout_ PINVALID_DRIVERS_HEAD ListHead);
-
-STATIC
-NTSTATUS
-AddDriverToList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
-                _In_ PDRIVER_OBJECT           Driver,
-                _In_ INT                      Reason);
-
-STATIC
-VOID
-RemoveInvalidDriverFromList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
-
-STATIC
-VOID
-EnumerateInvalidDrivers(_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead);
-
-STATIC
-NTSTATUS
-ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
-                                     _In_ PDRIVER_OBJECT  DriverObject,
-                                     _Out_ PBOOLEAN       Result);
-
-STATIC
-NTSTATUS
-ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules,
-                             _Inout_ PINVALID_DRIVERS_HEAD
-                                 InvalidDriverListHead);
+ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules);
 
 STATIC
 NTSTATUS
@@ -167,12 +118,6 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, FindSystemModuleByName)
 #    pragma alloc_text(PAGE, PopulateWhitelistedModuleBuffer)
-#    pragma alloc_text(PAGE, ValidateDriverIOCTLDispatchRegion)
-#    pragma alloc_text(PAGE, InitDriverList)
-#    pragma alloc_text(PAGE, AddDriverToList)
-#    pragma alloc_text(PAGE, RemoveInvalidDriverFromList)
-#    pragma alloc_text(PAGE, EnumerateInvalidDrivers)
-#    pragma alloc_text(PAGE, ValidateDriverObjectHasBackingModule)
 #    pragma alloc_text(PAGE, GetSystemModuleInformation)
 #    pragma alloc_text(PAGE, ValidateDriverObjectsWrapper)
 #    pragma alloc_text(PAGE, HandleValidateDriversIOCTL)
@@ -267,27 +212,21 @@ GetDriverMajorDispatchFunction(_In_ PDRIVER_OBJECT Driver)
 }
 
 STATIC
-NTSTATUS
-ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
-                                  _In_ PSYSTEM_MODULES      Modules,
-                                  _In_ PWHITELISTED_REGIONS WhitelistedRegions,
-                                  _Out_ PBOOLEAN            Flag)
+BOOLEAN
+DoesDriverHaveInvalidDispatchRoutine(_In_ PDRIVER_OBJECT       Driver,
+                                     _In_ PSYSTEM_MODULES      Modules,
+                                     _In_ PWHITELISTED_REGIONS Regions)
 {
     PAGED_CODE();
-
-    if (!Modules || !Driver || !Flag || !WhitelistedRegions)
-        return STATUS_INVALID_PARAMETER;
 
     UINT64 dispatch_function = 0;
     UINT64 module_base       = 0;
     UINT64 module_end        = 0;
 
-    *Flag = TRUE;
-
     dispatch_function = GetDriverMajorDispatchFunction(Driver);
 
     if (dispatch_function == NULL)
-        return STATUS_SUCCESS;
+        return FALSE;
 
     PRTL_MODULE_EXTENDED_INFO module =
         (PRTL_MODULE_EXTENDED_INFO)Modules->address;
@@ -299,14 +238,14 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
         /* make sure our driver has a device object which is required
          * for IOCTL */
         if (Driver->DeviceObject == NULL)
-            return STATUS_SUCCESS;
+            return FALSE;
 
         module_base = (UINT64)module[index].ImageBase;
         module_end  = module_base + module[index].ImageSize;
 
         /* firstly, check if its inside its own module */
         if (dispatch_function >= module_base && dispatch_function <= module_end)
-            return STATUS_SUCCESS;
+            return FALSE;
 
         /*
          * The WDF framework and other low level drivers often hook the
@@ -324,93 +263,27 @@ ValidateDriverIOCTLDispatchRegion(_In_ PDRIVER_OBJECT       Driver,
          * should implement a function which checks for standard hook
          * implementations like mov rax jmp rax etc.
          */
-        for (INT index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
-            if (dispatch_function >= WhitelistedRegions[index].base &&
-                dispatch_function <= WhitelistedRegions[index].end)
-                return STATUS_SUCCESS;
+        for (UINT32 index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
+            if (dispatch_function >= Regions[index].base &&
+                dispatch_function <= Regions[index].end)
+                return FALSE;
         }
 
         DEBUG_WARNING("Driver with invalid dispatch routine found: %s",
                       module[index].FullPathName);
 
-        *Flag = FALSE;
-        return STATUS_SUCCESS;
+        return TRUE;
     }
 
-    return STATUS_SUCCESS;
+    return FALSE;
 }
 
 STATIC
-VOID
-InitDriverList(_Inout_ PINVALID_DRIVERS_HEAD ListHead)
+BOOLEAN
+DoesDriverObjectHaveBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
+                                  _In_ PDRIVER_OBJECT  DriverObject)
 {
     PAGED_CODE();
-
-    ListHead->count       = 0;
-    ListHead->first_entry = NULL;
-}
-
-STATIC
-NTSTATUS
-AddDriverToList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead,
-                _In_ PDRIVER_OBJECT           Driver,
-                _In_ INT                      Reason)
-{
-    PAGED_CODE();
-
-    PINVALID_DRIVER new_entry =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(INVALID_DRIVER),
-                           INVALID_DRIVER_LIST_ENTRY_POOL);
-
-    if (!new_entry)
-        return STATUS_MEMORY_NOT_ALLOCATED;
-
-    new_entry->driver               = Driver;
-    new_entry->reason               = Reason;
-    new_entry->next                 = InvalidDriversHead->first_entry;
-    InvalidDriversHead->first_entry = new_entry;
-
-    return STATUS_SUCCESS;
-}
-
-STATIC
-VOID
-RemoveInvalidDriverFromList(_Inout_ PINVALID_DRIVERS_HEAD InvalidDriversHead)
-{
-    PAGED_CODE();
-
-    if (InvalidDriversHead->first_entry) {
-        PINVALID_DRIVER entry           = InvalidDriversHead->first_entry;
-        InvalidDriversHead->first_entry = InvalidDriversHead->first_entry->next;
-        ImpExFreePoolWithTag(entry, INVALID_DRIVER_LIST_ENTRY_POOL);
-    }
-}
-
-STATIC
-VOID
-EnumerateInvalidDrivers(_In_ PINVALID_DRIVERS_HEAD InvalidDriversHead)
-{
-    PAGED_CODE();
-
-    PINVALID_DRIVER entry = InvalidDriversHead->first_entry;
-
-    while (entry != NULL) {
-        DEBUG_VERBOSE("Invalid Driver: %wZ", entry->driver->DriverName);
-        entry = entry->next;
-    }
-}
-
-STATIC
-NTSTATUS
-ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
-                                     _In_ PDRIVER_OBJECT  DriverObject,
-                                     _Out_ PBOOLEAN       Result)
-{
-    PAGED_CODE();
-
-    if (!ModuleInformation || !DriverObject || !Result)
-        return STATUS_INVALID_PARAMETER;
 
     PRTL_MODULE_EXTENDED_INFO module =
         (PRTL_MODULE_EXTENDED_INFO)ModuleInformation->address;
@@ -420,16 +293,14 @@ ValidateDriverObjectHasBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
             return STATUS_INVALID_MEMBER;
 
         if (module[index].ImageBase == DriverObject->DriverStart) {
-            *Result = TRUE;
-            return STATUS_SUCCESS;
+            return TRUE;
         }
     }
 
     DEBUG_WARNING("Driver found with no backing system image at address: %llx",
                   (UINT64)DriverObject->DriverStart);
 
-    *Result = FALSE;
-    return STATUS_SUCCESS;
+    return FALSE;
 }
 
 FORCEINLINE
@@ -489,58 +360,63 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
 
 STATIC
 VOID
-ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
-                      _In_ POBJECT_DIRECTORY_ENTRY  Entry,
-                      _Inout_ PINVALID_DRIVERS_HEAD Head,
-                      _In_ PVOID                    Whitelist)
+ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PMODULE_VALIDATION_FAILURE report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                           sizeof(MODULE_VALIDATION_FAILURE),
+                           POOL_TAG_INTEGRITY);
 
-    if (!Entry)
+    if (!report)
         return;
 
-    POBJECT_DIRECTORY_ENTRY sub_entry = Entry;
+    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+    INIT_REPORT_HEADER(&report->report_header,
+                       REPORT_MODULE_VALIDATION_FAILURE,
+                       ReportSubType);
 
-    while (sub_entry) {
-        BOOLEAN        flag           = FALSE;
-        PDRIVER_OBJECT current_driver = sub_entry->Object;
+    report->driver_base_address = Driver->DriverStart;
+    report->driver_size         = Driver->DriverSize;
 
-        status = ValidateDriverObjectHasBackingModule(
-            SystemModules, current_driver, &flag);
+    ANSI_STRING string   = {0};
+    string.Length        = 0;
+    string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
+    string.Buffer        = &report->driver_name;
 
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR(
-                "ValidateDriverObjectHasBackingModule failed with status %x",
-                status);
-            return;
+    /* Continue regardless of result */
+    ImpRtlUnicodeStringToAnsiString(&string, &Driver->DriverName, FALSE);
+    IrpQueueCompletePacket(report, sizeof(MODULE_VALIDATION_FAILURE));
+}
+
+FORCEINLINE
+STATIC
+POBJECT_DIRECTORY_ENTRY
+GetNextObject(_In_ POBJECT_DIRECTORY_ENTRY Entry)
+{
+    return Entry->ChainLink;
+}
+
+STATIC
+VOID
+ValidateDriverObjects(_In_ PSYSTEM_MODULES         Modules,
+                      _In_ POBJECT_DIRECTORY_ENTRY Entry,
+                      _In_ PVOID                   Whitelist)
+{
+    NTSTATUS                status = STATUS_UNSUCCESSFUL;
+    POBJECT_DIRECTORY_ENTRY entry  = Entry;
+
+    while (entry) {
+        PDRIVER_OBJECT driver = entry->Object;
+
+        if (!DoesDriverObjectHaveBackingModule(Modules, driver)) {
+            ReportInvalidDriverObject(driver, REPORT_SUBTYPE_NO_BACKING_MODULE);
         }
 
-        if (!flag) {
-            status =
-                AddDriverToList(Head, current_driver, REASON_NO_BACKING_MODULE);
-
-            if (NT_SUCCESS(status))
-                Head->count++;
+        if (!DoesDriverHaveInvalidDispatchRoutine(driver, Modules, Whitelist)) {
+            ReportInvalidDriverObject(driver, REPORT_SUBTYPE_INVALID_DISPATCH);
         }
 
-        status = ValidateDriverIOCTLDispatchRegion(
-            current_driver, SystemModules, Whitelist, &flag);
-
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR(
-                "ValidateDriverIOCTLDispatchRegion failed with status %x",
-                status);
-            return;
-        }
-
-        if (!flag) {
-            status = AddDriverToList(
-                Head, current_driver, REASON_INVALID_IOCTL_DISPATCH);
-            if (NT_SUCCESS(status))
-                Head->count++;
-        }
-
-        sub_entry = sub_entry->ChainLink;
+        entry = GetNextObject(entry);
     }
 }
 
@@ -550,13 +426,9 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES          SystemModules,
  */
 STATIC
 NTSTATUS
-ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES          SystemModules,
-                             _Inout_ PINVALID_DRIVERS_HEAD Head)
+ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
 {
     PAGED_CODE();
-
-    if (!SystemModules || !Head)
-        return STATUS_INVALID_PARAMETER;
 
     HANDLE            handle                     = NULL;
     OBJECT_ATTRIBUTES attributes                 = {0};
@@ -624,8 +496,7 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES          SystemModules,
 
     for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++) {
         POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[index];
-        ValidateDriverObjects(
-            SystemModules, entry, Head, whitelisted_regions_buffer);
+        ValidateDriverObjects(SystemModules, entry, whitelisted_regions_buffer);
     }
 
 end:
@@ -640,61 +511,14 @@ end:
     return STATUS_SUCCESS;
 }
 
-FORCEINLINE
-STATIC
-INT
-GetModuleCount(_In_ PINVALID_DRIVERS_HEAD Head)
-{
-    return Head->count >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-               ? MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT
-               : Head->count;
-}
-
-STATIC
-VOID
-ReportInvalidDriverObject(_In_ PINVALID_DRIVERS_HEAD Head)
-{
-    PMODULE_VALIDATION_FAILURE report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(MODULE_VALIDATION_FAILURE),
-                           POOL_TAG_INTEGRITY);
-
-    if (!report)
-        return;
-
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header,
-                       REPORT_MODULE_VALIDATION_FAILURE,
-                       Head->first_entry->reason);
-
-    DEBUG_INFO("packet type: %hx", report->header.packet_type);
-    DEBUG_INFO("report code: %lx", report->report_header.report_code);
-    DEBUG_INFO("report subcode: %lx", report->report_header.report_sub_type);
-
-    report->driver_base_address = Head->first_entry->driver->DriverStart;
-    report->driver_size         = Head->first_entry->driver->DriverSize;
-
-    ANSI_STRING string   = {0};
-    string.Length        = 0;
-    string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
-    string.Buffer        = &report->driver_name;
-
-    /* Continue regardless of result */
-    ImpRtlUnicodeStringToAnsiString(
-        &string, &Head->first_entry->driver->DriverName, FALSE);
-
-    IrpQueueCompletePacket(report, sizeof(MODULE_VALIDATION_FAILURE));
-}
-
 NTSTATUS
 HandleValidateDriversIOCTL()
 {
     PAGED_CODE();
 
-    NTSTATUS              status         = STATUS_UNSUCCESSFUL;
-    ULONG                 buffer_size    = 0;
-    SYSTEM_MODULES        system_modules = {0};
-    PINVALID_DRIVERS_HEAD head           = NULL;
+    NTSTATUS       status         = STATUS_UNSUCCESSFUL;
+    ULONG          buffer_size    = 0;
+    SYSTEM_MODULES system_modules = {0};
 
     /* Fix annoying visual studio linting error */
     RtlZeroMemory(&system_modules, sizeof(SYSTEM_MODULES));
@@ -706,52 +530,16 @@ HandleValidateDriversIOCTL()
         return status;
     }
 
-    head = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                              sizeof(INVALID_DRIVERS_HEAD),
-                              INVALID_DRIVER_LIST_HEAD_POOL);
-
-    if (!head) {
-        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-        return STATUS_MEMORY_NOT_ALLOCATED;
-    }
-
-    /*
-     * Use a linked list here so that so we have easy access to the invalid
-     * drivers which we can then use to copy the drivers logic for further
-     * analysis in identifying drivers specifically used for the purpose of
-     * cheating
-     */
-
-    InitDriverList(head);
-
-    status = ValidateDriverObjectsWrapper(&system_modules, head);
+    status = ValidateDriverObjectsWrapper(&system_modules);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateDriverObjects failed with status %x", status);
         goto end;
     }
 
-    if (head->count == 0) {
-        DEBUG_INFO("Found no invalid drivers on the system.");
-        goto end;
-    }
-
-    for (INT index = 0; index < head->count; index++) {
-        /* make sure we free any non reported modules */
-        if (index >= MODULE_VALIDATION_FAILURE_MAX_REPORT_COUNT) {
-            RemoveInvalidDriverFromList(head);
-            continue;
-        }
-
-        ReportInvalidDriverObject(head);
-        RemoveInvalidDriverFromList(head);
-    }
-
 end:
 
-    ImpExFreePoolWithTag(head, INVALID_DRIVER_LIST_HEAD_POOL);
     ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-
     return status;
 }
 
