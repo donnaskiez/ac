@@ -547,7 +547,7 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
 
 BOOLEAN
 IsInstructionPointerInsideSpecifiedModule(_In_ UINT64                    Rip,
-                                 _In_ PRTL_MODULE_EXTENDED_INFO Module)
+                                          _In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
     UINT64 base = (UINT64)Module->ImageBase;
     UINT64 end  = base + Module->ImageSize;
@@ -722,8 +722,8 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
 {
     UNREFERENCED_PARAMETER(Handled);
 
-    PNMI_CONTEXT           context       = (PNMI_CONTEXT)Context;
     ULONG                  core          = KeGetCurrentProcessorNumber();
+    PNMI_CONTEXT           context       = &((PNMI_CONTEXT)Context)[core];
     UINT64                 kpcr          = 0;
     TASK_STATE_SEGMENT_64* tss           = NULL;
     PMACHINE_FRAME         machine_frame = NULL;
@@ -745,12 +745,12 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
     machine_frame = GetIsrMachineFrame(tss);
 
     if (IsUserModeAddress(machine_frame->rip))
-        context[core].user_thread = TRUE;
+        context->user_thread = TRUE;
 
-    context[core].interrupted_rip = machine_frame->rip;
-    context[core].interrupted_rsp = machine_frame->rsp;
-    context[core].kthread         = PsGetCurrentThread();
-    context[core].callback_count++;
+    context->interrupted_rip = machine_frame->rip;
+    context->interrupted_rsp = machine_frame->rsp;
+    context->kthread         = PsGetCurrentThread();
+    context->callback_count++;
 
     DEBUG_VERBOSE(
         "[NMI CALLBACK]: Core Number: %lx, Interrupted RIP: %llx, Interrupted RSP: %llx",
@@ -802,9 +802,9 @@ HandleNmiIOCTL()
     PAGED_CODE();
 
     NTSTATUS       status          = STATUS_UNSUCCESSFUL;
-    PVOID          callback_handle = NULL;
-    SYSTEM_MODULES system_modules  = {0};
-    PNMI_CONTEXT   nmi_context     = NULL;
+    PVOID          handle = NULL;
+    SYSTEM_MODULES modules  = {0};
+    PNMI_CONTEXT   context     = NULL;
 
     UINT32 size = ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT);
 
@@ -817,10 +817,10 @@ HandleNmiIOCTL()
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("ValidateHalDispatchTables failed with status %x", status);
 
-    nmi_context =
+    context =
         ImpExAllocatePool2(POOL_FLAG_NON_PAGED, size, NMI_CONTEXT_POOL);
 
-    if (!nmi_context) {
+    if (!context) {
         UnsetNmiInProgressFlag();
         return STATUS_MEMORY_NOT_ALLOCATED;
     }
@@ -830,48 +830,47 @@ HandleNmiIOCTL()
      * becomes harder for people to hook our callback and get up to some
      * funny business
      */
-    callback_handle = ImpKeRegisterNmiCallback(NmiCallback, nmi_context);
+    handle = ImpKeRegisterNmiCallback(NmiCallback, context);
 
-    if (!callback_handle) {
+    if (!handle) {
         DEBUG_ERROR("KeRegisterNmiCallback failed with no status.");
-        ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
-        UnsetNmiInProgressFlag();
-        return STATUS_UNSUCCESSFUL;
+        goto end;
     }
 
     /*
      * We query the system modules each time since they can potentially
      * change at any time
      */
-    status = GetSystemModuleInformation(&system_modules);
+    status = GetSystemModuleInformation(&modules);
 
     if (!NT_SUCCESS(status)) {
-        ImpKeDeregisterNmiCallback(callback_handle);
-        ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
         DEBUG_ERROR("Error retriving system module information");
-        UnsetNmiInProgressFlag();
-        return status;
+        goto end;
     }
 
     status = LaunchNonMaskableInterrupt();
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("Error running NMI callbacks");
-        ImpKeDeregisterNmiCallback(callback_handle);
-        ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-        ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
-        UnsetNmiInProgressFlag();
-        return status;
+        goto end;
     }
 
-    status = AnalyseNmiData(nmi_context, &system_modules);
+    status = AnalyseNmiData(context, &modules);
 
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("Error analysing nmi data");
 
-    ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
-    ImpExFreePoolWithTag(nmi_context, NMI_CONTEXT_POOL);
-    ImpKeDeregisterNmiCallback(callback_handle);
+end:
+
+    if (modules.address)
+        ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
+    if (context)
+        ImpExFreePoolWithTag(context, NMI_CONTEXT_POOL);
+
+    if (handle)
+        ImpKeDeregisterNmiCallback(handle);
+
     UnsetNmiInProgressFlag();
     return status;
 }
