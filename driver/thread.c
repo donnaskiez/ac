@@ -11,7 +11,7 @@
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
-#    pragma alloc_text(PAGE, ValidateThreadsPspCidTableEntry)
+#    pragma alloc_text(PAGE, DoesThreadHaveValidCidEntry)
 #endif
 
 BOOLEAN
