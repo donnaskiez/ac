@@ -82,6 +82,7 @@ typedef struct _DRIVER_LIST_HEAD {
     /* modules that need to be hashed later. */
     PIO_WORKITEM  deferred_work_item;
     LIST_ENTRY    deferred_list;
+    volatile BOOLEAN deferred_complete;
     volatile LONG can_hash_x86;
 
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;

@@ -495,7 +495,8 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
          * Notify to our driver that we can hash x86 modules, and hash
          * any x86 modules that werent hashed.
          */
-        if (!strcmp(process_name, "winlogon.exe")) {
+        if (!strcmp(process_name, "winlogon.exe") &&
+            !driver_list->deferred_complete) {
             driver_list->can_hash_x86 = TRUE;
             IoQueueWorkItem(driver_list->deferred_work_item,
                             DeferredModuleHashingCallback,
@@ -669,34 +670,34 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
             !strcmp(process_creator_name, "explorer.exe"))
             goto end;
 
-         POPEN_HANDLE_FAILURE_REPORT report =
-             ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                                REPORT_POOL_TAG);
+        POPEN_HANDLE_FAILURE_REPORT report =
+            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
+                               REPORT_POOL_TAG);
 
-         if (!report)
-                 goto end;
+        if (!report)
+            goto end;
 
-         INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-         INIT_REPORT_HEADER(&report->report_header,
-                            REPORT_ILLEGAL_HANDLE_OPERATION, 0);
+        INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
+        INIT_REPORT_HEADER(
+            &report->report_header, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
 
-         DEBUG_INFO("packet type: %hx", report->header.packet_type);
-         DEBUG_INFO("report code: %lx", report->report_header.report_code);
-         DEBUG_INFO("report subcode: %lx", report->report_header.report_sub_type);
+        DEBUG_INFO("packet type: %hx", report->header.packet_type);
+        DEBUG_INFO("report code: %lx", report->report_header.report_code);
+        DEBUG_INFO("report subcode: %lx",
+                   report->report_header.report_sub_type);
 
-         report->is_kernel_handle = OperationInformation->KernelHandle;
-         report->process_id       = process_creator_id;
-         report->thread_id        = ImpPsGetCurrentThreadId();
-         report->access =
-             OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+        report->is_kernel_handle = OperationInformation->KernelHandle;
+        report->process_id       = process_creator_id;
+        report->thread_id        = ImpPsGetCurrentThreadId();
+        report->access           = OperationInformation->Parameters
+                             ->CreateHandleInformation.DesiredAccess;
 
-         RtlCopyMemory(report->process_name,
-                       process_creator_name,
-                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
+        RtlCopyMemory(report->process_name,
+                      process_creator_name,
+                      HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-         IrpQueueCompletePacket(report,
-                 sizeof(OPEN_HANDLE_FAILURE_REPORT));
+        IrpQueueCompletePacket(report, sizeof(OPEN_HANDLE_FAILURE_REPORT));
     }
 
 end:
@@ -870,8 +871,8 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                   process_name,
                   HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-    if (!NT_SUCCESS(
-            IrpQueueCompletePacket(report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
+    if (!NT_SUCCESS(IrpQueueCompletePacket(
+            report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
         DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
         goto end;
     }

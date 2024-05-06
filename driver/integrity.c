@@ -1451,6 +1451,7 @@ DeferredModuleHashingCallback()
     PLIST_ENTRY              list_entry    = NULL;
     PDRIVER_LIST_ENTRY       entry         = NULL;
 
+    driver_list->deferred_complete = TRUE;
     list_entry = RemoveHeadList(deferred_head);
 
     if (list_entry == deferred_head)
@@ -2094,7 +2095,7 @@ SetHeartbeatActive(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
 FORCEINLINE
 STATIC
 VOID
-SetheartbeatInactive(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+SetHeartbeatInactive(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
 {
     InterlockedDecrement(&Configuration->active);
 }
@@ -2133,7 +2134,7 @@ HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
     }
 
     InitialiseHeartbeatObjects(config);
-    SetheartbeatInactive(config);
+    SetHeartbeatInactive(config);
 }
 
 FORCEINLINE
