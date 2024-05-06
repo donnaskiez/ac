@@ -80,7 +80,7 @@ typedef struct _DRIVER_LIST_HEAD {
     KGUARDED_MUTEX    lock;
 
     /* modules that need to be hashed later. */
-    PIO_WORKITEM  deferred_work_item;
+    PIO_WORKITEM  work_item;
     LIST_ENTRY    deferred_list;
     volatile BOOLEAN deferred_complete;
     volatile LONG can_hash_x86;

@@ -198,10 +198,10 @@ InitialiseDriverList()
     ListInit(&list->start, &list->lock);
     InitializeListHead(&list->deferred_list);
 
-    list->can_hash_x86       = FALSE;
-    list->deferred_work_item = IoAllocateWorkItem(GetDriverDeviceObject());
+    list->can_hash_x86 = FALSE;
+    list->work_item    = IoAllocateWorkItem(GetDriverDeviceObject());
 
-    if (!list->deferred_work_item)
+    if (!list->work_item)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     status = GetSystemModuleInformation(&modules);
@@ -454,6 +454,15 @@ unlock:
     ImpKeReleaseGuardedMutex(&list->lock);
 }
 
+FORCEINLINE
+STATIC
+BOOLEAN
+CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
+{
+    return !strcmp(ProcessName, "winlogon.exe") && Head->work_item ? TRUE
+                                                                   : FALSE;
+}
+
 VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
@@ -477,6 +486,8 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
+    DEBUG_INFO("process create notify: %s", process_name);
+
     if (Create) {
         entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
@@ -495,10 +506,8 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
          * Notify to our driver that we can hash x86 modules, and hash
          * any x86 modules that werent hashed.
          */
-        if (!strcmp(process_name, "winlogon.exe") &&
-            !driver_list->deferred_complete) {
-            driver_list->can_hash_x86 = TRUE;
-            IoQueueWorkItem(driver_list->deferred_work_item,
+        if (CanInitiateDeferredHashing(process_name, driver_list)) {
+            IoQueueWorkItem(driver_list->work_item,
                             DeferredModuleHashingCallback,
                             NormalWorkQueue,
                             NULL);

@@ -1441,6 +1441,14 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
     return status;
 }
 
+FORCEINLINE
+STATIC
+VOID
+Enablex86Hashing(_In_ PDRIVER_LIST_HEAD Head)
+{
+    Head->can_hash_x86 = TRUE;
+}
+
 VOID
 DeferredModuleHashingCallback()
 {
@@ -1451,7 +1459,8 @@ DeferredModuleHashingCallback()
     PLIST_ENTRY              list_entry    = NULL;
     PDRIVER_LIST_ENTRY       entry         = NULL;
 
-    driver_list->deferred_complete = TRUE;
+    Enablex86Hashing(driver_list);
+
     list_entry = RemoveHeadList(deferred_head);
 
     if (list_entry == deferred_head)
@@ -1480,7 +1489,8 @@ DeferredModuleHashingCallback()
 
 end:
     DEBUG_VERBOSE("All deferred modules hashed.");
-    ImpIoFreeWorkItem(driver_list->deferred_work_item);
+    ImpIoFreeWorkItem(driver_list->work_item);
+    driver_list->work_item = NULL;
 }
 
 NTSTATUS

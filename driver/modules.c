@@ -769,20 +769,20 @@ LaunchNonMaskableInterrupt()
 {
     PAGED_CODE();
 
-    PKAFFINITY_EX ProcAffinityPool = ImpExAllocatePool2(
+    PKAFFINITY_EX affinity = ImpExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(KAFFINITY_EX), PROC_AFFINITY_POOL);
 
-    if (!ProcAffinityPool)
+    if (!affinity)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
     LARGE_INTEGER delay = {0};
     delay.QuadPart -= NMI_DELAY_TIME;
 
     for (ULONG core = 0; core < ImpKeQueryActiveProcessorCount(0); core++) {
-        ImpKeInitializeAffinityEx(ProcAffinityPool);
-        ImpKeAddProcessorAffinityEx(ProcAffinityPool, core);
+        ImpKeInitializeAffinityEx(affinity);
+        ImpKeAddProcessorAffinityEx(affinity, core);
 
-        HalSendNMI(ProcAffinityPool);
+        HalSendNMI(affinity);
 
         /*
          * Only a single NMI can be active at any given time, so
@@ -792,7 +792,7 @@ LaunchNonMaskableInterrupt()
         ImpKeDelayExecutionThread(KernelMode, FALSE, &delay);
     }
 
-    ImpExFreePoolWithTag(ProcAffinityPool, PROC_AFFINITY_POOL);
+    ImpExFreePoolWithTag(affinity, PROC_AFFINITY_POOL);
     return STATUS_SUCCESS;
 }
 
@@ -801,10 +801,10 @@ HandleNmiIOCTL()
 {
     PAGED_CODE();
 
-    NTSTATUS       status          = STATUS_UNSUCCESSFUL;
-    PVOID          handle = NULL;
-    SYSTEM_MODULES modules  = {0};
-    PNMI_CONTEXT   context     = NULL;
+    NTSTATUS       status  = STATUS_UNSUCCESSFUL;
+    PVOID          handle  = NULL;
+    SYSTEM_MODULES modules = {0};
+    PNMI_CONTEXT   context = NULL;
 
     UINT32 size = ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT);
 
@@ -817,8 +817,7 @@ HandleNmiIOCTL()
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("ValidateHalDispatchTables failed with status %x", status);
 
-    context =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, size, NMI_CONTEXT_POOL);
+    context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, size, NMI_CONTEXT_POOL);
 
     if (!context) {
         UnsetNmiInProgressFlag();
