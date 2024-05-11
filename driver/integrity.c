@@ -1602,6 +1602,44 @@ end:
     return status;
 }
 
+/*
+ * As said in the comment below, in the future we want to be able to copy a
+ * small part of the spot where the image has changed, say the next 50 bytes.
+ * This would be useful for scanning for any jmp x etc. For this thisl do.
+ */
+STATIC
+VOID
+ReportInvalidSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
+{
+    NTSTATUS status      = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size = CryptRequestRequiredBufferLength(
+        sizeof(SYSTEM_MODULE_INTEGRITY_CHECK_REPORT));
+
+    PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+
+    if (!report)
+        return;
+
+    INIT_REPORT_PACKET(report, REPORT_PATCHED_SYSTEM_MODULE, 0);
+
+    report->image_base = Module->ImageBase;
+    report->image_size = Module->ImageSize;
+
+    RtlCopyMemory(
+        report->path_name, Module->FullPathName, sizeof(report->path_name));
+
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, packet_size);
+        return;
+    }
+
+    IrpQueueSchedulePacket(report, packet_size);
+}
+
 VOID
 ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
@@ -1622,6 +1660,16 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         goto end;
     }
 
+    /*
+     * Ideally, we would like to have access to the offset into the module that
+     * doesnt match, allowing us to copy the next 50 bytes for example. Since we
+     * only store the hash, we can only check whether something has changed, but
+     * we dont really have access to any information regarding what changed. In
+     * the future it might be nice (though requires a fair amount of memory) to
+     * store a copy of images on load in the list alongside the hash. That way
+     * if there is a change in the hash, we can access the old buffer, perform a
+     * memory comparison, and find the point where the change exists.
+     */
     status = HashModule(Module, hash);
 
     if (!NT_SUCCESS(status)) {
@@ -1629,12 +1677,15 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         goto end;
     }
 
-    if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH))
+    if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH)) {
         DEBUG_VERBOSE("Module: %s text regions are valid.",
                       Module->FullPathName);
-    else
+    }
+    else {
         DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**",
                       Module->FullPathName);
+        ReportInvalidSystemModule(Module);
+    }
 
 end:
 

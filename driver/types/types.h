@@ -13,6 +13,7 @@
 #define REPORT_DPC_STACKWALK              120
 #define REPORT_DATA_TABLE_ROUTINE         130
 #define REPORT_INVALID_PROCESS_MODULE     140
+#define REPORT_PATCHED_SYSTEM_MODULE 150
 
 #define REPORT_SUBTYPE_NO_BACKING_MODULE 0x0
 #define REPORT_SUBTYPE_INVALID_DISPATCH  0x1
@@ -35,6 +36,9 @@
         (packet)->header.packet_header.packet_type  = PACKET_TYPE_HEARTBEAT; \
         (packet)->header.packet_header.magic_number = PACKET_MAGIC_NUMBER;   \
     }
+
+/* TODO: the naming here is fucking terrible need to clean everything up */
+/* infact lots of the mess in the header files needs to be cleaned up */
 
 /* use a UINT16 rather then enum to explicitly state the size */
 typedef struct _PACKET_HEADER {
@@ -185,5 +189,13 @@ typedef struct _HEARTBEAT_PACKET {
     UINT32                  total_heartbeats_completed;
 
 } HEARTBEAT_PACKET, *PHEARTBEAT_PACKET;
+
+typedef struct _SYSTEM_MODULE_INTEGRITY_CHECK_REPORT {
+    REPORT_PACKET_HEADER header;
+    UINT64               image_base;
+    UINT32               image_size;
+    CHAR                 path_name[0x100];
+
+} SYSTEM_MODULE_INTEGRITY_CHECK_REPORT, *PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT;
 
 #endif
