@@ -129,7 +129,7 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 VOID

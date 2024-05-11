@@ -747,7 +747,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
             goto end;
         }
 
-        IrpQueueCompletePacket(report, report_size);
+        IrpQueueSchedulePacket(report, report_size);
     }
 
 end:
@@ -942,7 +942,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         goto end;
     }
 
-    IrpQueueCompletePacket(report, report_size);
+    IrpQueueSchedulePacket(report, report_size);
 
 end:
     ExUnlockHandleTableEntry(HandleTable, Entry);

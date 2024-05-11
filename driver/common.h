@@ -191,6 +191,8 @@ typedef struct _DEFERRED_REPORTS_LIST {
 
 } DEFERRED_REPORTS_LIST, *PDEFERRED_REPORTS_LIST;
 
+#define EVENT_COUNT 5
+
 typedef struct _IRP_QUEUE_HEAD {
     LIST_ENTRY            queue;
     volatile UINT32       irp_count;
@@ -200,6 +202,7 @@ typedef struct _IRP_QUEUE_HEAD {
     IO_CSQ                csq;
     KSPIN_LOCK            lock;
     DEFERRED_REPORTS_LIST deferred_reports;
+    KDPC                  dpc[EVENT_COUNT];
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 

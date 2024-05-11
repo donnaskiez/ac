@@ -372,7 +372,7 @@ ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 FORCEINLINE
@@ -595,7 +595,7 @@ ReportNmiBlocking()
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 STATIC
@@ -632,7 +632,7 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 STATIC
@@ -663,7 +663,7 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 /*
@@ -956,7 +956,7 @@ ReportApcStackwalkViolation(_In_ UINT64 Rip)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 /*
@@ -1292,7 +1292,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 STATIC
@@ -1606,7 +1606,7 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 NTSTATUS
@@ -1945,7 +1945,7 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
         return;
     }
 
-    IrpQueueCompletePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 STATIC

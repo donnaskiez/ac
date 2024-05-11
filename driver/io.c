@@ -292,6 +292,7 @@ IrpQueueDeferPacket(_In_ PIRP_QUEUE_HEAD Queue,
  *
  * IMPORTANT: All report buffers must be allocated in non paged memory.
  */
+STATIC
 NTSTATUS
 IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
@@ -336,6 +337,49 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 
 STATIC
 VOID
+IrpQueueSchedulePacketDpc(_In_ struct _KDPC* Dpc,
+                          _In_opt_ PVOID     DeferredContext,
+                          _In_opt_ PVOID     SystemArgument1,
+                          _In_opt_ PVOID     SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+
+    if (!ARGUMENT_PRESENT(SystemArgument1) ||
+        !ARGUMENT_PRESENT(SystemArgument2))
+        return;
+
+    PVOID  buffer        = SystemArgument1;
+    UINT32 buffer_length = (UINT32)SystemArgument2;
+
+    IrpQueueCompletePacket(buffer, buffer_length);
+}
+
+/*
+ * Not only does this allow reporting threads to continue execution once the
+ * report is scheduled (which in some cases such as handle reporting is very
+ * important for performance reasons), but it allows us to safely report from
+ * within a region guarded by a mutex as we use a spinlock here (for performance
+ * reasons, we dont need certain time critical threads being slept whilst we
+ * wait).
+ */
+VOID
+IrpQueueSchedulePacket(_In_ PVOID Buffer, _In_ UINT32 BufferLength)
+{
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+
+    /* Maybe not the best implementation, but 99.9999% of the time there should
+     * be a dpc available.*/
+    while (TRUE) {
+        for (UINT32 index = 0; index < EVENT_COUNT; index++) {
+            if (KeInsertQueueDpc(&queue->dpc[index], Buffer, BufferLength))
+                return;
+        }
+    }
+}
+
+STATIC
+VOID
 IrpQueueFreeDeferredPackets()
 {
     PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
@@ -363,6 +407,10 @@ IrpQueueInitialise()
     KeInitializeSpinLock(&queue->deferred_reports.lock);
     InitializeListHead(&queue->queue);
     InitializeListHead(&queue->deferred_reports.head);
+
+    for (UINT32 index = 0; index < EVENT_COUNT; index++) {
+        KeInitializeDpc(&queue->dpc[index], IrpQueueSchedulePacketDpc, NULL);
+    }
 
     status = IoCsqInitialize(&queue->csq,
                              IrpQueueInsert,
@@ -1164,10 +1212,10 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
 
-    //NTSTATUS status = ValidatePciDevices();
+    // NTSTATUS status = ValidatePciDevices();
 
-    //if (!NT_SUCCESS(status))
-    //    DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
+    // if (!NT_SUCCESS(status))
+    //     DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Irp->IoStatus.Status;

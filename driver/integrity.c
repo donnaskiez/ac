@@ -892,7 +892,7 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
         return;
     }
 
-    IrpQueueCompletePacket(report, report_size);
+    IrpQueueSchedulePacket(report, report_size);
 }
 
 /*
@@ -2238,7 +2238,7 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
             goto end;
         }
 
-        IrpQueueCompletePacket(packet, packet_size);
+        IrpQueueSchedulePacket(packet, packet_size);
         IncrementHeartbeatCounter(config);
     }
 

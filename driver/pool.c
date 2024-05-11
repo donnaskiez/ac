@@ -745,7 +745,7 @@ FindUnlinkedProcesses()
             continue;
         }
 
-        IrpQueueCompletePacket(report, packet_size);
+        IrpQueueSchedulePacket(report, packet_size);
     }
 
 end:

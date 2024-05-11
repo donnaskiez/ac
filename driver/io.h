@@ -62,7 +62,7 @@ ValidateIrpInputBuffer(_In_ PIRP Irp, _In_ ULONG RequiredSize);
 NTSTATUS
 IrpQueueInitialise();
 
-NTSTATUS
-IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize);
+VOID
+IrpQueueSchedulePacket(_In_ PVOID Buffer, _In_ UINT32 BufferLength);
 
 #endif
