@@ -9,6 +9,7 @@
 #include "imports.h"
 #include "list.h"
 #include "session.h"
+#include "crypt.h"
 
 STATIC
 BOOLEAN
@@ -124,7 +125,7 @@ EnumerateThreadListWithCallbackRoutine(
 
     while (entry) {
         CallbackRoutine(entry, Context);
-        entry = entry->list.Next;
+        entry = (PTHREAD_LIST_ENTRY)entry->list.Next;
     }
 
 unlock:
@@ -145,7 +146,7 @@ EnumerateProcessListWithCallbackRoutine(
 
     while (entry) {
         CallbackRoutine(entry, Context);
-        entry = entry->list.Next;
+        entry = (PPROCESS_LIST_ENTRY)entry->list.Next;
     }
 
 unlock:
@@ -166,7 +167,7 @@ EnumerateDriverListWithCallbackRoutine(
 
     while (entry) {
         CallbackRoutine(entry, Context);
-        entry = entry->list.Next;
+        entry = (PDRIVER_LIST_ENTRY)entry->list.Next;
     }
 
 unlock:
@@ -249,7 +250,6 @@ InitialiseDriverList()
 
     list->active = TRUE;
 
-end:
     if (modules.address)
         ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
 
@@ -288,12 +288,13 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
                                _In_ PIMAGE_INFO         ImageInfo)
 {
-    NTSTATUS                 status             = STATUS_UNSUCCESSFUL;
-    PDRIVER_LIST_ENTRY       entry              = NULL;
-    RTL_MODULE_EXTENDED_INFO module             = {0};
-    PDRIVER_LIST_HEAD        list               = GetDriverList();
-    ANSI_STRING              ansi_path          = {0};
-    UINT32                   ansi_string_length = 0;
+    UNREFERENCED_PARAMETER(ProcessId);
+
+    NTSTATUS                 status    = STATUS_UNSUCCESSFUL;
+    PDRIVER_LIST_ENTRY       entry     = NULL;
+    RTL_MODULE_EXTENDED_INFO module    = {0};
+    PDRIVER_LIST_HEAD        list      = GetDriverList();
+    ANSI_STRING              ansi_path = {0};
 
     if (InterlockedExchange(&list->active, list->active) == FALSE)
         return;
@@ -486,8 +487,6 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
-    DEBUG_INFO("process create notify: %s", process_name);
-
     if (Create) {
         entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
 
@@ -585,6 +584,49 @@ ObPostOpCallbackRoutine(_In_ PVOID RegistrationContext,
     UNREFERENCED_PARAMETER(OperationInformation);
 }
 
+#define MAX_PROCESS_NAME_LENGTH             30
+#define PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT 4
+
+CHAR PROCESS_HANDLE_OPEN_DOWNGRADE[PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT]
+                                  [MAX_PROCESS_NAME_LENGTH] = {"lsass.exe",
+                                                               "csrss.exe",
+                                                               "WerFault.exe",
+                                                               "MsMpEng.exe"};
+
+#define PROCESS_HANDLE_OPEN_WHITELIST_COUNT 3
+
+CHAR PROCESS_HANDLE_OPEN_WHITELIST[PROCESS_HANDLE_OPEN_WHITELIST_COUNT]
+                                  [MAX_PROCESS_NAME_LENGTH] = {"Discord.exe",
+                                                               "svchost.exe",
+                                                               "explorer.exe"};
+
+STATIC
+BOOLEAN
+IsWhitelistedHandleOpenProcess(_In_ LPCSTR ProcessName)
+{
+    for (UINT32 index = 0; index < PROCESS_HANDLE_OPEN_WHITELIST_COUNT;
+         index++) {
+        if (!strcmp(ProcessName, PROCESS_HANDLE_OPEN_WHITELIST[index]))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+STATIC
+BOOLEAN
+IsDowngradeHandleOpenProcess(_In_ LPCSTR ProcessName)
+{
+    DEBUG_INFO("proc name: %s", ProcessName);
+    for (UINT32 index = 0; index < PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT;
+         index++) {
+        if (!strcmp(ProcessName, PROCESS_HANDLE_OPEN_DOWNGRADE[index]))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
 // https://www.sysnative.com/forums/threads/object-headers-handles-and-types.34987/
 #define GET_OBJECT_HEADER_FROM_HANDLE(x) ((x << 4) | 0xffff000000000000);
 
@@ -603,6 +645,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
      * This callback routine is executed in the context of the thread that
      * is requesting to open said handle
      */
+    NTSTATUS  status                 = STATUS_UNSUCCESSFUL;
     PEPROCESS process_creator        = PsGetCurrentProcess();
     PEPROCESS protected_process      = NULL;
     PEPROCESS target_process         = (PEPROCESS)OperationInformation->Object;
@@ -612,6 +655,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
     LPCSTR    target_process_name    = NULL;
     LPCSTR    protected_process_name = NULL;
     POB_CALLBACKS_CONFIG configuration = NULL;
+    UINT32               report_size   = 0;
 
     /*
      * This is to prevent the condition where the thread executing this
@@ -648,10 +692,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
      * todo: perform stricter checks rather then the image name.
      * perhapds check some certificate or something.
      */
-    if (!strcmp(process_creator_name, "lsass.exe") ||
-        !strcmp(process_creator_name, "csrss.exe") ||
-        !strcmp(process_creator_name, "WerFault.exe") ||
-        !strcmp(process_creator_name, "MsMpEng.exe") ||
+    if (IsDowngradeHandleOpenProcess(process_creator_name) ||
         !strcmp(process_creator_name, target_process_name)) {
         /* We will downgrade these handles later */
         // DEBUG_LOG("Handles created by CSRSS, LSASS and
@@ -674,27 +715,19 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
          * atleast.
          */
 
-        if (!strcmp(process_creator_name, "Discord.exe") ||
-            !strcmp(process_creator_name, "svchost.exe") ||
-            !strcmp(process_creator_name, "explorer.exe"))
+        if (IsWhitelistedHandleOpenProcess(process_creator_name))
             goto end;
 
-        POPEN_HANDLE_FAILURE_REPORT report =
-            ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                               sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                               REPORT_POOL_TAG);
+        report_size = CryptRequestRequiredBufferLength(
+            sizeof(OPEN_HANDLE_FAILURE_REPORT));
+
+        POPEN_HANDLE_FAILURE_REPORT report = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, report_size, REPORT_POOL_TAG);
 
         if (!report)
             goto end;
 
-        INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-        INIT_REPORT_HEADER(
-            &report->report_header, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
-
-        DEBUG_INFO("packet type: %hx", report->header.packet_type);
-        DEBUG_INFO("report code: %lx", report->report_header.report_code);
-        DEBUG_INFO("report subcode: %lx",
-                   report->report_header.report_sub_type);
+        INIT_REPORT_PACKET(report, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
 
         report->is_kernel_handle = OperationInformation->KernelHandle;
         report->process_id       = process_creator_id;
@@ -706,7 +739,15 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                       process_creator_name,
                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-        IrpQueueCompletePacket(report, sizeof(OPEN_HANDLE_FAILURE_REPORT));
+        status = CryptEncryptBuffer(report, report_size);
+
+        if (!NT_SUCCESS(status)) {
+            DEBUG_ERROR("CryptEncryptBuffer: %x", status);
+            ExFreePoolWithTag(report, report_size);
+            goto end;
+        }
+
+        IrpQueueCompletePacket(report, report_size);
     }
 
 end:
@@ -727,7 +768,18 @@ ExUnlockHandleTableEntry(IN PHANDLE_TABLE       HandleTable,
     old_value = InterlockedOr((PLONG)&HandleTableEntry->VolatileLowValue, 1);
 
     /* Unblock any waiters */
+#pragma warning(push)
+#pragma warning(disable : C6387)
     ImpExfUnblockPushLock(&HandleTable->HandleContentionEvent, NULL);
+#pragma warning(pop)
+}
+
+FORCEINLINE
+STATIC
+ACCESS_MASK
+GetHandleAccessMask(_In_ PHANDLE_TABLE_ENTRY Entry)
+{
+    return (ACCESS_MASK)Entry->GrantedAccessBits;
 }
 
 static UNICODE_STRING OBJECT_TYPE_PROCESS = RTL_CONSTANT_STRING(L"Process");
@@ -742,6 +794,9 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 {
     PAGED_CODE();
 
+    UNREFERENCED_PARAMETER(Context);
+
+    NTSTATUS     status                 = STATUS_UNSUCCESSFUL;
     PVOID        object                 = NULL;
     PVOID        object_header          = NULL;
     POBJECT_TYPE object_type            = NULL;
@@ -750,12 +805,12 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
     LPCSTR       process_name           = NULL;
     LPCSTR       protected_process_name = NULL;
     ACCESS_MASK  handle_access_mask     = 0;
+    UINT32       report_size            = 0;
 
     object_header = GET_OBJECT_HEADER_FROM_HANDLE(Entry->ObjectPointerBits);
 
     /* Object header is the first 30 bytes of the object */
-    object = (uintptr_t)object_header + OBJECT_HEADER_SIZE;
-
+    object      = (uintptr_t)object_header + OBJECT_HEADER_SIZE;
     object_type = ImpObGetObjectType(object);
 
     /* TODO: check for threads aswell */
@@ -778,7 +833,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         "Handle references our protected process with access mask: %lx",
         (ACCESS_MASK)Entry->GrantedAccessBits);
 
-    handle_access_mask = (ACCESS_MASK)Entry->GrantedAccessBits;
+    handle_access_mask = GetHandleAccessMask(Entry);
 
     /* These permissions can be stripped from every process
      * including CSRSS and LSASS */
@@ -851,10 +906,11 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         DEBUG_VERBOSE("Stripped PROCESS_VM_WRITE");
     }
 
+    report_size =
+        CryptRequestRequiredBufferLength(sizeof(OPEN_HANDLE_FAILURE_REPORT));
+
     POPEN_HANDLE_FAILURE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(OPEN_HANDLE_FAILURE_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, report_size, REPORT_POOL_TAG);
 
     if (!report)
         goto end;
@@ -867,9 +923,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
      * also don't think its worth creating another queue
      * specifically for open handle reports since they will be rare.
      */
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(
-        &report->report_header, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
+    INIT_REPORT_PACKET(report, REPORT_ILLEGAL_HANDLE_OPERATION, 0);
 
     report->is_kernel_handle = Entry->Attributes & OBJ_KERNEL_HANDLE;
     report->process_id       = ImpPsGetProcessId(process);
@@ -880,11 +934,15 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
                   process_name,
                   HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
-    if (!NT_SUCCESS(IrpQueueCompletePacket(
-            report, sizeof(OPEN_HANDLE_FAILURE_REPORT)))) {
-        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+    status = CryptEncryptBuffer(report, report_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, report_size);
         goto end;
     }
+
+    IrpQueueCompletePacket(report, report_size);
 
 end:
     ExUnlockHandleTableEntry(HandleTable, Entry);
@@ -919,8 +977,7 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 #pragma warning(push)
 #pragma warning(suppress : 6387)
 
-    BOOLEAN result =
-        ImpExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
+    ImpExEnumHandleTable(handle_table, EnumHandleCallback, NULL, NULL);
 
 #pragma warning(pop)
 
@@ -929,8 +986,7 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 
 #define REPEAT_TIME_10_SEC 10000
 
-ULONG value = 10;
-
+STATIC
 VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
                            _In_opt_ PVOID      Context)
@@ -938,6 +994,11 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
     NTSTATUS          status = STATUS_UNSUCCESSFUL;
     PTIMER_OBJECT     timer  = (PTIMER_OBJECT)Context;
     PDRIVER_LIST_HEAD list   = GetDriverList();
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    if (!ARGUMENT_PRESENT(Context))
+        return;
 
     if (!list->active)
         goto end;
@@ -960,16 +1021,21 @@ end:
 /*
  * This routine is executed every x seconds, and is run at IRQL = DISPATCH_LEVEL
  */
+STATIC
 VOID
 TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
                            _In_opt_ PVOID DeferredContext,
                            _In_opt_ PVOID SystemArgument1,
                            _In_opt_ PVOID SystemArgument2)
 {
-    PTIMER_OBJECT timer = (PTIMER_OBJECT)DeferredContext;
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
 
-    if (!HasDriverLoaded())
+    if (!HasDriverLoaded() || !ARGUMENT_PRESENT(DeferredContext))
         return;
+
+    PTIMER_OBJECT timer = (PTIMER_OBJECT)DeferredContext;
 
     /* we dont want to queue our work item if it hasnt executed */
     if (timer->state)
@@ -987,10 +1053,7 @@ TimerObjectCallbackRoutine(_In_ PKDPC     Dpc,
 NTSTATUS
 InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
 {
-    LARGE_INTEGER due_time = {0};
-    LONG          period   = 0;
-
-    due_time.QuadPart = -ABSOLUTE(SECONDS(5));
+    LARGE_INTEGER due_time = {.QuadPart = -ABSOLUTE(SECONDS(5))};
 
     Timer->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 
@@ -1006,7 +1069,7 @@ InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer)
 }
 
 VOID
-CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer)
+CleanupDriverTimerObjects(_Inout_ PTIMER_OBJECT Timer)
 {
     /* this routine blocks until all queued DPCs on all processors have
      * executed. */
@@ -1044,15 +1107,13 @@ RegisterProcessObCallbacks()
 {
     PAGED_CODE();
 
-    NTSTATUS        status = STATUS_UNSUCCESSFUL;
-    PACTIVE_SESSION config = GetActiveSession();
+    NTSTATUS                  status                 = STATUS_UNSUCCESSFUL;
+    PACTIVE_SESSION           config                 = GetActiveSession();
+    OB_CALLBACK_REGISTRATION  callback_registration  = {0};
+    OB_OPERATION_REGISTRATION operation_registration = {0};
 
     DEBUG_VERBOSE("Enabling ObRegisterCallbacks.");
     AcquireDriverConfigLock();
-
-    OB_CALLBACK_REGISTRATION          callback_registration  = {0};
-    OB_OPERATION_REGISTRATION         operation_registration = {0};
-    PCREATE_PROCESS_NOTIFY_ROUTINE_EX notify_routine         = {0};
 
     operation_registration.ObjectType = PsProcessType;
     operation_registration.Operations |= OB_OPERATION_HANDLE_CREATE;

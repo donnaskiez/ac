@@ -7,7 +7,7 @@ VOID
 GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
 {
     AcquireDriverConfigLock();
-    *Context = GetApcContextArray()[Index];
+    *Context = (PVOID)GetApcContextArray()[Index];
     ReleaseDriverConfigLock();
 }
 
@@ -39,14 +39,14 @@ unlock:
  * we hold the lock during the entire decrement and free process.
  */
 BOOLEAN
-FreeApcContextStructure(_Out_ PAPC_CONTEXT_HEADER Context)
+FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
 {
     DEBUG_VERBOSE("All APCs executed, freeing context structure");
 
     for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
         PUINT64 entry = GetApcContextArray();
 
-        if (entry[index] != Context)
+        if (entry[index] != (UINT64)Context)
             continue;
 
         if (Context->count > 0)
@@ -121,21 +121,21 @@ FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
-  AcquireDriverConfigLock();
+    AcquireDriverConfigLock();
 
     for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
         PAPC_CONTEXT_HEADER entry = NULL;
         GetApcContextByIndex(&entry, index);
 
         if (!entry)
-          continue;
+            continue;
 
         if (entry->count > 0 || entry->allocation_in_progress == TRUE)
-          continue;
+            continue;
 
         switch (entry->context_id) {
         case APC_CONTEXT_ID_STACKWALK:
-            FreeApcStackwalkApcContextInformation(entry);
+            FreeApcStackwalkApcContextInformation((PAPC_STACKWALK_CONTEXT)entry);
             FreeApcContextStructure(entry);
             break;
         }
@@ -149,16 +149,15 @@ VOID
 InsertApcContext(_In_ PVOID Context)
 {
     if (IsDriverUnloading())
-        return STATUS_UNSUCCESSFUL;
+        return;
 
     AcquireDriverConfigLock();
-    PAPC_CONTEXT_HEADER header = Context;
 
     for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
         PUINT64 entry = GetApcContextArray();
 
         if (entry[index] == NULL) {
-            entry[index] = Context;
+            entry[index] = (UINT64)Context;
             goto end;
         }
     }
@@ -213,7 +212,7 @@ DrvUnloadFreeAllApcContextStructures()
 
         ImpExFreePoolWithTag(context, POOL_TAG_APC);
     }
-unlock:
+
     ReleaseDriverConfigLock();
     return TRUE;
 }

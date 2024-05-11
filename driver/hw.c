@@ -64,7 +64,7 @@ STATIC
 NTSTATUS
 QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
                                  _In_ UINT32         Offset,
-                                 _Out_ PVOID         Buffer,
+                                 _Out_opt_ PVOID     Buffer,
                                  _In_ UINT32         BufferLength)
 {
     NTSTATUS           status            = STATUS_UNSUCCESSFUL;
@@ -100,7 +100,7 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
 
     status = IoCallDriver(DeviceObject, irp);
 
-    if (status = STATUS_PENDING) {
+    if (status == STATUS_PENDING) {
         KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
         status = io.Status;
     }
@@ -127,6 +127,7 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
     UINT32          buffer_size  = 0;
 
     *DeviceObjectArray = NULL;
+    *ArrayEntries      = 0;
 
     status = IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
 
@@ -200,7 +201,6 @@ EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine,
     PDEVICE_OBJECT* pci_device_objects = NULL;
     PDEVICE_OBJECT  current_device     = NULL;
     UINT32          pci_device_objects_count = 0;
-    USHORT          vendor_id                = 0;
 
     status = GetDriverObjectByDriverName(&pci, &pci_driver_object);
 
@@ -238,7 +238,6 @@ EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine,
         ObDereferenceObject(current_device);
     }
 
-end:
     if (pci_device_objects)
         ExFreePoolWithTag(pci_device_objects, POOL_TAG_HW);
 
@@ -260,6 +259,8 @@ STATIC
 NTSTATUS
 PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
+    UNREFERENCED_PARAMETER(Context);
+
     NTSTATUS          status = STATUS_UNSUCCESSFUL;
     PCI_COMMON_HEADER header = {0};
 

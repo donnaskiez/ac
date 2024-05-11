@@ -9,6 +9,7 @@
 #include "session.h"
 #include "util.h"
 #include "pe.h"
+#include "crypt.h"
 
 #include <bcrypt.h>
 #include <initguid.h>
@@ -174,6 +175,8 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
         return status;
     }
 
+    /* TODO: think this remains from testing, we only use this to find our
+     * driver anyway but should be fixed. */
     driver_info = FindSystemModuleByName(driver_name, &modules);
 
     if (!driver_info) {
@@ -244,7 +247,6 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     PAGED_CODE();
 
     NTSTATUS               status                  = STATUS_UNSUCCESSFUL;
-    PIMAGE_DOS_HEADER      dos_header              = NULL;
     PNT_HEADER_64          nt_header               = NULL;
     PIMAGE_SECTION_HEADER  section                 = NULL;
     ULONG                  total_packet_size       = 0;
@@ -865,24 +867,32 @@ STATIC
 VOID
 ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
 {
+    NTSTATUS status      = STATUS_UNSUCCESSFUL;
+    UINT32   report_size = CryptRequestRequiredBufferLength(
+        sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+
     PPROCESS_MODULE_VALIDATION_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(PROCESS_MODULE_VALIDATION_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, report_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(
-        &report->report_header, REPORT_INVALID_PROCESS_MODULE, 0);
+    INIT_REPORT_PACKET(report, REPORT_INVALID_PROCESS_MODULE, 0);
 
     report->image_base = Module->module_base;
     report->image_size = Module->module_size;
     RtlCopyMemory(
         report->module_path, Module->module_path, sizeof(report->module_path));
 
-    IrpQueueCompletePacket(report, sizeof(PROCESS_MODULE_VALIDATION_REPORT));
+    status = CryptEncryptBuffer(report, report_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, report_size);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, report_size);
 }
 
 /*
@@ -961,7 +971,7 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
     }
 
     status = MapDiskImageIntoVirtualAddressSpace(
-        &section_handle, &section, &module_path, &section_size, 0);
+        &section_handle, &section, &module_path, &section_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
@@ -1450,8 +1460,12 @@ Enablex86Hashing(_In_ PDRIVER_LIST_HEAD Head)
 }
 
 VOID
-DeferredModuleHashingCallback()
+DeferredModuleHashingCallback(_In_ PDEVICE_OBJECT DeviceObject,
+                              _In_opt_ PVOID      Context)
 {
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
     RTL_MODULE_EXTENDED_INFO module        = {0};
     PDRIVER_LIST_HEAD        driver_list   = GetDriverList();
@@ -1488,6 +1502,7 @@ DeferredModuleHashingCallback()
     }
 
 end:
+
     DEBUG_VERBOSE("All deferred modules hashed.");
     ImpIoFreeWorkItem(driver_list->work_item);
     driver_list->work_item = NULL;
@@ -1510,7 +1525,7 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
 
     if (!ansi_string.Buffer) {
         DEBUG_ERROR("RtlInitAnsiString failed with status %x", status);
-        return;
+        return STATUS_UNSUCCESSFUL;
     }
 
     status = ImpRtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
@@ -1518,7 +1533,7 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x",
                     status);
-        goto end;
+        return status;
     }
 
     /*
@@ -1622,6 +1637,7 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
                       Module->FullPathName);
 
 end:
+
     if (hash)
         ExFreePoolWithTag(hash, POOL_TAG_INTEGRITY);
 }
@@ -1754,6 +1770,8 @@ VOID
 SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
                                          _In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     IncrementActiveThreadCount(Context);
 
     UINT32 count = GetCurrentVerificationIndex(Context);
@@ -2068,7 +2086,7 @@ AllocateHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
  * intervals. */
 STATIC
 LARGE_INTEGER
-GenerateHeartbeatDueTime(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+GenerateHeartbeatDueTime()
 {
     LARGE_INTEGER ticks = {0};
     KeQueryTickCount(&ticks);
@@ -2089,9 +2107,8 @@ InitialiseHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
 {
     KeInitializeDpc(Configuration->dpc, HeartbeatDpcRoutine, Configuration);
     KeInitializeTimer(Configuration->timer);
-    KeSetTimer(Configuration->timer,
-               GenerateHeartbeatDueTime(Configuration),
-               Configuration->dpc);
+    KeSetTimer(
+        Configuration->timer, GenerateHeartbeatDueTime(), Configuration->dpc);
 }
 
 FORCEINLINE
@@ -2158,16 +2175,17 @@ IncrementHeartbeatCounter(_In_ PHEARTBEAT_CONFIGURATION Configuration)
 FORCEINLINE
 STATIC
 PHEARTBEAT_PACKET
-BuildHeartbeatPacket(_In_ PHEARTBEAT_CONFIGURATION Configuration)
+BuildHeartbeatPacket(_In_ UINT32 PacketSize)
 {
-    PIRP_QUEUE_HEAD   queue  = GetIrpQueueHead();
-    PHEARTBEAT_PACKET packet = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(HEARTBEAT_PACKET), POOL_TAG_HEARTBEAT);
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+
+    PHEARTBEAT_PACKET packet =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, PacketSize, POOL_TAG_HEARTBEAT);
 
     if (!packet)
         return NULL;
 
-    INIT_PACKET_HEADER(&packet->header, PACKET_TYPE_HEARTBEAT);
+    INIT_HEARTBEAT_PACKET(packet);
 
     /* This routine always runs at DPC level */
     KeAcquireSpinLockAtDpcLevel(&queue->lock);
@@ -2199,22 +2217,32 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
     if (!ARGUMENT_PRESENT(DeferredContext))
         return;
 
+    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
     PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
     PHEARTBEAT_PACKET        packet = NULL;
+    UINT32                   packet_size = 0;
 
     DEBUG_VERBOSE("Heartbeat timer alerted. Generating heartbeat packet.");
 
     SetHeartbeatActive(config);
 
-    packet = BuildHeartbeatPacket(config);
+    packet_size = CryptRequestRequiredBufferLength(sizeof(HEARTBEAT_PACKET));
+    packet      = BuildHeartbeatPacket(packet_size);
 
     if (packet) {
-        IrpQueueCompletePacket(packet, sizeof(HEARTBEAT_PACKET));
+        status = CryptEncryptBuffer(packet, packet_size);
+
+        if (!NT_SUCCESS(status)) {
+            DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+            ImpExFreePoolWithTag(packet, POOL_TAG_HEARTBEAT);
+            goto end;
+        }
+
+        IrpQueueCompletePacket(packet, packet_size);
         IncrementHeartbeatCounter(config);
     }
 
 end:
-
     IoQueueWorkItem(
         config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
 }

@@ -5,9 +5,11 @@
 #include "client/message_queue.h"
 #include "dispatcher/dispatcher.h"
 
+#include "crypt/crypt.h"
+
 void module::run(HINSTANCE hinstDLL) {
   AllocConsole();
-  FILE *file;
+  FILE *file = NULL;
   freopen_s(&file, "CONOUT$", "w", stdout);
   freopen_s(&file, "CONIN$", "r", stdin);
 

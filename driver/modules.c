@@ -8,6 +8,7 @@
 #include "apc.h"
 #include "thread.h"
 #include "pe.h"
+#include "crypt.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -340,18 +341,17 @@ STATIC
 VOID
 ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
 {
-    PMODULE_VALIDATION_FAILURE report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(MODULE_VALIDATION_FAILURE),
-                           POOL_TAG_INTEGRITY);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(MODULE_VALIDATION_FAILURE));
+
+    PMODULE_VALIDATION_FAILURE report = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED, packet_size, POOL_TAG_INTEGRITY);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header,
-                       REPORT_MODULE_VALIDATION_FAILURE,
-                       ReportSubType);
+    INIT_REPORT_PACKET(report, REPORT_MODULE_VALIDATION_FAILURE, ReportSubType);
 
     report->driver_base_address = Driver->DriverStart;
     report->driver_size         = Driver->DriverSize;
@@ -363,7 +363,16 @@ ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
 
     /* Continue regardless of result */
     ImpRtlUnicodeStringToAnsiString(&string, &Driver->DriverName, FALSE);
-    IrpQueueCompletePacket(report, sizeof(MODULE_VALIDATION_FAILURE));
+
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 FORCEINLINE
@@ -562,20 +571,31 @@ STATIC
 VOID
 ReportNmiBlocking()
 {
-    PNMI_CALLBACK_FAILURE report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(NMI_CALLBACK_FAILURE), REPORT_POOL_TAG);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(NMI_CALLBACK_FAILURE));
+
+    PNMI_CALLBACK_FAILURE report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_NMI_CALLBACK_FAILURE, 0);
+    INIT_REPORT_PACKET(report, REPORT_NMI_CALLBACK_FAILURE, 0);
 
     report->kthread_address    = NULL;
     report->invalid_rip        = NULL;
     report->were_nmis_disabled = TRUE;
 
-    IrpQueueCompletePacket(report, sizeof(NMI_CALLBACK_FAILURE));
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 STATIC
@@ -585,16 +605,17 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
     DEBUG_WARNING("Thread: %llx was not found in the pspcid table.",
                   Context->kthread);
 
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+
     PHIDDEN_SYSTEM_THREAD_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_HIDDEN_SYSTEM_THREAD, 0);
+    INIT_REPORT_PACKET(report, REPORT_HIDDEN_SYSTEM_THREAD, 0);
 
     report->found_in_kthreadlist = FALSE; // wip
     report->found_in_pspcidtable = FALSE;
@@ -602,29 +623,47 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
     report->thread_address       = Context->kthread;
 
     RtlCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
-    IrpQueueCompletePacket(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 STATIC
 VOID
 ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
 {
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+
     PNMI_CALLBACK_FAILURE report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(HIDDEN_SYSTEM_THREAD_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_NMI_CALLBACK_FAILURE, 0);
+    INIT_REPORT_PACKET(report, REPORT_NMI_CALLBACK_FAILURE, 0);
 
     report->kthread_address    = Context->kthread;
     report->invalid_rip        = Context->interrupted_rip;
     report->were_nmis_disabled = FALSE;
 
-    IrpQueueCompletePacket(report, sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 /*
@@ -727,6 +766,9 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
     UINT64                 kpcr          = 0;
     TASK_STATE_SEGMENT_64* tss           = NULL;
     PMACHINE_FRAME         machine_frame = NULL;
+
+    if (!ARGUMENT_PRESENT(Context))
+        return TRUE;
 
     /*
      * To find the IRETQ frame (MACHINE_FRAME) we need to find the top of
@@ -890,20 +932,31 @@ STATIC
 VOID
 ReportApcStackwalkViolation(_In_ UINT64 Rip)
 {
-    PAPC_STACKWALK_REPORT report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_REPORT), REPORT_POOL_TAG);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(APC_STACKWALK_REPORT));
+
+    PAPC_STACKWALK_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_APC_STACKWALK, 0);
+    INIT_REPORT_PACKET(report, REPORT_APC_STACKWALK, 0);
 
     report->kthread_address = (UINT64)KeGetCurrentThread();
     report->invalid_rip     = Rip;
     // report->driver ?? todo!
 
-    IrpQueueCompletePacket(report, sizeof(APC_STACKWALK_REPORT));
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 /*
@@ -1003,6 +1056,9 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     BOOLEAN                apc_queueable = FALSE;
     LPCSTR                 process_name  = NULL;
     PAPC_STACKWALK_CONTEXT context       = (PAPC_STACKWALK_CONTEXT)Context;
+
+    if (!ARGUMENT_PRESENT(Context))
+        return;
 
     process_name =
         ImpPsGetProcessImageFileName(ThreadListEntry->owning_process);
@@ -1165,6 +1221,12 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
                             _In_opt_ PVOID SystemArgument1,
                             _In_opt_ PVOID SystemArgument2)
 {
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    if (!ARGUMENT_PRESENT(DeferredContext))
+        return;
+
     PDPC_CONTEXT context =
         &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
 
@@ -1174,7 +1236,11 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
                                     &context->stack_frame,
                                     NULL);
     InterlockedExchange(&context->executed, TRUE);
+
+#pragma warning(push)
+#pragma warning(disable : C6387)
     ImpKeSignalCallDpcDone(SystemArgument1);
+#pragma warning(pop)
 
     DEBUG_VERBOSE("Executed DPC on core: %lx, with %lx frames captured.",
                   KeGetCurrentProcessorNumber(),
@@ -1198,14 +1264,17 @@ STATIC
 VOID
 ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
 {
-    PDPC_STACKWALK_REPORT report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(DPC_STACKWALK_REPORT), REPORT_POOL_TAG);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(DPC_STACKWALK_REPORT));
+
+    PDPC_STACKWALK_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_DPC_STACKWALK, 0);
+    INIT_REPORT_PACKET(report, REPORT_DPC_STACKWALK, 0);
 
     report->kthread_address = PsGetCurrentThread();
     report->invalid_rip     = Frame;
@@ -1215,7 +1284,15 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
     //               - 0x50,
     //               APC_STACKWALK_BUFFER_SIZE);
 
-    IrpQueueCompletePacket(report, sizeof(DPC_STACKWALK_REPORT));
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 STATIC
@@ -1500,10 +1577,12 @@ STATIC
 VOID
 ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
 {
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+
     PDATA_TABLE_ROUTINE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(DATA_TABLE_ROUTINE_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -1512,17 +1591,22 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
                   TableId,
                   Address);
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_DATA_TABLE_ROUTINE, 0);
+    INIT_REPORT_PACKET(report, REPORT_DATA_TABLE_ROUTINE, 0);
 
     report->address  = Address;
     report->table_id = TableId;
     report->index    = 0;
     RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
-    if (!NT_SUCCESS(
-            IrpQueueCompletePacket(report, sizeof(DATA_TABLE_ROUTINE_REPORT))))
-        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 NTSTATUS
@@ -1835,16 +1919,17 @@ VOID
 ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
                                        _In_ UINT64 Address)
 {
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size =
+        CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+
     PDATA_TABLE_ROUTINE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           sizeof(DATA_TABLE_ROUTINE_REPORT),
-                           REPORT_POOL_TAG);
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(&report->report_header, REPORT_DATA_TABLE_ROUTINE, 0);
+    INIT_REPORT_PACKET(report, REPORT_DATA_TABLE_ROUTINE, 0);
 
     report->address  = Address;
     report->table_id = Win32kBase_gDxgInterface;
@@ -1852,7 +1937,15 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
     // todo! report->routine = ??
     // todo: maybe get routine by name from index ?
 
-    IrpQueueCompletePacket(report, sizeof(DPC_STACKWALK_REPORT));
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 STATIC

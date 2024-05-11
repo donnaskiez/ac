@@ -15,33 +15,53 @@
 #define REPORT_INVALID_PROCESS_MODULE     140
 
 #define REPORT_SUBTYPE_NO_BACKING_MODULE 0x0
-#define REPORT_SUBTYPE_INVALID_DISPATCH 0x1
+#define REPORT_SUBTYPE_INVALID_DISPATCH  0x1
 
 #define PACKET_TYPE_REPORT    0x0
 #define PACKET_TYPE_HEARTBEAT 0x1
 
-#define INIT_PACKET_HEADER(header, type) \
-    {                                    \
-        (header)->packet_type = type;    \
+#define PACKET_MAGIC_NUMBER 0x1337
+
+#define INIT_REPORT_PACKET(report, code, subcode)                          \
+    {                                                                      \
+        (report)->header.packet_header.packet_type  = PACKET_TYPE_REPORT;  \
+        (report)->header.packet_header.magic_number = PACKET_MAGIC_NUMBER; \
+        (report)->header.report_code                = code;                \
+        (report)->header.report_sub_type            = subcode;             \
     }
 
-#define INIT_REPORT_HEADER(report, code, subcode) \
-    {                                             \
-        (report)->report_code     = code;         \
-        (report)->report_sub_type = subcode;      \
+#define INIT_HEARTBEAT_PACKET(packet)                                        \
+    {                                                                        \
+        (packet)->header.packet_header.packet_type  = PACKET_TYPE_HEARTBEAT; \
+        (packet)->header.packet_header.magic_number = PACKET_MAGIC_NUMBER;   \
     }
 
 /* use a UINT16 rather then enum to explicitly state the size */
 typedef struct _PACKET_HEADER {
-    UINT16 packet_type;
+    UINT32 packet_type;
+    UINT32 magic_number;
 
 } PACKET_HEADER, *PPACKET_HEADER;
 
+/* unencrypted header structures, should always == AES block size i.e 16 */
 typedef struct _REPORT_PACKET_HEADER {
-    UINT32 report_code;
-    UINT32 report_sub_type;
+    PACKET_HEADER packet_header;
+    UINT32        report_code;
+    UINT32        report_sub_type;
 
 } REPORT_PACKET_HEADER, *PREPORT_PACKET_HEADER;
+
+typedef struct _HEARTBEAT_PACKET_HEADER {
+    PACKET_HEADER packet_header;
+    UINT32        unused[2];
+} HEARTBEAT_PACKET_HEADER, *PHEARTBEAT_PACKET_HEADER;
+
+#define AES_256_BLOCK_SIZE 16
+
+static_assert(sizeof(HEARTBEAT_PACKET_HEADER) == AES_256_BLOCK_SIZE,
+              "invalid heartbeat header size");
+static_assert(sizeof(REPORT_PACKET_HEADER) == AES_256_BLOCK_SIZE,
+              "invalid report header size");
 
 typedef enum _TABLE_ID {
     HalDispatch = 0,
@@ -50,8 +70,7 @@ typedef enum _TABLE_ID {
 } TABLE_ID;
 
 typedef struct _HYPERVISOR_DETECTION_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT8                aperf_msr_timing_check;
     UINT8                invd_emulation_check;
 
@@ -60,8 +79,7 @@ typedef struct _HYPERVISOR_DETECTION_REPORT {
 #define APC_STACKWALK_BUFFER_SIZE 500
 
 typedef struct _APC_STACKWALK_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT64               kthread_address;
     UINT64               invalid_rip;
     CHAR                 driver[APC_STACKWALK_BUFFER_SIZE];
@@ -69,8 +87,7 @@ typedef struct _APC_STACKWALK_REPORT {
 } APC_STACKWALK_REPORT, *PAPC_STACKWALK_REPORT;
 
 typedef struct _DPC_STACKWALK_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT64               kthread_address;
     UINT64               invalid_rip;
     CHAR                 driver[APC_STACKWALK_BUFFER_SIZE];
@@ -78,8 +95,7 @@ typedef struct _DPC_STACKWALK_REPORT {
 } DPC_STACKWALK_REPORT, *PDPC_STACKWALK_REPORT;
 
 typedef struct _MODULE_VALIDATION_FAILURE {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT64               driver_base_address;
     UINT64               driver_size;
     CHAR                 driver_name[128];
@@ -89,8 +105,7 @@ typedef struct _MODULE_VALIDATION_FAILURE {
 #define DATA_TABLE_ROUTINE_BUF_SIZE 256
 
 typedef struct _DATA_TABLE_ROUTINE_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     TABLE_ID             table_id;
     UINT64               address;
     UINT32               index;
@@ -99,8 +114,7 @@ typedef struct _DATA_TABLE_ROUTINE_REPORT {
 } DATA_TABLE_ROUTINE_REPORT, *PDATA_TABLE_ROUTINE_REPORT;
 
 typedef struct _NMI_CALLBACK_FAILURE {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT8                were_nmis_disabled;
     UINT64               kthread_address;
     UINT64               invalid_rip;
@@ -110,15 +124,13 @@ typedef struct _NMI_CALLBACK_FAILURE {
 #define REPORT_INVALID_PROCESS_BUFFER_SIZE 500
 
 typedef struct _INVALID_PROCESS_ALLOCATION_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     CHAR                 process[REPORT_INVALID_PROCESS_BUFFER_SIZE];
 
 } INVALID_PROCESS_ALLOCATION_REPORT, *PINVALID_PROCESS_ALLOCATION_REPORT;
 
 typedef struct _HIDDEN_SYSTEM_THREAD_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT8                found_in_kthreadlist;
     UINT8                found_in_pspcidtable;
     UINT64               thread_address;
@@ -128,16 +140,14 @@ typedef struct _HIDDEN_SYSTEM_THREAD_REPORT {
 } HIDDEN_SYSTEM_THREAD_REPORT, *PHIDDEN_SYSTEM_THREAD_REPORT;
 
 typedef struct _ATTACH_PROCESS_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT32               thread_id;
     UINT64               thread_address;
 
 } ATTACH_PROCESS_REPORT, *PATTACH_PROCESS_REPORT;
 
 typedef struct _KPRCB_THREAD_VALIDATION_CTX {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT64               thread;
     BOOLEAN              thread_found_in_pspcidtable;
     // BOOLEAN thread_found_in_kthreadlist;
@@ -148,9 +158,8 @@ typedef struct _KPRCB_THREAD_VALIDATION_CTX {
 #define HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH 64
 
 typedef struct _OPEN_HANDLE_FAILURE_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
-    UINT8                is_kernel_handle;
+    REPORT_PACKET_HEADER header;
+    UINT32               is_kernel_handle;
     UINT32               process_id;
     UINT32               thread_id;
     UINT32               access;
@@ -161,8 +170,7 @@ typedef struct _OPEN_HANDLE_FAILURE_REPORT {
 #define MODULE_PATH_LEN 256
 
 typedef struct _PROCESS_MODULE_VALIDATION_REPORT {
-    PACKET_HEADER        header;
-    REPORT_PACKET_HEADER report_header;
+    REPORT_PACKET_HEADER header;
     UINT64               image_base;
     UINT32               image_size;
     WCHAR                module_path[MODULE_PATH_LEN];
@@ -170,11 +178,11 @@ typedef struct _PROCESS_MODULE_VALIDATION_REPORT {
 } PROCESS_MODULE_VALIDATION_REPORT, *PPROCESS_MODULE_VALIDATION_REPORT;
 
 typedef struct _HEARTBEAT_PACKET {
-    PACKET_HEADER header;
-    UINT32        heartbeat_count;
-    UINT32        total_reports_completed;
-    UINT32        total_irps_completed;
-    UINT32        total_heartbeats_completed;
+    HEARTBEAT_PACKET_HEADER header;
+    UINT32                  heartbeat_count;
+    UINT32                  total_reports_completed;
+    UINT32                  total_irps_completed;
+    UINT32                  total_heartbeats_completed;
 
 } HEARTBEAT_PACKET, *PHEARTBEAT_PACKET;
 

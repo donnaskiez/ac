@@ -2,6 +2,7 @@
 
 #include "../client/message_queue.h"
 #include "../helper.h"
+#include "../crypt/crypt.h"
 
 #include <bcrypt.h>
 #include <chrono>
@@ -48,6 +49,7 @@ void dispatcher::dispatcher::run_io_port_thread() {
 
 void dispatcher::dispatcher::run() {
   // helper::generate_rand_seed();
+  crypt::initialise_provider();
   std::srand(std::time(nullptr));
   this->init_timer_callbacks();
   this->run_timer_thread();

@@ -1,8 +1,10 @@
 #include "crypt.h"
 
-#include <immintrin.h>
 #include "imports.h"
+#include "session.h"
+#include "driver.h"
 
+#include <immintrin.h>
 #include <bcrypt.h>
 
 #define XOR_KEY_1 0x1122334455667788
@@ -58,7 +60,7 @@ CryptDecryptImportBlock(_In_ PUINT64 Array, _In_ UINT32 BlockIndex)
     return _mm256_xor_si256(load_block, CryptGenerateSseXorKey());
 }
 
-STATIC
+FORCEINLINE
 INLINE
 VOID
 CryptFindContainingBlockForArrayIndex(_In_ UINT32   EntryIndex,
@@ -127,16 +129,188 @@ CryptDecryptImportsArrayEntry(_In_ PUINT64 Array,
     return pointer;
 }
 
-/*
- * simple for now.. just to get it working
- */
-VOID
-CryptDecryptBufferWithCookie(_In_ PVOID  Buffer,
-                             _In_ UINT32 BufferSize,
-                             _In_ UINT32 Cookie)
+STATIC
+PBCRYPT_KEY_DATA_BLOB_HEADER
+CryptBuildBlobForKeyImport(_In_ PACTIVE_SESSION Session)
 {
-    PCHAR buffer = (PCHAR)Buffer;
-    for (UINT32 index = 0; index < BufferSize; index++) {
-        buffer[index] ^= Cookie;
+    PBCRYPT_KEY_DATA_BLOB_HEADER blob =
+        ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                        sizeof(BCRYPT_KEY_DATA_BLOB_HEADER) + AES_256_KEY_SIZE,
+                        POOL_TAG_CRYPT);
+
+    if (!blob)
+        return NULL;
+
+    blob->dwMagic   = BCRYPT_KEY_DATA_BLOB_MAGIC;
+    blob->dwVersion = BCRYPT_KEY_DATA_BLOB_VERSION1;
+    blob->cbKeyData = AES_256_KEY_SIZE;
+
+    RtlCopyMemory((UINT64)blob + sizeof(BCRYPT_KEY_DATA_BLOB_HEADER),
+                  Session->aes_key,
+                  AES_256_KEY_SIZE);
+
+    return blob;
+}
+
+#define AES_256_BLOCK_SIZE 16
+
+UINT32
+CryptRequestRequiredBufferLength(_In_ UINT32 BufferLength)
+{
+    // status = BCryptEncrypt(session->key_handle,
+    //                        lol,
+    //                        BufferLength,
+    //                        NULL,
+    //                        session->iv,
+    //                        sizeof(session->iv),
+    //                        NULL,
+    //                        0,
+    //                        RequiredLength,
+    //                        0);
+
+    // if (!NT_SUCCESS(status))
+    //     DEBUG_ERROR("CryptRequestRequiredBufferLength -> BCryptEncrypt: %x",
+    //                 status);
+
+    return (BufferLength + AES_256_BLOCK_SIZE - 1) / AES_256_BLOCK_SIZE *
+           AES_256_BLOCK_SIZE;
+}
+
+/* Encrypts in place! */
+NTSTATUS
+CryptEncryptBuffer(_In_ PVOID Buffer, _In_ UINT32 BufferLength)
+{
+    NTSTATUS        status                        = STATUS_UNSUCCESSFUL;
+    UINT32          data_copied                   = 0;
+    PACTIVE_SESSION session                       = GetActiveSession();
+    UCHAR           local_iv[sizeof(session->iv)] = {0};
+    UINT64          buffer                        = (UINT64)Buffer;
+    UINT32          length                        = BufferLength;
+
+    /* The IV is consumed during every encrypt / decrypt procedure, so to ensure
+     * we have access to the iv we need to create a local copy.*/
+    RtlCopyMemory(local_iv, session->iv, sizeof(session->iv));
+
+    /* We arent encrypting the first 16 bytes */
+    buffer = buffer + AES_256_BLOCK_SIZE;
+    length = length - AES_256_BLOCK_SIZE;
+
+    status = BCryptEncrypt(session->key_handle,
+                           buffer,
+                           length,
+                           NULL,
+                           local_iv,
+                           sizeof(local_iv),
+                           buffer,
+                           length,
+                           &data_copied,
+                           0);
+
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("CryptEncryptBuffer -> BCryptEncrypt: %x", status);
+
+    return status;
+}
+
+/* Lock is held */
+VOID
+CryptCloseSessionCryptObjects()
+{
+    PACTIVE_SESSION session = GetActiveSession();
+
+    if (session->key_handle) {
+        BCryptDestroyKey(session->key_handle);
+        session->key_handle = NULL;
     }
+
+    if (session->key_object) {
+        ExFreePoolWithTag(session->key_object, POOL_TAG_CRYPT);
+        session->key_object = NULL;
+    }
+
+    session->key_object_length = 0;
+}
+
+NTSTATUS
+CryptInitialiseSessionCryptObjects()
+{
+    NTSTATUS                     status      = STATUS_UNSUCCESSFUL;
+    UINT32                       data_copied = 0;
+    PACTIVE_SESSION              session     = GetActiveSession();
+    PBCRYPT_KEY_DATA_BLOB_HEADER blob        = NULL;
+    BCRYPT_ALG_HANDLE*           handle      = GetCryptAlgHandle();
+
+    blob = CryptBuildBlobForKeyImport(session);
+
+    if (!blob)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    status = BCryptGetProperty(*handle,
+                               BCRYPT_OBJECT_LENGTH,
+                               &session->key_object_length,
+                               sizeof(UINT32),
+                               &data_copied,
+                               0);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptGetProperty: %x", status);
+        goto end;
+    }
+
+    session->key_object = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, session->key_object_length, POOL_TAG_CRYPT);
+
+    if (!session->key_object) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end;
+    }
+
+    DEBUG_INFO("key object: %llx, key_object_length: %lx",
+               session->key_object,
+               session->key_object_length);
+
+    status =
+        BCryptImportKey(*handle,
+                        NULL,
+                        BCRYPT_KEY_DATA_BLOB,
+                        &session->key_handle,
+                        session->key_object,
+                        session->key_object_length,
+                        blob,
+                        sizeof(BCRYPT_KEY_DATA_BLOB_HEADER) + AES_256_KEY_SIZE,
+                        0);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptImportKey: %x", status);
+        ExFreePoolWithTag(session->key_object, POOL_TAG_CRYPT);
+        goto end;
+    }
+
+end:
+    if (blob)
+        ExFreePoolWithTag(blob, POOL_TAG_CRYPT);
+
+    return status;
+}
+
+NTSTATUS
+CryptInitialiseProvider()
+{
+    NTSTATUS           status = STATUS_UNSUCCESSFUL;
+    BCRYPT_ALG_HANDLE* handle = GetCryptAlgHandle();
+
+    status = BCryptOpenAlgorithmProvider(
+        handle, BCRYPT_AES_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
+
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("BCryptOpenAlgorithmProvider: %x", status);
+
+    return status;
+}
+
+VOID
+CryptCloseProvider()
+{
+    BCRYPT_ALG_HANDLE* handle = GetCryptAlgHandle();
+    BCryptCloseAlgorithmProvider(*handle, 0);
 }

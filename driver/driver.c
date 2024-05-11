@@ -93,14 +93,16 @@ typedef struct _DRIVER_CONFIG {
     IRP_QUEUE_HEAD         irp_queue;
 
     /* terrible name..lol what is tis timer for ?? */
-    TIMER_OBJECT           timer;
+    TIMER_OBJECT timer;
 
-    ACTIVE_SESSION         session_information;
-    THREAD_LIST_HEAD       thread_list;
-    DRIVER_LIST_HEAD       driver_list;
-    PROCESS_LIST_HEAD      process_list;
-    SHARED_MAPPING         mapping;
-    BOOLEAN                has_driver_loaded;
+    ACTIVE_SESSION    session_information;
+    THREAD_LIST_HEAD  thread_list;
+    DRIVER_LIST_HEAD  driver_list;
+    PROCESS_LIST_HEAD process_list;
+    SHARED_MAPPING    mapping;
+    BOOLEAN           has_driver_loaded;
+
+    BCRYPT_ALG_HANDLE alg_handle;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -119,6 +121,12 @@ UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
+
+BCRYPT_ALG_HANDLE*
+GetCryptAlgHandle()
+{
+    return &g_DriverConfig->alg_handle;
+}
 
 BOOLEAN
 HasDriverLoaded()
@@ -381,6 +389,8 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
     DrvUnloadFreeThreadList();
     DrvUnloadFreeProcessList();
     DrvUnloadFreeDriverList();
+
+    CryptCloseProvider();
 
     DrvUnloadFreeConfigStrings();
     DrvUnloadDeleteSymbolicLink();
@@ -863,7 +873,15 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         return status;
     }
 
-    SessionInitialiseStructure();
+    status = SessionInitialiseStructure();
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("SessionInitialiseStructure failed with status %x", status);
+        DrvUnloadFreeConfigStrings();
+        DrvUnloadFreeTimerObject();
+        ImpIoDeleteDevice(DriverObject->DeviceObject);
+        return status;
+    }
 
     status = IoCreateSymbolicLink(g_DriverConfig->device_symbolic_link,
                                   g_DriverConfig->device_name);

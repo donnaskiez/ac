@@ -25,14 +25,26 @@ enum report_id {
   report_invalid_process_module = 140
 };
 
+#define AES_256_BLOCK_SIZE 16
+
 struct packet_header {
-  uint16_t packet_type;
+  uint32_t packet_type;
+  uint32_t magic_number;
+};
+
+struct heartbeat_header {
+  packet_header header;
+  uint32_t unused[2];
 };
 
 struct report_header {
+  struct packet_header header;
   uint32_t report_code;
   uint32_t report_sub_type;
 };
+
+static_assert(sizeof(heartbeat_header) == AES_256_BLOCK_SIZE);
+static_assert(sizeof(report_header) == AES_256_BLOCK_SIZE);
 
 constexpr int APC_STACKWALK_BUFFER_SIZE = 500;
 constexpr int DATA_TABLE_ROUTINE_BUF_SIZE = 256;
@@ -41,7 +53,6 @@ constexpr int HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH = 64;
 constexpr int MODULE_PATH_LEN = 256;
 
 struct apc_stackwalk_report {
-  packet_header header;
   report_header report_header;
   uint64_t kthread_address;
   uint64_t invalid_rip;
@@ -49,7 +60,6 @@ struct apc_stackwalk_report {
 };
 
 struct dpc_stackwalk_report {
-  packet_header header;
   report_header report_header;
   uint64_t kthread_address;
   uint64_t invalid_rip;
@@ -57,7 +67,6 @@ struct dpc_stackwalk_report {
 };
 
 struct module_validation_failure {
-  packet_header header;
   report_header report_header;
   uint64_t driver_base_address;
   uint64_t driver_size;
@@ -67,7 +76,6 @@ struct module_validation_failure {
 enum table_id { hal_dispatch = 0, hal_private_dispatch };
 
 struct data_table_routine_report {
-  packet_header header;
   report_header report_header;
   table_id id;
   uint64_t address;
@@ -76,7 +84,6 @@ struct data_table_routine_report {
 };
 
 struct nmi_callback_failure {
-  packet_header header;
   report_header report_header;
   uint8_t were_nmis_disabled;
   uint64_t kthread_address;
@@ -84,13 +91,11 @@ struct nmi_callback_failure {
 };
 
 struct invalid_process_allocation_report {
-  packet_header header;
   report_header report_header;
   char process[REPORT_INVALID_PROCESS_BUFFER_SIZE];
 };
 
 struct hidden_system_thread_report {
-  packet_header header;
   report_header report_header;
   uint8_t found_in_kthreadlist;
   uint8_t found_in_pspcidtable;
@@ -106,9 +111,8 @@ struct attach_process_report {
 };
 
 struct open_handle_failure_report {
-  packet_header header;
   report_header report_header;
-  uint8_t is_kernel_handle;
+  uint32_t is_kernel_handle;
   uint32_t process_id;
   uint32_t thread_id;
   uint32_t access;
@@ -116,7 +120,6 @@ struct open_handle_failure_report {
 };
 
 struct process_module_validation_report {
-  packet_header header;
   report_header report_header;
   uint64_t image_base;
   uint32_t image_size;
@@ -124,11 +127,11 @@ struct process_module_validation_report {
 };
 
 struct heartbeat_packet {
-    packet_header header;
-    uint32_t        heartbeat_count;
-    uint32_t        total_reports_completed;
-    uint32_t        total_irps_completed;
-    uint32_t        total_heartbeats_completed;
+  heartbeat_header header;
+  uint32_t heartbeat_count;
+  uint32_t total_reports_completed;
+  uint32_t total_irps_completed;
+  uint32_t total_heartbeats_completed;
 };
 
 enum apc_operation { operation_stackwalk = 0x1 };
@@ -194,8 +197,9 @@ struct event_dispatcher {
 class kernel_interface {
   struct session_initiation_packet {
     unsigned __int32 session_cookie;
-    char session_aes_key[AES_128_KEY_SIZE];
-    void *protected_process_id;
+    void *process_id;
+    unsigned char aes_key[32];
+    unsigned char aes_iv[16];
   };
 
   struct hv_detection_packet {

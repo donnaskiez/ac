@@ -5,7 +5,7 @@
 
 #include "driver.h"
 
-VOID
+NTSTATUS
 SessionInitialiseStructure();
 
 VOID

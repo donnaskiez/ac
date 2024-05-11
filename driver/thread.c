@@ -8,6 +8,7 @@
 #include "queue.h"
 #include "session.h"
 #include "imports.h"
+#include "crypt.h"
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
@@ -81,8 +82,11 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 {
     UNREFERENCED_PARAMETER(Context);
 
+    NTSTATUS    status            = STATUS_UNSUCCESSFUL;
     PKAPC_STATE apc_state         = NULL;
     PEPROCESS   protected_process = NULL;
+    UINT32      packet_size =
+        CryptRequestRequiredBufferLength(sizeof(ATTACH_PROCESS_REPORT));
 
     SessionGetProcess(&protected_process);
 
@@ -106,21 +110,26 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
     DEBUG_WARNING("Thread is attached to our protected process: %llx",
                   (UINT64)ThreadListEntry->thread);
 
-    PATTACH_PROCESS_REPORT report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(ATTACH_PROCESS_REPORT), REPORT_POOL_TAG);
+    PATTACH_PROCESS_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
     if (!report)
         return;
 
-    INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-    INIT_REPORT_HEADER(
-        &report->report_header, REPORT_ILLEGAL_ATTACH_PROCESS, 0);
+    INIT_REPORT_PACKET(report, REPORT_ILLEGAL_ATTACH_PROCESS, 0);
 
     report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
     report->thread_address = ThreadListEntry->thread;
 
-    if (!NT_SUCCESS(IrpQueueCompletePacket(report, sizeof(ATTACH_PROCESS_REPORT))))
-        DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
+        return;
+    }
+
+    IrpQueueCompletePacket(report, packet_size);
 }
 
 VOID

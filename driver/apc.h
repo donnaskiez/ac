@@ -15,7 +15,7 @@ VOID
 GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier);
 
 BOOLEAN
-FreeApcContextStructure(_Out_ PAPC_CONTEXT_HEADER Context);
+FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context);
 
 VOID
 IncrementApcCount(_In_ LONG ContextId);

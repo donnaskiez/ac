@@ -6,6 +6,7 @@
 #include "queue.h"
 #include "ia32.h"
 #include "imports.h"
+#include "crypt.h"
 
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE  0x004
@@ -678,9 +679,12 @@ FindUnlinkedProcesses()
 {
     PAGED_CODE();
 
+    NTSTATUS                           status             = STATUS_UNSUCCESSFUL;
     PUINT64                            allocation_address = NULL;
     PROCESS_SCAN_CONTEXT               context            = {0};
     PINVALID_PROCESS_ALLOCATION_REPORT report             = NULL;
+    UINT32 packet_size = CryptRequestRequiredBufferLength(
+        sizeof(INVALID_PROCESS_ALLOCATION_REPORT));
 
     EnumerateProcessListWithCallbackRoutine(IncrementProcessCounter, &context);
 
@@ -722,25 +726,26 @@ FindUnlinkedProcesses()
             "Potentially found an unlinked process allocation at address: %llx",
             allocation);
 
-        report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                    sizeof(INVALID_PROCESS_ALLOCATION_REPORT),
-                                    REPORT_POOL_TAG);
+        report = ImpExAllocatePool2(
+            POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
 
         if (!report)
             continue;
 
-        INIT_PACKET_HEADER(&report->header, PACKET_TYPE_REPORT);
-        INIT_REPORT_HEADER(
-            &report->report_header, REPORT_INVALID_PROCESS_ALLOCATION, 0);
+        INIT_REPORT_PACKET(report, REPORT_INVALID_PROCESS_ALLOCATION, 0);
 
         RtlCopyMemory(
             report->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
-        if (!NT_SUCCESS(IrpQueueCompletePacket(
-                report, sizeof(INVALID_PROCESS_ALLOCATION_REPORT)))) {
-            DEBUG_ERROR("IrpQueueCompleteIrp failed with no status.");
+        status = CryptEncryptBuffer(report, packet_size);
+
+        if (!NT_SUCCESS(status)) {
+            DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+            ImpExFreePoolWithTag(report, REPORT_POOL_TAG);
             continue;
         }
+
+        IrpQueueCompletePacket(report, packet_size);
     }
 
 end:

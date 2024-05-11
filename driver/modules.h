@@ -48,9 +48,6 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
 NTSTATUS
 HandleNmiIOCTL();
 
-BOOLEAN
-FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context);
-
 NTSTATUS
 ValidateThreadsViaKernelApc();
 

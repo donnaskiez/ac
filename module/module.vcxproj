@@ -209,6 +209,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="crypt\crypt.cpp" />
     <ClCompile Include="dispatcher\timer.cpp" />
     <ClCompile Include="helper.cpp" />
     <ClCompile Include="imports.cpp" />
@@ -223,6 +224,7 @@
   <ItemGroup>
     <ClInclude Include="client\message_queue.h" />
     <ClInclude Include="client\pipe.h" />
+    <ClInclude Include="crypt\crypt.h" />
     <ClInclude Include="dispatcher\dispatcher.h" />
     <ClInclude Include="dispatcher\threadpool.h" />
     <ClInclude Include="common.h" />

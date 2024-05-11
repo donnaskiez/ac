@@ -11,6 +11,7 @@
     <ClCompile Include="dispatcher\threadpool.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="kernel_interface\kernel_interface.cpp" />
+    <ClCompile Include="crypt\crypt.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="client\message_queue.h" />
@@ -23,5 +24,6 @@
     <ClInclude Include="imports.h" />
     <ClInclude Include="kernel_interface\kernel_interface.h" />
     <ClInclude Include="module.h" />
+    <ClInclude Include="crypt\crypt.h" />
   </ItemGroup>
 </Project>

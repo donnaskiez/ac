@@ -10,6 +10,9 @@
 #include "integrity.h"
 #include "callbacks.h"
 
+BCRYPT_ALG_HANDLE*
+GetCryptAlgHandle();
+
 NTSTATUS
 QueryActiveApcContextsForCompletion();
 

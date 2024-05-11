@@ -6,6 +6,7 @@
 #include "io.h"
 
 #include "types/types.h"
+#include <bcrypt.h>
 
 /*
  * For numbers < 32, these are equivalent to 0ul << x.
@@ -80,10 +81,10 @@ typedef struct _DRIVER_LIST_HEAD {
     KGUARDED_MUTEX    lock;
 
     /* modules that need to be hashed later. */
-    PIO_WORKITEM  work_item;
-    LIST_ENTRY    deferred_list;
+    PIO_WORKITEM     work_item;
+    LIST_ENTRY       deferred_list;
     volatile BOOLEAN deferred_complete;
-    volatile LONG can_hash_x86;
+    volatile LONG    can_hash_x86;
 
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;
 
@@ -213,7 +214,8 @@ typedef struct _IRP_QUEUE_ENTRY {
  * the target process to protect is open / closed / changes etc.
  */
 
-#define AES_128_KEY_SIZE 16
+#define AES_256_KEY_SIZE 32
+#define AES_256_IV_SIZE  16
 
 typedef struct _HEARTBEAT_CONFIGURATION {
     volatile UINT32 counter;
@@ -233,6 +235,14 @@ typedef struct _HEARTBEAT_CONFIGURATION {
 
 } HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
 
+typedef struct _SESSION_INITIATION_PACKET {
+    UINT32 cookie;
+    PVOID  process_id;
+    UCHAR  aes_key[AES_256_KEY_SIZE];
+    UCHAR  aes_iv[AES_256_IV_SIZE];
+
+} SESSION_INITIATION_PACKET, *PSESSION_INITIATION_PACKET;
+
 typedef struct _ACTIVE_SESSION {
     BOOLEAN             is_session_active;
     PVOID               um_handle;
@@ -240,8 +250,16 @@ typedef struct _ACTIVE_SESSION {
     PEPROCESS           process;
     OB_CALLBACKS_CONFIG callback_configuration;
 
-    UINT32 session_cookie;
-    CHAR   session_aes_key[AES_128_KEY_SIZE];
+    struct {
+        UINT32            cookie;
+        UINT32            magic_number;
+        PUCHAR            aes_key[AES_256_KEY_SIZE];
+        PUCHAR            iv[AES_256_IV_SIZE];
+        BCRYPT_KEY_HANDLE key_handle;
+
+        PUCHAR key_object;
+        UINT32 key_object_length;
+    };
 
     struct SESSION_STATISTICS {
         UINT32 irps_received;
@@ -250,7 +268,7 @@ typedef struct _ACTIVE_SESSION {
     };
 
     HEARTBEAT_CONFIGURATION heartbeat_config;
-    KGUARDED_MUTEX          lock;
+    KSPIN_LOCK              lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
 
@@ -259,6 +277,7 @@ typedef struct _ACTIVE_SESSION {
 #define INVALID_DRIVER_LIST_HEAD_POOL  'rwar'
 #define INVALID_DRIVER_LIST_ENTRY_POOL 'gaah'
 #define POOL_TAG_APC                   'apcc'
+#define POOL_TAG_CRYPT                 'tpcr'
 #define POOL_TAG_HW                    'hwhw'
 #define POOL_TAG_DPC                   'apcc'
 #define POOL_TAG_HEARTBEAT             'teab'

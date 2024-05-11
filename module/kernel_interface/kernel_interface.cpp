@@ -4,6 +4,7 @@
 
 #include "../common.h"
 #include "../helper.h"
+#include "../crypt/crypt.h"
 
 #include <TlHelp32.h>
 #include <winternl.h>
@@ -140,7 +141,10 @@ void kernel_interface::kernel_interface::generic_driver_call_apc(
 void kernel_interface::kernel_interface::notify_driver_on_process_launch() {
   unsigned long bytes_returned = 0;
   session_initiation_packet packet = {0};
-  packet.protected_process_id = reinterpret_cast<void *>(GetCurrentProcessId());
+  packet.process_id = reinterpret_cast<void *>(GetCurrentProcessId());
+  packet.session_cookie = 123;
+  memcpy(packet.aes_key, crypt::get_test_key(), 32);
+  memcpy(packet.aes_iv, crypt::get_test_iv(), 16);
   generic_driver_call_input(ioctl_code::NotifyDriverOnProcessLaunch, &packet,
                             sizeof(session_initiation_packet), &bytes_returned);
 }

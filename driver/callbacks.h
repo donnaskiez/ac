@@ -77,11 +77,11 @@ CleanupThreadListOnDriverUnload();
 
 VOID
 FindThreadListEntryByThreadAddress(_In_ PKTHREAD               Thread,
-                                   _Inout_ PTHREAD_LIST_ENTRY* Entry);
+                                   _Out_ PTHREAD_LIST_ENTRY* Entry);
 
 VOID
 FindProcessListEntryByProcess(_In_ PKPROCESS               Process,
-                              _Inout_ PPROCESS_LIST_ENTRY* Entry);
+                              _Out_ PPROCESS_LIST_ENTRY* Entry);
 
 VOID
 EnumerateThreadListWithCallbackRoutine(
@@ -110,7 +110,7 @@ NTSTATUS
 InitialiseTimerObject(_Out_ PTIMER_OBJECT Timer);
 
 VOID
-CleanupDriverTimerObjects(_Out_ PTIMER_OBJECT Timer);
+CleanupDriverTimerObjects(_Inout_ PTIMER_OBJECT Timer);
 
 VOID
 UnregisterProcessCreateNotifyRoutine();
