@@ -2238,8 +2238,7 @@ BuildHeartbeatPacket(_In_ UINT32 PacketSize)
 
     INIT_HEARTBEAT_PACKET(packet);
 
-    /* This routine always runs at DPC level */
-    KeAcquireSpinLockAtDpcLevel(&queue->lock);
+    KeAcquireGuardedMutex(&queue->lock);
 
     /*
      * Its important to remember that since we query the packet metrics before
@@ -2249,7 +2248,7 @@ BuildHeartbeatPacket(_In_ UINT32 PacketSize)
     packet->total_heartbeats_completed = queue->total_heartbeats_completed;
     packet->total_irps_completed       = queue->total_irps_completed;
     packet->total_reports_completed    = queue->total_reports_completed;
-    KeReleaseSpinLockFromDpcLevel(&queue->lock);
+    KeReleaseGuardedMutex(&queue->lock);
 
     return packet;
 }
