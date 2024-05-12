@@ -185,9 +185,9 @@ typedef struct _DEFERRED_REPORT {
 } DEFERRED_REPORT, *PDEFERRED_REPORT;
 
 typedef struct _DEFERRED_REPORTS_LIST {
-    LIST_ENTRY head;
-    UINT32     count;
-    KSPIN_LOCK lock;
+    LIST_ENTRY     head;
+    UINT32         count;
+    KGUARDED_MUTEX lock;
 
 } DEFERRED_REPORTS_LIST, *PDEFERRED_REPORTS_LIST;
 
@@ -200,9 +200,8 @@ typedef struct _IRP_QUEUE_HEAD {
     volatile UINT32       total_irps_completed;
     volatile UINT32       total_heartbeats_completed;
     IO_CSQ                csq;
-    KSPIN_LOCK            lock;
+    KGUARDED_MUTEX        lock;
     DEFERRED_REPORTS_LIST deferred_reports;
-    KDPC                  dpc[EVENT_COUNT];
 
 } IRP_QUEUE_HEAD, *PIRP_QUEUE_HEAD;
 
@@ -271,7 +270,7 @@ typedef struct _ACTIVE_SESSION {
     };
 
     HEARTBEAT_CONFIGURATION heartbeat_config;
-    KSPIN_LOCK              lock;
+    KGUARDED_MUTEX          lock;
 
 } ACTIVE_SESSION, *PACTIVE_SESSION;
 

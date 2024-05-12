@@ -9,7 +9,7 @@ SessionInitialiseStructure()
     NTSTATUS        status  = STATUS_UNSUCCESSFUL;
     PACTIVE_SESSION session = GetActiveSession();
 
-    KeInitializeSpinLock(&session->lock);
+    KeInitializeGuardedMutex(&session->lock);
 
     status = CryptInitialiseProvider();
 
@@ -28,34 +28,34 @@ SessionInitialiseCallbackConfiguration()
 VOID
 SessionIsActive(_Out_ PBOOLEAN Flag)
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
-    *Flag      = GetActiveSession()->is_session_active;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
+    *Flag = GetActiveSession()->is_session_active;
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 VOID
 SessionGetProcess(_Out_ PEPROCESS* Process)
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
-    *Process   = GetActiveSession()->process;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
+    *Process = GetActiveSession()->process;
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 VOID
 SessionGetProcessId(_Out_ PLONG ProcessId)
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
     *ProcessId = GetActiveSession()->km_handle;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 VOID
 SessionGetCallbackConfiguration(
     _Out_ POB_CALLBACKS_CONFIG* CallbackConfiguration)
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
     *CallbackConfiguration = &GetActiveSession()->callback_configuration;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 STATIC
@@ -73,14 +73,14 @@ SessionTerminate()
     PACTIVE_SESSION session = GetActiveSession();
     KIRQL           irql    = {0};
 
-    KeAcquireSpinLock(&session->lock, &irql);
+    KeAcquireGuardedMutex(&session->lock);
     session->km_handle         = NULL;
     session->um_handle         = NULL;
     session->process           = NULL;
     session->is_session_active = FALSE;
     SessionTerminateHeartbeat(&session->heartbeat_config);
     CryptCloseSessionCryptObjects();
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&session->lock);
 }
 
 NTSTATUS
@@ -103,7 +103,7 @@ SessionInitialise(_In_ PIRP Irp)
 
     initiation = (PSESSION_INITIATION_PACKET)Irp->AssociatedIrp.SystemBuffer;
 
-    KeAcquireSpinLock(&session->lock, &irql);
+    KeAcquireGuardedMutex(&session->lock);
 
     session->um_handle = initiation->process_id;
 
@@ -138,7 +138,7 @@ SessionInitialise(_In_ PIRP Irp)
     }
 
 end:
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&session->lock);
     return status;
 }
 
@@ -175,23 +175,23 @@ SessionTerminateProcess()
 VOID
 SessionIncrementIrpsProcessedCount()
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
     GetActiveSession()->irps_received;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 VOID
 SessionIncrementReportCount()
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
     GetActiveSession()->report_count++;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 VOID
 SessionIncrementHeartbeatCount()
 {
-    KIRQL irql = KeAcquireSpinLockRaiseToDpc(&GetActiveSession()->lock);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
     GetActiveSession()->heartbeat_count++;
-    KeReleaseSpinLock(&GetActiveSession()->lock, irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }

@@ -88,14 +88,14 @@ STATIC
 VOID
 IrpQueueAcquireLock(_In_ PIO_CSQ Csq, _Out_ PKIRQL Irql)
 {
-    KeAcquireSpinLock(&GetIrpQueueHead()->lock, Irql);
+    KeAcquireGuardedMutex(&GetActiveSession()->lock);
 }
 
 STATIC
 VOID
 IrpQueueReleaseLock(_In_ PIO_CSQ Csq, _In_ KIRQL Irql)
 {
-    KeReleaseSpinLock(&GetIrpQueueHead()->lock, Irql);
+    KeReleaseGuardedMutex(&GetActiveSession()->lock);
 }
 
 STATIC
@@ -204,7 +204,9 @@ IrpQueueQueryPendingPackets(_In_ PIRP Irp)
      * leading to a bugcheck in the subsequent call to
      * CompleteDeferredReport.
      */
-    KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
+    KeAcquireGuardedMutex(&queue->deferred_reports.lock);
+
+    DEBUG_INFO("deferred packet count: %lx", queue->deferred_reports.count);
 
     if (IrpQueueIsThereDeferredPackets(queue)) {
         report = IrpQueueRemoveDeferredPacket(queue);
@@ -219,7 +221,7 @@ IrpQueueQueryPendingPackets(_In_ PIRP Irp)
     }
 
 end:
-    KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
+    KeReleaseGuardedMutex(&queue->deferred_reports.lock);
     return status;
 }
 
@@ -266,7 +268,6 @@ IrpQueueDeferPacket(_In_ PIRP_QUEUE_HEAD Queue,
                     _In_ UINT32          BufferSize)
 {
     PDEFERRED_REPORT report = NULL;
-    KIRQL            irql   = {0};
     /*
      * arbitrary number, if we ever do have 100 deferred reports, theres
      * probably a catastrophic error somewhere else
@@ -281,10 +282,10 @@ IrpQueueDeferPacket(_In_ PIRP_QUEUE_HEAD Queue,
     if (!report)
         return;
 
-    KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
+    KeAcquireGuardedMutex(&Queue->deferred_reports.lock);
     InsertTailList(&Queue->deferred_reports.head, &report->list_entry);
     Queue->deferred_reports.count++;
-    KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
+    KeReleaseGuardedMutex(&Queue->deferred_reports.lock);
 }
 
 /*
@@ -335,26 +336,6 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
     return status;
 }
 
-STATIC
-VOID
-IrpQueueSchedulePacketDpc(_In_ struct _KDPC* Dpc,
-                          _In_opt_ PVOID     DeferredContext,
-                          _In_opt_ PVOID     SystemArgument1,
-                          _In_opt_ PVOID     SystemArgument2)
-{
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(DeferredContext);
-
-    if (!ARGUMENT_PRESENT(SystemArgument1) ||
-        !ARGUMENT_PRESENT(SystemArgument2))
-        return;
-
-    PVOID  buffer        = SystemArgument1;
-    UINT32 buffer_length = (UINT32)SystemArgument2;
-
-    IrpQueueCompletePacket(buffer, buffer_length);
-}
-
 /*
  * Not only does this allow reporting threads to continue execution once the
  * report is scheduled (which in some cases such as handle reporting is very
@@ -366,16 +347,7 @@ IrpQueueSchedulePacketDpc(_In_ struct _KDPC* Dpc,
 VOID
 IrpQueueSchedulePacket(_In_ PVOID Buffer, _In_ UINT32 BufferLength)
 {
-    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
-
-    /* Maybe not the best implementation, but 99.9999% of the time there should
-     * be a dpc available.*/
-    while (TRUE) {
-        for (UINT32 index = 0; index < EVENT_COUNT; index++) {
-            if (KeInsertQueueDpc(&queue->dpc[index], Buffer, BufferLength))
-                return;
-        }
-    }
+    IrpQueueCompletePacket(Buffer, BufferLength);
 }
 
 STATIC
@@ -387,14 +359,14 @@ IrpQueueFreeDeferredPackets()
     KIRQL            irql   = 0;
 
     /* just in case... */
-    KeAcquireSpinLock(&GetIrpQueueHead()->deferred_reports.lock, &irql);
+    KeAcquireGuardedMutex(&queue->deferred_reports.lock);
 
     while (IrpQueueIsThereDeferredPackets(queue)) {
         report = IrpQueueRemoveDeferredPacket(queue);
         IrpQueueFreeDeferredPacket(report);
     }
 
-    KeReleaseSpinLock(&GetIrpQueueHead()->deferred_reports.lock, irql);
+    KeReleaseGuardedMutex(&queue->deferred_reports.lock);
 }
 
 NTSTATUS
@@ -403,14 +375,10 @@ IrpQueueInitialise()
     NTSTATUS        status = STATUS_UNSUCCESSFUL;
     PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
 
-    KeInitializeSpinLock(&queue->lock);
-    KeInitializeSpinLock(&queue->deferred_reports.lock);
+    KeInitializeGuardedMutex(&queue->lock);
+    KeInitializeGuardedMutex(&queue->deferred_reports.lock);
     InitializeListHead(&queue->queue);
     InitializeListHead(&queue->deferred_reports.head);
-
-    for (UINT32 index = 0; index < EVENT_COUNT; index++) {
-        KeInitializeDpc(&queue->dpc[index], IrpQueueSchedulePacketDpc, NULL);
-    }
 
     status = IoCsqInitialize(&queue->csq,
                              IrpQueueInsert,

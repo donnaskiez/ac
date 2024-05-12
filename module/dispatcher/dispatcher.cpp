@@ -56,8 +56,8 @@ void dispatcher::dispatcher::run() {
   this->run_io_port_thread();
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
-    // this->issue_kernel_job();
-    this->k_interface.initiate_apc_stackwalk();
+      LOG_INFO("issueing kernel job!");
+    this->issue_kernel_job();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }
 }

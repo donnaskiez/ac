@@ -65,6 +65,7 @@ void kernel_interface::kernel_interface::initiate_completion_port() {
   for (int index = 0; index < EVENT_COUNT; index++) {
     send_pending_irp();
   }
+  LOG_INFO("Finished initialising completion port.");
 }
 
 void kernel_interface::kernel_interface::release_event_object(
