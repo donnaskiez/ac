@@ -22,7 +22,10 @@ enum report_id {
   report_apc_stackwalk = 110,
   report_dpc_stackwalk = 120,
   report_data_table_routine = 130,
-  report_invalid_process_module = 140
+  report_invalid_process_module = 140,
+  report_patched_system_module = 150,
+  report_self_driver_patched = 160,
+  report_blacklisted_pcie_device = 170
 };
 
 #define AES_256_BLOCK_SIZE 16
@@ -126,12 +129,33 @@ struct process_module_validation_report {
   wchar_t module_path[MODULE_PATH_LEN];
 };
 
+struct system_module_integrity_check_report {
+    report_header header;
+    uint64_t               image_base;
+    uint32_t               image_size;
+    char                 path_name[0x100];
+};
+
+struct driver_self_integrity_check_report {
+    report_header header;
+    uint64_t      image_base;
+    uint32_t      image_size;
+    char          path_name[0x100];
+};
+
 struct heartbeat_packet {
   heartbeat_header header;
   uint32_t heartbeat_count;
   uint32_t total_reports_completed;
   uint32_t total_irps_completed;
   uint32_t total_heartbeats_completed;
+};
+
+struct blacklisted_pcie_device_report {
+    report_header header;
+    uint64_t      device_object;
+    uint16_t      device_id;
+    uint16_t      vendor_id;
 };
 
 enum apc_operation { operation_stackwalk = 0x1 };

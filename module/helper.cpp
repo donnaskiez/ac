@@ -5,50 +5,64 @@
 
 #include "crypt/crypt.h"
 
-void helper::generate_rand_seed() { srand(time(0)); }
-
-int helper::generate_rand_int(int max) { return std::rand() % max; }
-
-void helper::sleep_thread(int seconds) {
-  std::this_thread::sleep_for(std::chrono::seconds(seconds));
+void
+helper::generate_rand_seed()
+{
+    srand(time(0));
 }
 
-int helper::get_report_id_from_buffer(void *buffer) {
-  kernel_interface::report_header *header =
-      reinterpret_cast<kernel_interface::report_header *>(
-          (uint64_t)buffer + sizeof(kernel_interface::report_header));
-  return header->report_code;
+int
+helper::generate_rand_int(int max)
+{
+    return std::rand() % max;
 }
 
-kernel_interface::report_id helper::get_kernel_report_type(void *buffer) {
-  switch (helper::get_report_id_from_buffer(buffer)) {
-  case kernel_interface::report_id::report_nmi_callback_failure:
-    return kernel_interface::report_id::report_nmi_callback_failure;
+void
+helper::sleep_thread(int seconds)
+{
+    std::this_thread::sleep_for(std::chrono::seconds(seconds));
+}
 
-  case kernel_interface::report_id::report_module_validation_failure:
-    return kernel_interface::report_id::report_module_validation_failure;
+int
+helper::get_report_id_from_buffer(void* buffer)
+{
+    kernel_interface::report_header* header =
+        reinterpret_cast<kernel_interface::report_header*>(
+            (uint64_t)buffer + sizeof(kernel_interface::report_header));
+    return header->report_code;
+}
 
-  case kernel_interface::report_id::report_illegal_handle_operation:
-    return kernel_interface::report_id::report_illegal_handle_operation;
+kernel_interface::report_id
+helper::get_kernel_report_type(void* buffer)
+{
+    switch (helper::get_report_id_from_buffer(buffer)) {
+    case kernel_interface::report_id::report_nmi_callback_failure:
+        return kernel_interface::report_id::report_nmi_callback_failure;
 
-  case kernel_interface::report_id::report_invalid_process_allocation:
-    return kernel_interface::report_id::report_invalid_process_allocation;
+    case kernel_interface::report_id::report_module_validation_failure:
+        return kernel_interface::report_id::report_module_validation_failure;
 
-  case kernel_interface::report_id::report_hidden_system_thread:
-    return kernel_interface::report_id::report_hidden_system_thread;
+    case kernel_interface::report_id::report_illegal_handle_operation:
+        return kernel_interface::report_id::report_illegal_handle_operation;
 
-  case kernel_interface::report_id::report_illegal_attach_process:
-    return kernel_interface::report_id::report_illegal_attach_process;
+    case kernel_interface::report_id::report_invalid_process_allocation:
+        return kernel_interface::report_id::report_invalid_process_allocation;
 
-  case kernel_interface::report_id::report_apc_stackwalk:
-    return kernel_interface::report_id::report_apc_stackwalk;
+    case kernel_interface::report_id::report_hidden_system_thread:
+        return kernel_interface::report_id::report_hidden_system_thread;
 
-  case kernel_interface::report_id::report_dpc_stackwalk:
-    return kernel_interface::report_id::report_dpc_stackwalk;
+    case kernel_interface::report_id::report_illegal_attach_process:
+        return kernel_interface::report_id::report_illegal_attach_process;
 
-  case kernel_interface::report_id::report_data_table_routine:
-    return kernel_interface::report_id::report_data_table_routine;
-  }
+    case kernel_interface::report_id::report_apc_stackwalk:
+        return kernel_interface::report_id::report_apc_stackwalk;
+
+    case kernel_interface::report_id::report_dpc_stackwalk:
+        return kernel_interface::report_id::report_dpc_stackwalk;
+
+    case kernel_interface::report_id::report_data_table_routine:
+        return kernel_interface::report_id::report_data_table_routine;
+    }
 }
 
 void
@@ -156,6 +170,37 @@ print_report_packet(void* buffer)
         LOG_INFO("********************************");
         break;
     }
+    case kernel_interface::report_id::report_patched_system_module: {
+        kernel_interface::system_module_integrity_check_report* r11 =
+            reinterpret_cast<
+                kernel_interface::system_module_integrity_check_report*>(
+                buffer);
+        LOG_INFO("image_base: %llx", r11->image_base);
+        LOG_INFO("image_size: %lx", r11->image_size);
+        LOG_INFO("path_name: %s", r11->path_name);
+        LOG_INFO("********************************");
+        break;
+    }
+    case kernel_interface::report_id::report_self_driver_patched: {
+        kernel_interface::driver_self_integrity_check_report* r12 =
+            reinterpret_cast<
+                kernel_interface::driver_self_integrity_check_report*>(buffer);
+        LOG_INFO("image_base: %llx", r12->image_base);
+        LOG_INFO("image_size: %lx", r12->image_size);
+        LOG_INFO("path_name: %s", r12->path_name);
+        LOG_INFO("********************************");
+        break;
+    }
+    case kernel_interface::report_id::report_blacklisted_pcie_device: {
+        kernel_interface::blacklisted_pcie_device_report* r13 =
+            reinterpret_cast<kernel_interface::blacklisted_pcie_device_report*>(
+                buffer);
+        LOG_INFO("device_object: %llx", r13->device_object);
+        LOG_INFO("device_id: %x", r13->device_id);
+        LOG_INFO("vendor_id: %x", r13->vendor_id);
+        LOG_INFO("********************************");
+        break;
+    }
     default: LOG_INFO("Invalid report type."); break;
     }
 }
@@ -172,28 +217,32 @@ print_heartbeat_packet(void* buffer)
     LOG_INFO("********************************");
 }
 
-void helper::print_kernel_report(void *buffer) {
-  uint32_t size = crypt::get_padded_packet_size(
-      sizeof(kernel_interface::open_handle_failure_report));
-  crypt::decrypt_packet(buffer, size);
+void
+helper::print_kernel_report(void* buffer)
+{
+    uint32_t size = crypt::get_padded_packet_size(
+        sizeof(kernel_interface::open_handle_failure_report));
+    crypt::decrypt_packet(buffer, size);
 
-  kernel_interface::packet_header *header =
-      reinterpret_cast<kernel_interface::packet_header *>(buffer);
+    kernel_interface::packet_header* header =
+        reinterpret_cast<kernel_interface::packet_header*>(buffer);
 
-  LOG_INFO("packet type: %lx", header->packet_type);
+    LOG_INFO("packet type: %lx", header->packet_type);
 
-  switch (header->packet_type)
-  {
-  case 0: print_report_packet(buffer); break;
-  case 1: print_heartbeat_packet(buffer); break;
-  }
- 
+    switch (header->packet_type) {
+    case 0: print_report_packet(buffer); break;
+    case 1: print_heartbeat_packet(buffer); break;
+    }
 }
 
-unsigned __int64 helper::seconds_to_nanoseconds(int seconds) {
-  return ABSOLUTE(SECONDS(seconds));
+unsigned __int64
+helper::seconds_to_nanoseconds(int seconds)
+{
+    return ABSOLUTE(SECONDS(seconds));
 }
 
-unsigned __int32 helper::seconds_to_milliseconds(int seconds) {
-  return seconds * 1000;
+unsigned __int32
+helper::seconds_to_milliseconds(int seconds)
+{
+    return seconds * 1000;
 }

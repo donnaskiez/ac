@@ -1,6 +1,8 @@
 #include "hw.h"
 
 #include "modules.h"
+#include "crypt.h"
+#include "imports.h"
 
 #define PCI_VENDOR_ID_OFFSET 0x00
 #define PCI_DEVICE_ID_OFFSET 0x02
@@ -67,11 +69,11 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
                                  _Out_opt_ PVOID     Buffer,
                                  _In_ UINT32         BufferLength)
 {
-    NTSTATUS           status            = STATUS_UNSUCCESSFUL;
-    KEVENT             event             = {0};
-    IO_STATUS_BLOCK    io                = {0};
-    PIRP               irp               = NULL;
-    PIO_STACK_LOCATION io_stack_location = NULL;
+    NTSTATUS           status = STATUS_UNSUCCESSFUL;
+    KEVENT             event  = {0};
+    IO_STATUS_BLOCK    io     = {0};
+    PIRP               irp    = NULL;
+    PIO_STACK_LOCATION packet = NULL;
 
     if (BufferLength == 0)
         return STATUS_BUFFER_TOO_SMALL;
@@ -90,13 +92,12 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    io_stack_location                = IoGetNextIrpStackLocation(irp);
-    io_stack_location->MinorFunction = IRP_MN_READ_CONFIG;
-    io_stack_location->Parameters.ReadWriteConfig.WhichSpace =
-        PCI_WHICHSPACE_CONFIG;
-    io_stack_location->Parameters.ReadWriteConfig.Offset = Offset;
-    io_stack_location->Parameters.ReadWriteConfig.Buffer = Buffer;
-    io_stack_location->Parameters.ReadWriteConfig.Length = BufferLength;
+    packet                = IoGetNextIrpStackLocation(irp);
+    packet->MinorFunction = IRP_MN_READ_CONFIG;
+    packet->Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
+    packet->Parameters.ReadWriteConfig.Offset     = Offset;
+    packet->Parameters.ReadWriteConfig.Buffer     = Buffer;
+    packet->Parameters.ReadWriteConfig.Length     = BufferLength;
 
     status = IoCallDriver(DeviceObject, irp);
 
@@ -256,6 +257,38 @@ IsPciConfigurationSpaceFlagged(_In_ PPCI_COMMON_HEADER Configuration)
 }
 
 STATIC
+VOID
+ReportBlacklistedPcieDevice(_In_ PDEVICE_OBJECT     DeviceObject,
+                            _In_ PPCI_COMMON_HEADER Header)
+{
+    NTSTATUS status      = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size = CryptRequestRequiredBufferLength(
+        sizeof(BLACKLISTED_PCIE_DEVICE_REPORT));
+
+    PBLACKLISTED_PCIE_DEVICE_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+
+    if (!report)
+        return;
+
+    INIT_REPORT_PACKET(report, REPORT_BLACKLISTED_PCIE_DEVICE, 0);
+
+    report->device_object = (UINT64)DeviceObject;
+    report->device_id     = Header->DeviceID;
+    report->vendor_id     = Header->VendorID;
+
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, packet_size);
+        return;
+    }
+
+    IrpQueueSchedulePacket(report, packet_size);
+}
+
+STATIC
 NTSTATUS
 PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
@@ -283,6 +316,7 @@ PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
                       DeviceObject,
                       header.DeviceID,
                       header.VendorID);
+        ReportBlacklistedPcieDevice(DeviceObject, &header);
     }
 
     return status;

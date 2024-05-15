@@ -1609,7 +1609,7 @@ end:
  */
 STATIC
 VOID
-ReportInvalidSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
+ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
     NTSTATUS status      = STATUS_UNSUCCESSFUL;
     UINT32   packet_size = CryptRequestRequiredBufferLength(
@@ -1684,13 +1684,46 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     else {
         DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**",
                       Module->FullPathName);
-        ReportInvalidSystemModule(Module);
+        ReportModifiedSystemImage(Module);
     }
 
 end:
 
     if (hash)
         ExFreePoolWithTag(hash, POOL_TAG_INTEGRITY);
+}
+
+STATIC
+VOID
+ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
+{
+    NTSTATUS status      = STATUS_UNSUCCESSFUL;
+    UINT32   packet_size = CryptRequestRequiredBufferLength(
+        sizeof(DRIVER_SELF_INTEGRITY_CHECK_REPORT));
+
+    PDRIVER_SELF_INTEGRITY_CHECK_REPORT report =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+
+    if (!report)
+        return;
+
+    INIT_REPORT_PACKET(report, REPORT_SELF_DRIVER_PATCHED, 0);
+
+    report->image_base = Module->ImageBase;
+    report->image_size = Module->ImageSize;
+
+    RtlCopyMemory(
+        report->path_name, Module->FullPathName, sizeof(report->path_name));
+
+    status = CryptEncryptBuffer(report, packet_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, packet_size);
+        return;
+    }
+
+    IrpQueueSchedulePacket(report, packet_size);
 }
 
 NTSTATUS
@@ -1750,10 +1783,13 @@ ValidateOurDriverImage()
      * module error and stop the users game session ? since module .text
      * section error would be a large red flag
      */
-    if (CompareHashes(memory_hash, entry->text_hash, SHA_256_HASH_LENGTH))
+    if (CompareHashes(memory_hash, entry->text_hash, SHA_256_HASH_LENGTH)) {
         DEBUG_VERBOSE("Driver image is valid. Integrity check complete");
-    else
+    }
+    else {
         DEBUG_WARNING("**!!** Driver image is NOT valid. **!!**");
+        ReportModifiedSelfDriverImage(module_info);
+    }
 
 end:
 
@@ -2312,7 +2348,7 @@ end:
  * the right direction.
  */
 NTSTATUS
-InitialiseHeartbeatConfiguration(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+InitialiseHeartbeatConfiguration(_Out_ PHEARTBEAT_CONFIGURATION Configuration)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 

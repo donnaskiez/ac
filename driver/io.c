@@ -337,12 +337,12 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 }
 
 /*
- * Not only does this allow reporting threads to continue execution once the
- * report is scheduled (which in some cases such as handle reporting is very
- * important for performance reasons), but it allows us to safely report from
- * within a region guarded by a mutex as we use a spinlock here (for performance
- * reasons, we dont need certain time critical threads being slept whilst we
- * wait).
+ * Due to the fact that many reporting structures are holding a mutex when
+ * scheduling a report packet, we need an alternative queueing option from DPCs
+ * and spinlocks. Here we will use an array of work items (
+ *
+ * Hmm this is an interesting issue. Not sure how we shall resolve this, for now
+ * this works well enough.
  */
 VOID
 IrpQueueSchedulePacket(_In_ PVOID Buffer, _In_ UINT32 BufferLength)
