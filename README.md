@@ -146,6 +146,11 @@ With WinDbg connected to the target:
 1. Click `Edit -> Filter/Highlight`
 2. Set the `Include` string to `donna-ac*`
 
+## License
+
+We have decided to put this Project under **AGPL-3.0**!
+https://choosealicense.com/licenses/agpl-3.0/
+
 # contact
 
 feel free to dm me on discord or uc @donnaskiez
