@@ -587,6 +587,11 @@ ObPostOpCallbackRoutine(_In_ PVOID RegistrationContext,
 #define MAX_PROCESS_NAME_LENGTH             30
 #define PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT 4
 
+#define DOWNGRADE_LSASS    0
+#define DOWNGRADE_CSRSS    1
+#define DOWNGRADE_WERFAULT 2
+#define DOWNGRADE_MSMPENG  3
+
 CHAR PROCESS_HANDLE_OPEN_DOWNGRADE[PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT]
                                   [MAX_PROCESS_NAME_LENGTH] = {"lsass.exe",
                                                                "csrss.exe",
@@ -617,7 +622,6 @@ STATIC
 BOOLEAN
 IsDowngradeHandleOpenProcess(_In_ LPCSTR ProcessName)
 {
-    DEBUG_INFO("proc name: %s", ProcessName);
     for (UINT32 index = 0; index < PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT;
          index++) {
         if (!strcmp(ProcessName, PROCESS_HANDLE_OPEN_DOWNGRADE[index]))

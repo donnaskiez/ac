@@ -3,6 +3,8 @@
 
 #include "common.h"
 
+
+
 VOID
 CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries);
 
@@ -28,5 +30,8 @@ CryptCloseSessionCryptObjects();
 
 VOID
 CryptCloseProvider();
+
+NTSTATUS
+TpmExtractEndorsementKey();
 
 #endif

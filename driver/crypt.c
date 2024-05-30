@@ -3,6 +3,10 @@
 #include "imports.h"
 #include "session.h"
 #include "driver.h"
+#include "util.h"
+
+#include "types/tpm20.h"
+#include "types/tpmptp.h"
 
 #include <immintrin.h>
 #include <bcrypt.h>
@@ -313,4 +317,166 @@ CryptCloseProvider()
 {
     BCRYPT_ALG_HANDLE* handle = GetCryptAlgHandle();
     BCryptCloseAlgorithmProvider(*handle, 0);
+}
+
+/*
+ * Basic TPM EK Extraction implementation. Various sources were used alongside
+ * the various TPM specification manuals.
+ *
+ * https://github.com/tianocore/edk2
+ * https://github.com/microsoft/ms-tpm-20-ref
+ * https://github.com/SyncUD/tpm-mmio
+ */
+
+#define TPM20_INTEL_BASE_PHYSICAL 0xfed40000
+#define TPM20_OBJECT_HANDLE_EK    0x81010001
+#define TPM20_PTP_NO_VALID_CHIP   0xFF
+
+STATIC
+BOOLEAN
+TpmIsPlatformSupported()
+{
+    PSYSTEM_INFORMATION system = GetDriverConfigSystemInformation();
+
+    if (system->processor == AuthenticAmd) {
+        DEBUG_ERROR(
+            "TpmPlatformSuport unavailable on process type: AuthenticAmd");
+        return FALSE;
+    }
+
+    if (system->processor == GenuineIntel)
+        return TRUE;
+
+    return FALSE;
+}
+
+STATIC
+NTSTATUS
+TpmCheckPtpRegisterPresence(_In_ PVOID Register, _Out_ PUINT32 Result)
+{
+    UINT8    value  = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+    *Result = FALSE;
+
+    status = MapAndReadPhysical(Register, sizeof(value), &value, sizeof(value));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("MapAndReadPhysical: %x", status);
+        return status;
+    }
+
+    if (value != TPM20_PTP_NO_VALID_CHIP)
+        *Result = TRUE;
+
+    return status;
+}
+
+FORCEINLINE
+STATIC
+TPM2_PTP_INTERFACE_TYPE
+TpmExtractInterfaceTypeFromCapabilityAndId(
+    _In_ PTP_CRB_INTERFACE_IDENTIFIER*  Identifier,
+    _In_ PTP_FIFO_INTERFACE_CAPABILITY* Capability)
+{
+    if ((Identifier->Bits.InterfaceType ==
+         PTP_INTERFACE_IDENTIFIER_INTERFACE_TYPE_CRB) &&
+        (Identifier->Bits.InterfaceVersion ==
+         PTP_INTERFACE_IDENTIFIER_INTERFACE_VERSION_CRB) &&
+        (Identifier->Bits.CapCRB != 0)) {
+        return Tpm2PtpInterfaceCrb;
+    }
+
+    if ((Identifier->Bits.InterfaceType ==
+         PTP_INTERFACE_IDENTIFIER_INTERFACE_TYPE_FIFO) &&
+        (Identifier->Bits.InterfaceVersion ==
+         PTP_INTERFACE_IDENTIFIER_INTERFACE_VERSION_FIFO) &&
+        (Identifier->Bits.CapFIFO != 0) &&
+        (Capability->Bits.InterfaceVersion ==
+         INTERFACE_CAPABILITY_INTERFACE_VERSION_PTP)) {
+        return Tpm2PtpInterfaceFifo;
+    }
+
+    if (Identifier->Bits.InterfaceType ==
+        PTP_INTERFACE_IDENTIFIER_INTERFACE_TYPE_TIS) {
+        return Tpm2PtpInterfaceTis;
+    }
+
+    return Tpm2PtpInterfaceMax;
+}
+
+/*
+ * Assumes the presence of the register has already been confirmed via
+ * TpmCheckPtpRegisterPresence.
+ */
+STATIC
+NTSTATUS
+TpmGetPtpInterfaceType(_In_ PVOID                     Register,
+                       _Out_ TPM2_PTP_INTERFACE_TYPE* InterfaceType)
+{
+    NTSTATUS                      status     = STATUS_UNSUCCESSFUL;
+    PTP_CRB_INTERFACE_IDENTIFIER  identifier = {0};
+    PTP_FIFO_INTERFACE_CAPABILITY capability = {0};
+
+    *InterfaceType = 0;
+
+    status = MapAndReadPhysical(
+        (UINT64)(&((PTP_CRB_REGISTERS*)Register)->InterfaceId),
+        sizeof(PTP_CRB_INTERFACE_IDENTIFIER),
+        &identifier,
+        sizeof(PTP_CRB_INTERFACE_IDENTIFIER));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("MapAndReadPhysical: %x", status);
+        return status;
+    }
+
+    status = MapAndReadPhysical(
+        (UINT64) & ((PTP_FIFO_REGISTERS*)Register)->InterfaceCapability,
+        sizeof(PTP_FIFO_INTERFACE_CAPABILITY),
+        &capability,
+        sizeof(PTP_FIFO_INTERFACE_CAPABILITY));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("MapAndReadPhysical: %x", status);
+        return status;
+    }
+
+    *InterfaceType =
+        TpmExtractInterfaceTypeFromCapabilityAndId(&identifier, &capability);
+
+    return status;
+}
+
+NTSTATUS
+TpmExtractEndorsementKey()
+{
+    NTSTATUS                status   = STATUS_UNSUCCESSFUL;
+    BOOLEAN                 presence = FALSE;
+    TPM2_PTP_INTERFACE_TYPE type     = {0};
+
+    if (!TpmIsPlatformSupported())
+        return STATUS_NOT_SUPPORTED;
+
+    status = TpmCheckPtpRegisterPresence(TPM20_INTEL_BASE_PHYSICAL, &presence);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("TpmCheckPtpRegisterPresence: %x", status);
+        return status;
+    }
+
+    if (!presence) {
+        DEBUG_INFO("TPM2.0 PTP Presence not detected.");
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    status = TpmGetPtpInterfaceType(TPM20_INTEL_BASE_PHYSICAL, &type);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("TpmGetPtpInterfaceType: %x", status);
+        return status;
+    }
+
+    DEBUG_INFO("TPM2.0 PTP Interface Type: %x", (UINT32)type);
+    return status;
 }

@@ -21,6 +21,7 @@ typedef struct _SYSTEM_MODULES {
 } SYSTEM_MODULES, *PSYSTEM_MODULES;
 
 #define APC_CONTEXT_ID_STACKWALK 0x1
+#define APC_CONTEXT_ID_STARTADDRESS 0x2
 
 typedef struct _APC_CONTEXT_HEADER {
     LONG         context_id;

@@ -140,3 +140,5 @@ DetectThreadsAttachedToProtectedProcess()
     EnumerateThreadListWithCallbackRoutine(DetectAttachedThreadsProcessCallback,
                                            NULL);
 }
+
+

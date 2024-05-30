@@ -918,6 +918,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
     g_DriverConfig->has_driver_loaded = TRUE;
 
+    //TpmExtractEndorsementKey();
+
     DEBUG_INFO("Driver Entry Complete.");
     return STATUS_SUCCESS;
 }

@@ -137,6 +137,15 @@
     <ClInclude Include="util.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="types\tpmptp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="types\tpm20.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="types\tpm12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="arch.asm">

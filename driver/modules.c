@@ -1133,6 +1133,9 @@ SetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
     Context->header.allocation_in_progress = TRUE;
 }
 
+FORCEINLINE
+STATIC
+VOID
 UnsetApcAllocationInProgress(_In_ PAPC_STACKWALK_CONTEXT Context)
 {
     Context->header.allocation_in_progress = FALSE;
@@ -1485,7 +1488,7 @@ ValidateHalDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
         goto end;
     }
 
-    if (IsInstructionPointerInInvalidRegion(HalQueryBusSlots, Modules)) {
+    if (IsInstructionPointerInInvalidRegion(HalQueryBusSlots, Modules)) { 
         *Routine = HalQueryBusSlots;
         goto end;
     }

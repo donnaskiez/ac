@@ -214,7 +214,7 @@
     <Link />
     <Link>
       <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>Cng.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Cng.lib;netio.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
@@ -281,6 +281,9 @@
     <ClInclude Include="queue.h" />
     <ClInclude Include="session.h" />
     <ClInclude Include="thread.h" />
+    <ClInclude Include="types\tpm12.h" />
+    <ClInclude Include="types\tpm20.h" />
+    <ClInclude Include="types\tpmptp.h" />
     <ClInclude Include="types\types.h" />
     <ClInclude Include="util.h" />
   </ItemGroup>
