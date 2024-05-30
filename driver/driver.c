@@ -577,13 +577,13 @@ GetSystemProcessorType()
     if (cpuid[EBX_REGISTER] == CPUID_AUTHENTIC_AMD_EBX &&
         cpuid[ECX_REGISTER] == CPUID_AUTHENTIC_AMD_ECX &&
         cpuid[EDX_REGISTER] == CPUID_AUTHENTIC_AMD_EDX) {
-        g_DriverConfig->system_information.processor = GenuineIntel;
+        g_DriverConfig->system_information.processor = AuthenticAmd;
         return STATUS_SUCCESS;
     }
     else if (cpuid[EBX_REGISTER] == CPUID_GENUINE_INTEL_EBX &&
              cpuid[ECX_REGISTER] == CPUID_GENUINE_INTEL_ECX &&
              cpuid[EDX_REGISTER] == CPUID_GENUINE_INTEL_EDX) {
-        g_DriverConfig->system_information.processor = AuthenticAmd;
+        g_DriverConfig->system_information.processor = GenuineIntel;
         return STATUS_SUCCESS;
     }
     else {
@@ -918,7 +918,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
     g_DriverConfig->has_driver_loaded = TRUE;
 
-    //TpmExtractEndorsementKey();
+    TpmExtractEndorsementKey();
 
     DEBUG_INFO("Driver Entry Complete.");
     return STATUS_SUCCESS;
