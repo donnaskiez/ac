@@ -1258,6 +1258,9 @@ GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
     if (!RoutineAddress || !AverageTime)
         return STATUS_UNSUCCESSFUL;
 
+    if (!MmIsAddressValid(RoutineAddress))
+        return STATUS_INVALID_ADDRESS;
+
     *AverageTime = MeasureReads(RoutineAddress, EPT_CHECK_NUM_ITERATIONS);
 
     return *AverageTime == 0 ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
@@ -1304,8 +1307,11 @@ WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT]
  * call thereafter fails. So will be storing the routine addresses in arrays
  * since they dont change once the kernel is loaded.
  */
-UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT]     = {0};
-UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = {0};
+#pragma section("NonPagedPool", read, write)
+__declspec(allocate("NonPagedPool")) UINT64
+    CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT] = {0};
+__declspec(allocate("NonPagedPool")) UINT64
+    PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = {0};
 
 STATIC
 NTSTATUS
@@ -1407,7 +1413,7 @@ DetectEptHooksInKeyFunctions()
 }
 
 VOID
-FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
+FindWinLogonProcess(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
 {
     LPCSTR     process_name = NULL;
     PEPROCESS* process      = (PEPROCESS*)Context;
@@ -1415,10 +1421,10 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
     if (!Context)
         return;
 
-    process_name = ImpPsGetProcessImageFileName(Entry->process);
+    process_name = ImpPsGetProcessImageFileName(Node->process);
 
     if (!strcmp(process_name, "winlogon.exe"))
-        *process = Entry->process;
+        *process = Node->process;
 }
 
 STATIC
@@ -1431,7 +1437,7 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
     PEPROCESS  process   = NULL;
     KAPC_STATE apc_state = {0};
 
-    EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
+    EnumerateProcessTreeWithCallback(FindWinLogonProcess, &process);
 
     if (!process)
         return STATUS_NOT_FOUND;
@@ -2224,33 +2230,6 @@ WaitForHeartbeatCompletion(_In_ PHEARTBEAT_CONFIGURATION Configuration)
         YieldProcessor();
 }
 
-STATIC
-VOID
-HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-
-    if (!ARGUMENT_PRESENT(Context))
-        return;
-
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)Context;
-
-    /* Ensure we wait until our heartbeats DPC has terminated. */
-    KeFlushQueuedDpcs();
-    FreeHeartbeatObjects(config);
-
-    status = AllocateHeartbeatObjects(config);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
-        return;
-    }
-
-    InitialiseHeartbeatObjects(config);
-    SetHeartbeatInactive(config);
-}
-
 FORCEINLINE
 STATIC
 VOID
@@ -2291,22 +2270,17 @@ BuildHeartbeatPacket(_In_ UINT32 PacketSize)
 
 STATIC
 VOID
-HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
-                    _In_opt_ PVOID DeferredContext,
-                    _In_opt_ PVOID SystemArgument1,
-                    _In_opt_ PVOID SystemArgument2)
+HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
+    UNREFERENCED_PARAMETER(DeviceObject);
 
-    if (!ARGUMENT_PRESENT(DeferredContext))
+    if (!ARGUMENT_PRESENT(Context))
         return;
 
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
-    PHEARTBEAT_PACKET        packet = NULL;
     UINT32                   packet_size = 0;
+    NTSTATUS                 status      = STATUS_UNSUCCESSFUL;
+    PHEARTBEAT_PACKET        packet      = NULL;
+    PHEARTBEAT_CONFIGURATION config      = (PHEARTBEAT_CONFIGURATION)Context;
 
     DEBUG_VERBOSE("Heartbeat timer alerted. Generating heartbeat packet.");
 
@@ -2321,14 +2295,45 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
             ImpExFreePoolWithTag(packet, POOL_TAG_HEARTBEAT);
-            goto end;
+            goto queue_next;
         }
 
         IrpQueueSchedulePacket(packet, packet_size);
         IncrementHeartbeatCounter(config);
     }
 
-end:
+queue_next:
+    /* Ensure we wait until our heartbeats DPC has terminated. */
+    KeFlushQueuedDpcs();
+    FreeHeartbeatObjects(config);
+
+    status = AllocateHeartbeatObjects(config);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
+        return;
+    }
+
+    InitialiseHeartbeatObjects(config);
+    SetHeartbeatInactive(config);
+}
+
+STATIC
+VOID
+HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
+                    _In_opt_ PVOID DeferredContext,
+                    _In_opt_ PVOID SystemArgument1,
+                    _In_opt_ PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    if (!ARGUMENT_PRESENT(DeferredContext))
+        return;
+
+    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
+
     IoQueueWorkItem(
         config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
 }

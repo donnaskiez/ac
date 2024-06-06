@@ -1377,15 +1377,12 @@ end:
 
 /* todo: walk the chain of pointers to prevent jmp chaining */
 STATIC
-NTSTATUS
+VOID
 ValidateTableDispatchRoutines(_In_ PVOID*          Base,
                               _In_ UINT32          Entries,
                               _In_ PSYSTEM_MODULES Modules,
                               _Out_ PVOID*         Routine)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    BOOLEAN  flag   = FALSE;
-
     for (UINT32 index = 0; index < Entries; index++) {
         if (!Base[index])
             continue;
@@ -1393,8 +1390,6 @@ ValidateTableDispatchRoutines(_In_ PVOID*          Base,
         if (IsInstructionPointerInInvalidRegion(Base[index], Modules))
             *Routine = Base[index];
     }
-
-    return status;
 }
 
 /*
@@ -1447,24 +1442,14 @@ ValidateHalPrivateDispatchTable(_Out_ PVOID*         Routine,
     base  = (UINT64)table + sizeof(UINT64);
     count = GetHalPrivateDispatchTableRoutineCount(&os_info);
 
-    status = ValidateTableDispatchRoutines(base, count, Modules, Routine);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ValidateTableDispatchRoutines failed with status %x",
-                    status);
-        return status;
-    }
-
+    ValidateTableDispatchRoutines(base, count, Modules, Routine);
     return status;
 }
 
 STATIC
-NTSTATUS
+VOID
 ValidateHalDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    BOOLEAN  flag   = FALSE;
-
     *Routine = NULL;
 
     DEBUG_VERBOSE("Validating HalDispatchTable.");
@@ -1488,7 +1473,7 @@ ValidateHalDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
         goto end;
     }
 
-    if (IsInstructionPointerInInvalidRegion(HalQueryBusSlots, Modules)) { 
+    if (IsInstructionPointerInInvalidRegion(HalQueryBusSlots, Modules)) {
         *Routine = HalQueryBusSlots;
         goto end;
     }
@@ -1573,7 +1558,7 @@ ValidateHalDispatchTable(_Out_ PVOID* Routine, _In_ PSYSTEM_MODULES Modules)
     }
 
 end:
-    return status;
+    return;
 }
 
 STATIC
@@ -1627,12 +1612,7 @@ ValidateHalDispatchTables()
         return status;
     }
 
-    status = ValidateHalDispatchTable(&routine1, &modules);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ValidateHalDispatchTable failed with status %x", status);
-        goto end;
-    }
+    ValidateHalDispatchTable(&routine1, &modules);
 
     if (routine1)
         ReportDataTableInvalidRoutine(HalDispatch, routine1);
@@ -1977,7 +1957,7 @@ ValidateWin32kBase_gDxgInterface()
         goto end;
     }
 
-    EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &winlogon);
+    EnumerateProcessTreeWithCallback(FindWinLogonProcess, &winlogon);
 
     if (!winlogon) {
         status = STATUS_UNSUCCESSFUL;

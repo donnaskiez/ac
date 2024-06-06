@@ -3,8 +3,8 @@
 #include <iostream>
 
 #include "../common.h"
-#include "../helper.h"
 #include "../crypt/crypt.h"
+#include "../helper.h"
 
 #include <TlHelp32.h>
 #include <winternl.h>
@@ -95,9 +95,11 @@ void *kernel_interface::kernel_interface::get_buffer_from_event_object(
 }
 
 kernel_interface::kernel_interface::kernel_interface(
-    LPCWSTR driver_name, client::message_queue &queue)
+    LPCWSTR driver_name, client::message_queue &queue,
+    module::module_information *module_info)
     : message_queue(queue) {
   this->driver_name = driver_name;
+  this->module_info = module_info;
   this->port = INVALID_HANDLE_VALUE;
   this->driver_handle = CreateFileW(
       driver_name, GENERIC_WRITE | GENERIC_READ | GENERIC_EXECUTE, 0, 0,
@@ -146,6 +148,8 @@ void kernel_interface::kernel_interface::notify_driver_on_process_launch() {
   packet.session_cookie = 123;
   memcpy(packet.aes_key, crypt::get_test_key(), 32);
   memcpy(packet.aes_iv, crypt::get_test_iv(), 16);
+  memcpy(&packet.module_info, (void*)this->module_info,
+         sizeof(module::module_information));
   generic_driver_call_input(ioctl_code::NotifyDriverOnProcessLaunch, &packet,
                             sizeof(session_initiation_packet), &bytes_returned);
 }

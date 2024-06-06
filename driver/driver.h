@@ -52,9 +52,6 @@ GetThreadList();
 PDRIVER_LIST_HEAD
 GetDriverList();
 
-PPROCESS_LIST_HEAD
-GetProcessList();
-
 PUINT64
 GetApcContextArray();
 
@@ -81,5 +78,11 @@ IsNmiInProgress();
 
 BOOLEAN
 HasDriverLoaded();
+
+PPROCESS_TREE_HEAD
+GetProcessTreeHead();
+
+VOID
+CleanupProcessTree();
 
 #endif

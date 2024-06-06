@@ -27,17 +27,6 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 #    pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
 
-/*
- * Its important on unload we dereference any objects to ensure the kernels
- * reference count remains correct.
- */
-VOID
-CleanupProcessListFreeCallback(_In_ PPROCESS_LIST_ENTRY ProcessListEntry)
-{
-    ImpObDereferenceObject(ProcessListEntry->parent);
-    ImpObDereferenceObject(ProcessListEntry->process);
-}
-
 VOID
 CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 {
@@ -48,8 +37,8 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 VOID
 UnregisterProcessCreateNotifyRoutine()
 {
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    InterlockedExchange(&list->active, FALSE);
+    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
+    InterlockedExchange(&tree->active, FALSE);
     ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 }
 
@@ -67,24 +56,6 @@ UnregisterThreadCreateNotifyRoutine()
     PTHREAD_LIST_HEAD list = GetThreadList();
     InterlockedExchange(&list->active, FALSE);
     ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
-}
-
-/*
- * While ExDeleteLookasideListEx already frees each item, we wanna allow
- * ourselves to reduce the reference count to any objects we are referencing.
- */
-VOID
-CleanupProcessListOnDriverUnload()
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    DEBUG_VERBOSE("Freeing process list");
-    for (;;) {
-        if (!LookasideListFreeFirstEntry(
-                &list->start, &list->lock, CleanupProcessListFreeCallback)) {
-            ExDeleteLookasideListEx(&list->lookaside_list);
-            return;
-        }
-    }
 }
 
 VOID
@@ -126,27 +97,6 @@ EnumerateThreadListWithCallbackRoutine(
     while (entry) {
         CallbackRoutine(entry, Context);
         entry = (PTHREAD_LIST_ENTRY)entry->list.Next;
-    }
-
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
-}
-
-VOID
-EnumerateProcessListWithCallbackRoutine(
-    _In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-
-    if (!CallbackRoutine)
-        goto unlock;
-
-    PPROCESS_LIST_ENTRY entry = list->start.Next;
-
-    while (entry) {
-        CallbackRoutine(entry, Context);
-        entry = (PPROCESS_LIST_ENTRY)entry->list.Next;
     }
 
 unlock:
@@ -283,6 +233,80 @@ unlock:
     ImpKeReleaseGuardedMutex(&list->lock);
 }
 
+STATIC
+RTL_GENERIC_COMPARE_RESULTS
+ProcessTreeCompareNode(_In_ RTL_GENERIC_TABLE  Table,
+                       _In_ PPROCESS_TREE_NODE Struct1,
+                       _In_ PPROCESS_TREE_NODE Struct2)
+{
+    if ((UINT64)Struct1->process < (UINT64)Struct2->process)
+        return GenericLessThan;
+    else if ((UINT64)Struct1->process > (UINT64)Struct2->process)
+        return GenericGreaterThan;
+    else
+        return GenericEqual;
+}
+
+STATIC
+PVOID
+ProcessTreeAllocateNode(_In_ RTL_GENERIC_TABLE Table, _In_ CLONG ByteSize)
+{
+    /* We initialize the members once allocated. */
+    return ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED, ByteSize, POOL_TAG_MODULE_TREE);
+}
+
+STATIC
+VOID
+ProcessTreeFreeNode(_In_ RTL_GENERIC_TABLE Table, _In_ PVOID Buffer)
+{
+    ImpExFreePoolWithTag(Buffer, POOL_TAG_MODULE_TREE);
+}
+
+STATIC
+VOID
+ImageLoadInsertNonSystemImageIntoProcessTree(_In_ PIMAGE_INFO ImageInfo,
+                                             _In_ HANDLE      ProcessId)
+{
+    NTSTATUS                        status  = STATUS_UNSUCCESSFUL;
+    PEPROCESS                       process = NULL;
+    PPROCESS_TREE_NODE              node    = NULL;
+    PPROCESS_TREE_HEAD              tree    = GetProcessTreeHead();
+    PPROCESS_TREE_MODULE_LIST_ENTRY entry   = NULL;
+
+    status = PsLookupProcessByProcessId(ProcessId, &process);
+
+    if (!NT_SUCCESS(status))
+        return;
+
+    KeAcquireGuardedMutex(&tree->lock);
+
+    /* the PEPROCESS is the first element and is the only thing compared, hence
+     * we can simply pass it in the context parameter.*/
+    node = RtlLookupElementGenericTable(&tree->table, &process);
+
+    /* critical error has occured */
+    if (!node) {
+        DEBUG_ERROR("RtlLookupElementGenericTable failed.");
+        goto end;
+    }
+
+    entry = ExAllocateFromLookasideListEx(&tree->module_list_entry_lookaside);
+
+    if (!entry)
+        goto end;
+
+    /* for now lets just do base and size */
+    entry->base = ImageInfo->ImageBase;
+    entry->size = ImageInfo->ImageSize;
+
+    InsertHeadList(&node->module_list, &entry->entry);
+    node->list_count++;
+
+end:
+    KeReleaseGuardedMutex(&tree->lock);
+}
+
 VOID
 ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
@@ -299,8 +323,10 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     if (InterlockedExchange(&list->active, list->active) == FALSE)
         return;
 
-    if (ImageInfo->SystemModeImage == FALSE)
+    if (ImageInfo->SystemModeImage == FALSE) {
+        ImageLoadInsertNonSystemImageIntoProcessTree(ImageInfo, ProcessId);
         return;
+    }
 
     FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
 
@@ -359,29 +385,57 @@ hash:
     ListInsert(&list->start, entry, &list->lock);
 }
 
+/*
+ * I have chosen to refactor this to use a Splay tree (RTL_GENERIC_TABLE) for
+ * the storage of both processes and associated modules. The reasons for this is
+ * as follows:
+ *
+ * 1. Splay trees are self-balancing in the regard that recently used nodes will
+ * be closer to the root. Due to the fact we are wanting to store modules, once
+ * a process is launched and subsequent modules are loaded, the process
+ * associated with these processes will live near the root - allowing for faster
+ * access.
+ *
+ * 2. The initial implementation was a simple linked list of processes, but the
+ * need to safely access loaded modules for that process became a need. So an
+ * unoredered linked-list full of modules would incur way too much overhead in
+ * lookups and deletions.
+ * 
+ * So the end implementation is a splay tree.
+ */
 NTSTATUS
-InitialiseProcessList()
+InitialiseProcessTree()
 {
-    NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    PPROCESS_LIST_HEAD list   = GetProcessList();
+    PAGED_CODE();
 
-    status = ExInitializeLookasideListEx(&list->lookaside_list,
+    NTSTATUS           status = STATUS_UNSUCCESSFUL;
+    PPROCESS_TREE_HEAD tree   = GetProcessTreeHead();
+
+    DEBUG_VERBOSE("Initialising process tree");
+
+    RtlInitializeGenericTable(&tree->table,
+                              ProcessTreeCompareNode,
+                              ProcessTreeAllocateNode,
+                              ProcessTreeFreeNode,
+                              NULL);
+
+    KeInitializeGuardedMutex(&tree->lock);
+
+    status = ExInitializeLookasideListEx(&tree->module_list_entry_lookaside,
                                          NULL,
                                          NULL,
                                          POOL_NX_ALLOCATION,
                                          0,
-                                         sizeof(PROCESS_LIST_ENTRY),
-                                         POOL_TAG_PROCESS_LIST,
+                                         sizeof(PROCESS_TREE_MODULE_LIST_ENTRY),
+                                         POOL_TAG_USER_MODULE_LIST,
                                          0);
 
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x",
-                    status);
+    if (!NT_SUCCESS(status))
         return status;
-    }
 
-    InterlockedExchange(&list->active, TRUE);
-    ListInit(&list->start, &list->lock);
+    tree->active = TRUE;
+    DEBUG_VERBOSE("Process tree is successfully active!");
+
     return status;
 }
 
@@ -409,28 +463,6 @@ InitialiseThreadList()
     InterlockedExchange(&list->active, TRUE);
     ListInit(&list->start, &list->lock);
     return status;
-}
-
-VOID
-FindProcessListEntryByProcess(_In_ PKPROCESS             Process,
-                              _Out_ PPROCESS_LIST_ENTRY* Entry)
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-    *Entry = NULL;
-
-    PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)list->start.Next;
-
-    while (entry) {
-        if (entry->process == Process) {
-            *Entry = entry;
-            goto unlock;
-        }
-
-        entry = entry->list.Next;
-    }
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
@@ -464,19 +496,128 @@ CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
                                                                    : FALSE;
 }
 
+FORCEINLINE
+STATIC
+VOID
+InitialiseProcessNodeEntry(_In_ PPROCESS_TREE_NODE Node,
+                           _In_ PEPROCESS          Process,
+                           _In_ PEPROCESS          Parent)
+{
+    ImpObfReferenceObject(Parent);
+    ImpObfReferenceObject(Process);
+
+    Node->parent  = Parent;
+    Node->process = Process;
+
+    InitializeListHead(&Node->module_list);
+    Node->list_count = 0;
+}
+
+FORCEINLINE
+STATIC
+VOID
+FreeProcessNodeModuleList(_In_ PPROCESS_TREE_NODE Node)
+{
+    PPROCESS_TREE_HEAD              tree  = GetProcessTreeHead();
+    PLIST_ENTRY                     list  = NULL;
+    PPROCESS_TREE_MODULE_LIST_ENTRY entry = NULL;
+
+    while (!IsListEmpty(&Node->module_list)) {
+        list  = RemoveHeadList(&Node->module_list);
+        entry = CONTAINING_RECORD(list, PROCESS_TREE_MODULE_LIST_ENTRY, entry);
+
+        ExFreeToLookasideListEx(&tree->module_list_entry_lookaside, entry);
+    }
+}
+
+VOID
+EnumerateProcessTreeWithCallback(
+    _In_ PROCESS_TREE_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
+{
+    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
+    PPROCESS_TREE_NODE node = NULL;
+
+    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
+         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
+        CallbackRoutine(node, Context);
+    }
+}
+
+VOID
+CleanupProcessTree()
+{
+    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
+    PPROCESS_TREE_NODE node = NULL;
+
+    tree->active = FALSE;
+
+    KeAcquireGuardedMutex(&tree->lock);
+
+    /* We could do this in a single pass, but this is good enough for now -
+     * especially when performance doesnt really matter since we are unloading
+     * the driver... Will fix later.*/
+    EnumerateProcessTreeWithCallback(FreeProcessNodeModuleList, NULL);
+
+    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
+         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
+        RtlDeleteElementGenericTable(&tree->table, node);
+    }
+
+    ExDeleteLookasideListEx(&tree->module_list_entry_lookaside);
+
+end:
+    KeReleaseGuardedMutex(&tree->lock);
+}
+
+#if DEBUG
+STATIC
+VOID
+PrintEntireProcessTreeWithModules()
+{
+    PPROCESS_TREE_HEAD              tree   = get_process_tree_head();
+    PPROCESS_TREE_NODE              node   = NULL;
+    PLIST_ENTRY                     entry  = NULL;
+    PPROCESS_TREE_MODULE_LIST_ENTRY module = NULL;
+
+    KeAcquireGuardedMutex(&tree->lock);
+
+    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
+         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
+        DEBUG_VERBOSE("Process: %p, Parent: %p, Module Count: %u",
+                      node->process,
+                      node->parent,
+                      node->list_count);
+
+        // Iterate through the module list for the current process
+        for (entry = node->module_list.Flink; entry != &node->module_list;
+             entry = entry->Flink) {
+            module =
+                CONTAINING_RECORD(entry, PROCESS_TREE_MODULE_LIST_ENTRY, entry);
+            DEBUG_VERBOSE("  Module Base: %llx, Size: %x, Path: %s",
+                          module->base,
+                          module->size,
+                          module->path);
+        }
+    }
+
+    KeReleaseGuardedMutex(&tree->lock);
+}
+#endif
+
 VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
                            _In_ BOOLEAN Create)
 {
-    PPROCESS_LIST_ENTRY entry        = NULL;
-    PKPROCESS           parent       = NULL;
-    PKPROCESS           process      = NULL;
-    PPROCESS_LIST_HEAD  list         = GetProcessList();
-    PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
-    LPCSTR              process_name = NULL;
+    BOOLEAN new                     = FALSE;
+    PKPROCESS          parent       = NULL;
+    PKPROCESS          process      = NULL;
+    PDRIVER_LIST_HEAD  driver_list  = GetDriverList();
+    LPCSTR             process_name = NULL;
+    PPROCESS_TREE_HEAD tree         = GetProcessTreeHead();
+    PPROCESS_TREE_NODE node         = NULL;
 
-    if (!list->active)
+    if (!tree->active)
         return;
 
     ImpPsLookupProcessByProcessId(ParentId, &parent);
@@ -487,20 +628,18 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
+    KeAcquireGuardedMutex(&tree->lock);
+
     if (Create) {
-        entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
+        node = RtlInsertElementGenericTable(
+            &tree->table, &process, sizeof(PROCESS_TREE_NODE), &new);
 
-        if (!entry)
-            return;
+        if (!new) {
+            DEBUG_ERROR("Unable to insert new process tree node!");
+            goto end;
+        }
 
-        ImpObfReferenceObject(parent);
-        ImpObfReferenceObject(process);
-
-        entry->parent  = parent;
-        entry->process = process;
-
-        ListInsert(&list->start, entry, &list->lock);
-
+        InitialiseProcessNodeEntry(node, process, parent);
         /*
          * Notify to our driver that we can hash x86 modules, and hash
          * any x86 modules that werent hashed.
@@ -511,18 +650,33 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                             NormalWorkQueue,
                             NULL);
         }
+
+        DEBUG_VERBOSE("Inserted process node: %llx", (UINT64)process);
     }
     else {
-        FindProcessListEntryByProcess(process, &entry);
+        node = RtlLookupElementGenericTable(&tree->table, &process);
 
-        if (!entry)
-            return;
+        if (!node) {
+            DEBUG_ERROR("UNABLE TO FIND PROCESS NODE!!!");
+            goto end;
+        }
 
-        ImpObDereferenceObject(entry->parent);
-        ImpObDereferenceObject(entry->process);
+        FreeProcessNodeModuleList(node);
 
-        LookasideListRemoveEntry(&list->start, entry, &list->lock);
+        ImpObDereferenceObject(node->parent);
+        ImpObDereferenceObject(node->process);
+
+        if (!RtlDeleteElementGenericTable(&tree->table, node)) {
+            DEBUG_ERROR("Failed to delete node from process tree: %llx",
+                        (UINT64)node);
+            goto end;
+        }
+
+        DEBUG_VERBOSE("Removed process node: %llx", (UINT64)process);
     }
+
+end:
+    KeReleaseGuardedMutex(&tree->lock);
 }
 
 VOID
@@ -954,22 +1108,21 @@ end:
 }
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
-                        _In_opt_ PVOID           Context)
+EnumerateProcessHandles(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
 {
     /* Handles are stored in pageable memory */
     PAGED_CODE();
 
     UNREFERENCED_PARAMETER(Context);
 
-    if (!ProcessListEntry)
+    if (!Node)
         return STATUS_INVALID_PARAMETER;
 
-    if (ProcessListEntry->process == PsInitialSystemProcess)
+    if (Node->process == PsInitialSystemProcess)
         return STATUS_SUCCESS;
 
     PHANDLE_TABLE handle_table =
-        *(PHANDLE_TABLE*)((uintptr_t)ProcessListEntry->process +
+        *(PHANDLE_TABLE*)((uintptr_t)Node->process +
                           EPROCESS_HANDLE_TABLE_OFFSET);
 
     if (!handle_table)
@@ -995,9 +1148,10 @@ VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
                            _In_opt_ PVOID      Context)
 {
-    NTSTATUS          status = STATUS_UNSUCCESSFUL;
-    PTIMER_OBJECT     timer  = (PTIMER_OBJECT)Context;
-    PDRIVER_LIST_HEAD list   = GetDriverList();
+    NTSTATUS          status  = STATUS_UNSUCCESSFUL;
+    PTIMER_OBJECT     timer   = (PTIMER_OBJECT)Context;
+    PDRIVER_LIST_HEAD list    = GetDriverList();
+    PACTIVE_SESSION   session = GetActiveSession();
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -1018,6 +1172,15 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("ValidateOurDriverImage failed with status %x", status);
 
+    KeAcquireGuardedMutex(&session->lock);
+    if (!session->is_session_active) {
+        KeReleaseGuardedMutex(&session->lock);
+        goto end;
+    }
+
+    // note 2 self: not sure if the incoming messages are encrypted yet.
+
+    KeReleaseGuardedMutex(&session->lock);
 end:
     InterlockedExchange(&timer->state, FALSE);
 }

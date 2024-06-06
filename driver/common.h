@@ -48,7 +48,7 @@
 #define STATIC static
 #define INLINE inline
 
-#define MAX_MODULE_PATH 256
+#define MAX_MODULE_PATH 260
 
 #define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
     ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
@@ -65,14 +65,6 @@ typedef struct _THREAD_LIST_HEAD {
     LOOKASIDE_LIST_EX lookaside_list;
 
 } THREAD_LIST_HEAD, *PTHREAD_LIST_HEAD;
-
-typedef struct _PROCESS_LIST_HEAD {
-    SINGLE_LIST_ENTRY start;
-    volatile BOOLEAN  active;
-    KGUARDED_MUTEX    lock;
-    LOOKASIDE_LIST_EX lookaside_list;
-
-} PROCESS_LIST_HEAD, *PPROCESS_LIST_HEAD;
 
 typedef struct _DRIVER_LIST_HEAD {
     SINGLE_LIST_ENTRY start;
@@ -97,12 +89,34 @@ typedef struct _THREAD_LIST_ENTRY {
 
 } THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
 
-typedef struct _PROCESS_LIST_ENTRY {
-    SINGLE_LIST_ENTRY list;
-    PKPROCESS         process;
-    PKPROCESS         parent;
+typedef struct _PROCESS_TREE_HEAD {
+    RTL_GENERIC_TABLE table;
+    volatile UINT32   active;
+    KGUARDED_MUTEX    lock;
 
-} PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
+    /* This lookaside list is for modules*/
+    LOOKASIDE_LIST_EX module_list_entry_lookaside;
+
+    /* aaand this is for the tree nodes */
+    //LOOKASIDE_LIST_EX tree_node_lookaside;
+
+} PROCESS_TREE_HEAD, *PPROCESS_TREE_HEAD;
+
+typedef struct _PROCESS_TREE_MODULE_LIST_ENTRY {
+    LIST_ENTRY entry;
+    UINT64     base;
+    UINT32     size;
+    CHAR       path[MAX_MODULE_PATH];
+} PROCESS_TREE_MODULE_LIST_ENTRY, *PPROCESS_TREE_MODULE_LIST_ENTRY;
+
+typedef struct _PROCESS_TREE_NODE {
+    /* IMPORTANT THIS IS FIRST!*/
+    PEPROCESS      process;
+
+    PEPROCESS      parent;
+    LIST_ENTRY     module_list;
+    UINT32         list_count;
+} PROCESS_TREE_NODE, *PPROCESS_TREE_NODE;
 
 /*
  * ioctl_flag consists of the first 16 bits of the Function part of the CTL code
@@ -237,16 +251,24 @@ typedef struct _HEARTBEAT_CONFIGURATION {
 
 } HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
 
+typedef struct _MODULE_INFORMATION {
+    PVOID  base_address;
+    UINT32 size;
+    CHAR   path[MAX_MODULE_PATH];
+
+} MODULE_INFORMATION, *PMODULE_INFORMATION;
+
 typedef struct _SESSION_INITIATION_PACKET {
-    UINT32 cookie;
-    PVOID  process_id;
-    UCHAR  aes_key[AES_256_KEY_SIZE];
-    UCHAR  aes_iv[AES_256_IV_SIZE];
+    UINT32             cookie;
+    PVOID              process_id;
+    UCHAR              aes_key[AES_256_KEY_SIZE];
+    UCHAR              aes_iv[AES_256_IV_SIZE];
+    MODULE_INFORMATION module_info;
 
 } SESSION_INITIATION_PACKET, *PSESSION_INITIATION_PACKET;
 
 typedef struct _ACTIVE_SESSION {
-    BOOLEAN             is_session_active;
+    volatile BOOLEAN    is_session_active;
     PVOID               um_handle;
     PVOID               km_handle;
     PEPROCESS           process;
@@ -268,6 +290,8 @@ typedef struct _ACTIVE_SESSION {
         UINT32 report_count;
         UINT32 heartbeat_count;
     };
+
+    MODULE_INFORMATION module;
 
     HEARTBEAT_CONFIGURATION heartbeat_config;
     KGUARDED_MUTEX          lock;
@@ -306,9 +330,12 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_LIST_ITEM             'tsil'
 #define POOL_TAG_THREAD_LIST           'list'
 #define POOL_TAG_PROCESS_LIST          'plis'
+#define POOL_TAG_USER_MODULE_LIST      'resu'
+#define POOL_TAG_USER_MODULE_NODE      'edon'
 #define POOL_TAG_DRIVER_LIST           'drvl'
 #define POOL_TAG_IRP_QUEUE             'irpp'
 #define POOL_TAG_TIMER                 'time'
+#define POOL_TAG_MODULE_TREE           'eert'
 
 #define IA32_APERF_MSR 0x000000E8
 

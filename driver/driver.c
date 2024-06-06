@@ -95,12 +95,12 @@ typedef struct _DRIVER_CONFIG {
     /* terrible name..lol what is tis timer for ?? */
     TIMER_OBJECT timer;
 
-    ACTIVE_SESSION    session_information;
-    THREAD_LIST_HEAD  thread_list;
-    DRIVER_LIST_HEAD  driver_list;
-    PROCESS_LIST_HEAD process_list;
-    SHARED_MAPPING    mapping;
-    BOOLEAN           has_driver_loaded;
+    ACTIVE_SESSION        session_information;
+    THREAD_LIST_HEAD      thread_list;
+    DRIVER_LIST_HEAD      driver_list;
+    PROCESS_TREE_HEAD     process_tree;
+    SHARED_MAPPING        mapping;
+    BOOLEAN               has_driver_loaded;
 
     BCRYPT_ALG_HANDLE alg_handle;
 
@@ -121,6 +121,12 @@ UNICODE_STRING g_DeviceSymbolicLink = RTL_CONSTANT_STRING(L"\\??\\DonnaAC");
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
+
+PPROCESS_TREE_HEAD
+GetProcessTreeHead()
+{
+    return &g_DriverConfig->process_tree;
+}
 
 BCRYPT_ALG_HANDLE*
 GetCryptAlgHandle()
@@ -271,13 +277,6 @@ GetDriverList()
     return &g_DriverConfig->driver_list;
 }
 
-PPROCESS_LIST_HEAD
-GetProcessList()
-{
-    PAGED_CODE();
-    return &g_DriverConfig->process_list;
-}
-
 /*
  * The question is, What happens if we attempt to register our callbacks after
  * we unregister them but before we free the pool? Hm.. No Good.
@@ -350,7 +349,7 @@ VOID
 DrvUnloadFreeProcessList()
 {
     PAGED_CODE();
-    CleanupProcessListOnDriverUnload();
+    CleanupProcessTree();
 }
 
 STATIC
@@ -470,7 +469,7 @@ DrvLoadSetupDriverLists()
         return status;
     }
 
-    status = InitialiseProcessList();
+    status = InitialiseProcessTree();
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("InitialiseProcessList failed with status %x", status);

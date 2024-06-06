@@ -448,6 +448,8 @@ TpmGetPtpInterfaceType(_In_ PVOID                     Register,
     return status;
 }
 
+
+
 NTSTATUS
 TpmExtractEndorsementKey()
 {

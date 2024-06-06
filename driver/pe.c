@@ -5,6 +5,9 @@ PeGetNtHeader(_In_ PVOID Image)
 {
     PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)Image;
 
+    if (!MmIsAddressValid(Image))
+        return NULL;
+
     if (dos->e_magic != IMAGE_DOS_SIGNATURE)
         return NULL;
 
@@ -15,6 +18,9 @@ PIMAGE_DATA_DIRECTORY
 PeGetExportDataDirectory(_In_ PVOID Image)
 {
     PNT_HEADER_64 nt = PeGetNtHeader(Image);
+
+    if (!MmIsAddressValid(Image))
+        return NULL;
 
     if (IMAGE_DIRECTORY_ENTRY_EXPORT >= nt->OptionalHeader.NumberOfRvaAndSizes)
         return NULL;
@@ -27,6 +33,9 @@ PIMAGE_EXPORT_DIRECTORY
 PeGetExportDirectory(_In_ PVOID                 Image,
                      _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
 {
+    if (!MmIsAddressValid(Image))
+        return NULL;
+
     if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
         return NULL;
 

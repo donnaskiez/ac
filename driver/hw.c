@@ -310,13 +310,13 @@ PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
         DEBUG_VERBOSE("Flagged DeviceID found. Device: %llx, DeviceId: %lx",
                       (UINT64)DeviceObject,
                       header.DeviceID);
+        ReportBlacklistedPcieDevice(DeviceObject, &header);
     }
     else {
         DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
                       DeviceObject,
                       header.DeviceID,
                       header.VendorID);
-        ReportBlacklistedPcieDevice(DeviceObject, &header);
     }
 
     return status;

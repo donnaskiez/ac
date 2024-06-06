@@ -119,7 +119,7 @@ DeferredModuleHashingCallback(_In_ PDEVICE_OBJECT DeviceObject,
                               _In_opt_ PVOID      Context);
 
 VOID
-FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context);
+FindWinLogonProcess(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context);
 
 NTSTATUS
 InitialiseHeartbeatConfiguration(

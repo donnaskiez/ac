@@ -3,7 +3,10 @@
 #include "threadpool.h"
 
 #include "timer.h"
+
 #include "../kernel_interface/kernel_interface.h"
+
+#include "../module.h"
 
 namespace dispatcher {
 
@@ -18,6 +21,7 @@ class dispatcher {
   timer timers;
   thread_pool thread_pool;
   kernel_interface::kernel_interface k_interface;
+  module::module_information *module_info;
 
   void issue_kernel_job();
   void write_shared_mapping_operation();
@@ -27,7 +31,7 @@ class dispatcher {
   void request_session_pk();
 
 public:
-  dispatcher(LPCWSTR driver_name, client::message_queue &queue);
+  dispatcher(LPCWSTR driver_name, client::message_queue &queue, module::module_information* module_info);
   void run();
 };
 } // namespace dispatcher

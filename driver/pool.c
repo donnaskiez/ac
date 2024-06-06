@@ -83,13 +83,12 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context);
 
 STATIC
 VOID
-IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
-                        _Inout_opt_ PVOID        Context);
+IncrementProcessCounter(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context);
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(
-    _In_ PPROCESS_LIST_ENTRY ProcessListEntry, _Inout_opt_ PVOID Context);
+CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_TREE_NODE Node,
+                                        _In_opt_ PVOID          Context);
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, GetGlobalDebuggerData)
@@ -629,12 +628,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
 STATIC
 VOID
-IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
-                        _Inout_opt_ PVOID        Context)
+IncrementProcessCounter(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
 {
     PAGED_CODE();
 
-    UNREFERENCED_PARAMETER(ProcessListEntry);
+    UNREFERENCED_PARAMETER(Node);
 
     PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
@@ -646,8 +644,8 @@ IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(
-    _In_ PPROCESS_LIST_ENTRY ProcessListEntry, _Inout_opt_ PVOID Context)
+CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_TREE_NODE Node,
+                                        _In_opt_ PVOID          Context)
 {
     PAGED_CODE();
 
@@ -660,9 +658,9 @@ CheckIfProcessAllocationIsInProcessList(
     for (INT i = 0; i < context->process_count; i++) {
         allocation_address = (PUINT64)context->process_buffer;
 
-        if ((UINT64)ProcessListEntry->process >=
+        if ((UINT64)Node->process >=
                 allocation_address[i] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
-            (UINT64)ProcessListEntry->process <=
+            (UINT64)Node->process <=
                 allocation_address[i] + PROCESS_OBJECT_ALLOCATION_MARGIN) {
             RtlZeroMemory((UINT64)context->process_buffer + i * sizeof(UINT64),
                           sizeof(UINT64));
@@ -686,7 +684,7 @@ FindUnlinkedProcesses()
     UINT32 packet_size = CryptRequestRequiredBufferLength(
         sizeof(INVALID_PROCESS_ALLOCATION_REPORT));
 
-    EnumerateProcessListWithCallbackRoutine(IncrementProcessCounter, &context);
+    EnumerateProcessTreeWithCallback(IncrementProcessCounter, &context);
 
     if (context.process_count == 0) {
         DEBUG_ERROR("IncrementProcessCounter failed with no status.");
@@ -703,8 +701,8 @@ FindUnlinkedProcesses()
 
     WalkKernelPageTables(&context);
 
-    EnumerateProcessListWithCallbackRoutine(
-        CheckIfProcessAllocationIsInProcessList, &context);
+    EnumerateProcessTreeWithCallback(CheckIfProcessAllocationIsInProcessList,
+                                     &context);
 
     allocation_address = (PUINT64)context.process_buffer;
 
