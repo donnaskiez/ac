@@ -12,6 +12,8 @@
 #include "crypt.h"
 #include "map.h"
 
+#define PROCESS_HASHMAP_BUCKET_COUNT 101
+
 STATIC
 BOOLEAN
 EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
@@ -248,7 +250,7 @@ STATIC
 UINT32
 ProcessHashmapHashFunction(_In_ UINT64 Key)
 {
-    return ((UINT32)Key) % 101;
+    return ((UINT32)Key) % PROCESS_HASHMAP_BUCKET_COUNT;
 }
 
 STATIC
@@ -466,7 +468,7 @@ InitialiseProcessHashmap()
         return status;
     }
 
-    status = RtlCreateHashmap(101,
+    status = RtlCreateHashmap(PROCESS_HASHMAP_BUCKET_COUNT,
                               sizeof(PROCESS_LIST_ENTRY),
                               ProcessHashmapHashFunction,
                               ProcessHashmapCompareFunction,
