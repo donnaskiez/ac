@@ -89,34 +89,25 @@ typedef struct _THREAD_LIST_ENTRY {
 
 } THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
 
-typedef struct _PROCESS_TREE_HEAD {
-    RTL_GENERIC_TABLE table;
-    volatile UINT32   active;
-    KGUARDED_MUTEX    lock;
+typedef struct _PROCESS_MODULE_MAP_CONTEXT {
+    LOOKASIDE_LIST_EX pool;
+} PROCESS_MODULE_MAP_CONTEXT, *PPROCESS_MODULE_MAP_CONTEXT;
 
-    /* This lookaside list is for modules*/
-    LOOKASIDE_LIST_EX module_list_entry_lookaside;
-
-    /* aaand this is for the tree nodes */
-    //LOOKASIDE_LIST_EX tree_node_lookaside;
-
-} PROCESS_TREE_HEAD, *PPROCESS_TREE_HEAD;
-
-typedef struct _PROCESS_TREE_MODULE_LIST_ENTRY {
+typedef struct _PROCESS_MAP_MODULE_ENTRY {
     LIST_ENTRY entry;
     UINT64     base;
     UINT32     size;
     CHAR       path[MAX_MODULE_PATH];
-} PROCESS_TREE_MODULE_LIST_ENTRY, *PPROCESS_TREE_MODULE_LIST_ENTRY;
+} PROCESS_MAP_MODULE_ENTRY, *PPROCESS_MAP_MODULE_ENTRY;
 
-typedef struct _PROCESS_TREE_NODE {
+typedef struct _PROCESS_LIST_ENTRY {
     /* IMPORTANT THIS IS FIRST!*/
-    PEPROCESS      process;
-
-    PEPROCESS      parent;
-    LIST_ENTRY     module_list;
-    UINT32         list_count;
-} PROCESS_TREE_NODE, *PPROCESS_TREE_NODE;
+    HANDLE          process_id;
+    PEPROCESS       process;
+    PEPROCESS       parent;
+    LIST_ENTRY      module_list;
+    volatile UINT32 list_count;
+} PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
 /*
  * ioctl_flag consists of the first 16 bits of the Function part of the CTL code
@@ -335,7 +326,8 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_DRIVER_LIST           'drvl'
 #define POOL_TAG_IRP_QUEUE             'irpp'
 #define POOL_TAG_TIMER                 'time'
-#define POOL_TAG_MODULE_TREE           'eert'
+#define POOL_TAG_MODULE_LIST           'elom'
+#define POOL_TAG_HASHMAP               'hsah'
 
 #define IA32_APERF_MSR 0x000000E8
 

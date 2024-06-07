@@ -41,3 +41,9 @@ MapAndReadPhysical(_In_ UINT64 PhysicalAddress,
     MmUnmapIoSpace(va, ReadLength);
     return STATUS_SUCCESS;
 }
+
+NTSTATUS
+UnicodeToCharBufString(_In_ PUNICODE_STRING UnicodeString, _Out_ PCHAR OutBuffer)
+{
+
+}

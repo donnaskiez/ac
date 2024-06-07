@@ -33,8 +33,7 @@ typedef struct _DRIVER_LIST_ENTRY {
 typedef void (*DRIVERLIST_CALLBACK_ROUTINE)(
     _In_ PDRIVER_LIST_ENTRY DriverListEntry, _In_opt_ PVOID Context);
 
-typedef void (*PROCESS_TREE_CALLBACK_ROUTINE)(_In_ PPROCESS_TREE_NODE Node,
-                                              _In_opt_ PVOID          Context);
+
 
 NTSTATUS
 InitialiseDriverList();
@@ -121,13 +120,15 @@ DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
                                     _Out_ PRTL_MODULE_EXTENDED_INFO Extended);
 
 NTSTATUS
-InitialiseProcessTree();
-
-VOID
-EnumerateProcessTreeWithCallback(
-    _In_ PROCESS_TREE_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context);
+InitialiseProcessHashmap();
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context);
+EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context);
+
+VOID
+EnumerateAndPrintProcessHashmap();
+
+VOID
+CleanupProcessHashmap();
 
 #endif

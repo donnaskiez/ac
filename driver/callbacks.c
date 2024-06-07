@@ -10,6 +10,7 @@
 #include "list.h"
 #include "session.h"
 #include "crypt.h"
+#include "map.h"
 
 STATIC
 BOOLEAN
@@ -37,8 +38,8 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 VOID
 UnregisterProcessCreateNotifyRoutine()
 {
-    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
-    InterlockedExchange(&tree->active, FALSE);
+    PRTL_HASHMAP map = GetProcessHashmap();
+    InterlockedExchange(&map->active, FALSE);
     ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 }
 
@@ -234,77 +235,71 @@ unlock:
 }
 
 STATIC
-RTL_GENERIC_COMPARE_RESULTS
-ProcessTreeCompareNode(_In_ RTL_GENERIC_TABLE  Table,
-                       _In_ PPROCESS_TREE_NODE Struct1,
-                       _In_ PPROCESS_TREE_NODE Struct2)
+BOOLEAN
+ProcessHashmapCompareFunction(_In_ PVOID Struct1, _In_ PVOID Struct2)
 {
-    if ((UINT64)Struct1->process < (UINT64)Struct2->process)
-        return GenericLessThan;
-    else if ((UINT64)Struct1->process > (UINT64)Struct2->process)
-        return GenericGreaterThan;
-    else
-        return GenericEqual;
+    HANDLE h1 = *((PHANDLE)Struct1);
+    HANDLE h2 = *((PHANDLE)Struct2);
+
+    return h1 == h2 ? TRUE : FALSE;
 }
 
 STATIC
-PVOID
-ProcessTreeAllocateNode(_In_ RTL_GENERIC_TABLE Table, _In_ CLONG ByteSize)
+UINT32
+ProcessHashmapHashFunction(_In_ UINT64 Key)
 {
-    /* We initialize the members once allocated. */
-    return ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, ByteSize, POOL_TAG_MODULE_TREE);
+    return ((UINT32)Key) % 101;
 }
 
 STATIC
 VOID
-ProcessTreeFreeNode(_In_ RTL_GENERIC_TABLE Table, _In_ PVOID Buffer)
+ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
+                                                _In_ HANDLE      ProcessId,
+                                                _In_opt_ PUNICODE_STRING
+                                                    FullImageName)
 {
-    ImpExFreePoolWithTag(Buffer, POOL_TAG_MODULE_TREE);
-}
+    NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
+    PEPROCESS                   process = NULL;
+    PRTL_HASHMAP                map     = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY         entry   = NULL;
+    PPROCESS_MAP_MODULE_ENTRY   module  = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
 
-STATIC
-VOID
-ImageLoadInsertNonSystemImageIntoProcessTree(_In_ PIMAGE_INFO ImageInfo,
-                                             _In_ HANDLE      ProcessId)
-{
-    NTSTATUS                        status  = STATUS_UNSUCCESSFUL;
-    PEPROCESS                       process = NULL;
-    PPROCESS_TREE_NODE              node    = NULL;
-    PPROCESS_TREE_HEAD              tree    = GetProcessTreeHead();
-    PPROCESS_TREE_MODULE_LIST_ENTRY entry   = NULL;
+    if (!map->active)
+        return;
 
     status = PsLookupProcessByProcessId(ProcessId, &process);
 
     if (!NT_SUCCESS(status))
         return;
 
-    KeAcquireGuardedMutex(&tree->lock);
+    KeAcquireGuardedMutex(&map->lock);
 
     /* the PEPROCESS is the first element and is the only thing compared, hence
      * we can simply pass it in the context parameter.*/
-    node = RtlLookupElementGenericTable(&tree->table, &process);
+    entry = RtlLookupEntryHashmap(GetProcessHashmap(), ProcessId, &ProcessId);
 
     /* critical error has occured */
-    if (!node) {
-        DEBUG_ERROR("RtlLookupElementGenericTable failed.");
+    if (!entry) {
+        DEBUG_ERROR("RtlLookupEntryHashmap failed.");
         goto end;
     }
 
-    entry = ExAllocateFromLookasideListEx(&tree->module_list_entry_lookaside);
+    context = (PPROCESS_MODULE_MAP_CONTEXT)map->context;
+    module  = ExAllocateFromLookasideListEx(&context->pool);
 
-    if (!entry)
+    if (!module)
         goto end;
 
     /* for now lets just do base and size */
-    entry->base = ImageInfo->ImageBase;
-    entry->size = ImageInfo->ImageSize;
+    module->base = ImageInfo->ImageBase;
+    module->size = ImageInfo->ImageSize;
 
-    InsertHeadList(&node->module_list, &entry->entry);
-    node->list_count++;
+    InsertTailList(&entry->module_list, &module->entry);
+    entry->list_count++;
 
 end:
-    KeReleaseGuardedMutex(&tree->lock);
+    KeReleaseGuardedMutex(&map->lock);
 }
 
 VOID
@@ -324,7 +319,8 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
         return;
 
     if (ImageInfo->SystemModeImage == FALSE) {
-        ImageLoadInsertNonSystemImageIntoProcessTree(ImageInfo, ProcessId);
+        ImageLoadInsertNonSystemImageIntoProcessHashmap(
+            ImageInfo, ProcessId, FullImageName);
         return;
     }
 
@@ -385,56 +381,104 @@ hash:
     ListInsert(&list->start, entry, &list->lock);
 }
 
-/*
- * I have chosen to refactor this to use a Splay tree (RTL_GENERIC_TABLE) for
- * the storage of both processes and associated modules. The reasons for this is
- * as follows:
- *
- * 1. Splay trees are self-balancing in the regard that recently used nodes will
- * be closer to the root. Due to the fact we are wanting to store modules, once
- * a process is launched and subsequent modules are loaded, the process
- * associated with these processes will live near the root - allowing for faster
- * access.
- *
- * 2. The initial implementation was a simple linked list of processes, but the
- * need to safely access loaded modules for that process became a need. So an
- * unoredered linked-list full of modules would incur way too much overhead in
- * lookups and deletions.
- * 
- * So the end implementation is a splay tree.
- */
+/* assumes map lock is held */
+VOID
+FreeProcessEntryModuleList(_In_ PPROCESS_LIST_ENTRY Entry,
+                           _In_opt_ PVOID           Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    PRTL_HASHMAP                map        = GetProcessHashmap();
+    PLIST_ENTRY                 list       = NULL;
+    PPROCESS_MAP_MODULE_ENTRY   list_entry = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context    = map->context;
+
+    while (!IsListEmpty(&Entry->module_list)) {
+        list       = RemoveTailList(&Entry->module_list);
+        list_entry = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        ExFreeToLookasideListEx(&context->pool, list_entry);
+    }
+}
+
+VOID
+CleanupProcessHashmap()
+{
+    PRTL_HASHMAP                map     = GetProcessHashmap();
+    PRTL_HASHMAP_ENTRY          entry   = NULL;
+    PRTL_HASHMAP_ENTRY          temp    = NULL;
+    PLIST_ENTRY                 list    = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
+
+    map->active = FALSE;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    /* First, free all module lists */
+    RtlEnumerateHashmap(map, FreeProcessEntryModuleList, NULL);
+
+    for (UINT32 index = 0; index < map->bucket_count; index++) {
+        entry = &map->buckets[index];
+
+        while (!IsListEmpty(&entry->entry)) {
+            list = RemoveHeadList(&entry->entry);
+            temp = CONTAINING_RECORD(list, RTL_HASHMAP_ENTRY, entry);
+            ExFreePoolWithTag(temp, POOL_TAG_HASHMAP);
+        }
+    }
+
+    context = map->context;
+
+    ExDeleteLookasideListEx(&context->pool);
+    ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
+
+    RtlDeleteHashmap(map);
+
+    KeReleaseGuardedMutex(&map->lock);
+}
+
 NTSTATUS
-InitialiseProcessTree()
+InitialiseProcessHashmap()
 {
     PAGED_CODE();
 
-    NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    PPROCESS_TREE_HEAD tree   = GetProcessTreeHead();
+    NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
 
-    DEBUG_VERBOSE("Initialising process tree");
+    context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                              sizeof(PROCESS_MODULE_MAP_CONTEXT),
+                              POOL_TAG_HASHMAP);
 
-    RtlInitializeGenericTable(&tree->table,
-                              ProcessTreeCompareNode,
-                              ProcessTreeAllocateNode,
-                              ProcessTreeFreeNode,
-                              NULL);
+    if (!context)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
-    KeInitializeGuardedMutex(&tree->lock);
-
-    status = ExInitializeLookasideListEx(&tree->module_list_entry_lookaside,
+    status = ExInitializeLookasideListEx(&context->pool,
                                          NULL,
                                          NULL,
-                                         POOL_NX_ALLOCATION,
+                                         NonPagedPoolNx,
                                          0,
-                                         sizeof(PROCESS_TREE_MODULE_LIST_ENTRY),
-                                         POOL_TAG_USER_MODULE_LIST,
+                                         sizeof(PROCESS_MAP_MODULE_ENTRY),
+                                         POOL_TAG_MODULE_LIST,
                                          0);
 
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
+        ExFreePoolWithTag(context, POOL_TAG_HASHMAP);
         return status;
+    }
 
-    tree->active = TRUE;
-    DEBUG_VERBOSE("Process tree is successfully active!");
+    status = RtlCreateHashmap(101,
+                              sizeof(PROCESS_LIST_ENTRY),
+                              ProcessHashmapHashFunction,
+                              ProcessHashmapCompareFunction,
+                              context,
+                              GetProcessHashmap());
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("RtlCreateHashmap: %lx", status);
+        ExDeleteLookasideListEx(&context->pool);
+        ExFreePoolWithTag(context, POOL_TAG_HASHMAP);
+        return status;
+    }
 
     return status;
 }
@@ -496,128 +540,66 @@ CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
                                                                    : FALSE;
 }
 
-FORCEINLINE
-STATIC
 VOID
-InitialiseProcessNodeEntry(_In_ PPROCESS_TREE_NODE Node,
-                           _In_ PEPROCESS          Process,
-                           _In_ PEPROCESS          Parent)
+EnumerateAndPrintProcessHashmap()
 {
-    ImpObfReferenceObject(Parent);
-    ImpObfReferenceObject(Process);
+    PRTL_HASHMAP              map            = GetProcessHashmap();
+    PRTL_HASHMAP_ENTRY        entry          = NULL;
+    PPROCESS_LIST_ENTRY       proc_entry     = NULL;
+    PPROCESS_MAP_MODULE_ENTRY mod_entry      = NULL;
+    PLIST_ENTRY               list_head      = NULL;
+    PLIST_ENTRY               list_entry     = NULL;
+    PLIST_ENTRY               mod_list_entry = NULL;
 
-    Node->parent  = Parent;
-    Node->process = Process;
+    KeAcquireGuardedMutex(&map->lock);
 
-    InitializeListHead(&Node->module_list);
-    Node->list_count = 0;
-}
+    for (UINT32 index = 0; index < map->bucket_count; index++) {
+        list_head  = &map->buckets[index];
+        list_entry = list_head->Flink;
 
-FORCEINLINE
-STATIC
-VOID
-FreeProcessNodeModuleList(_In_ PPROCESS_TREE_NODE Node)
-{
-    PPROCESS_TREE_HEAD              tree  = GetProcessTreeHead();
-    PLIST_ENTRY                     list  = NULL;
-    PPROCESS_TREE_MODULE_LIST_ENTRY entry = NULL;
+        DEBUG_VERBOSE("Bucket %u:\n", index);
 
-    while (!IsListEmpty(&Node->module_list)) {
-        list  = RemoveHeadList(&Node->module_list);
-        entry = CONTAINING_RECORD(list, PROCESS_TREE_MODULE_LIST_ENTRY, entry);
+        while (list_entry != list_head) {
+            entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
 
-        ExFreeToLookasideListEx(&tree->module_list_entry_lookaside, entry);
-    }
-}
+            if (entry->in_use == TRUE) {
+                proc_entry = (PPROCESS_LIST_ENTRY)entry->object;
+                DEBUG_VERBOSE(" -> process id: %lx", proc_entry->process_id);
+                DEBUG_VERBOSE(" -> process: %llx", proc_entry->process);
+                DEBUG_VERBOSE(" -> parent: %llx", proc_entry->parent);
 
-VOID
-EnumerateProcessTreeWithCallback(
-    _In_ PROCESS_TREE_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
-{
-    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
-    PPROCESS_TREE_NODE node = NULL;
+                mod_list_entry = proc_entry->module_list.Flink;
+                while (mod_list_entry != &proc_entry->module_list) {
+                    mod_entry = CONTAINING_RECORD(
+                        mod_list_entry, PROCESS_MAP_MODULE_ENTRY, entry);
+                    DEBUG_VERBOSE("    -> module base: %llx", mod_entry->base);
+                    DEBUG_VERBOSE("    -> module size: %lx", mod_entry->size);
 
-    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
-         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
-        CallbackRoutine(node, Context);
-    }
-}
+                    mod_list_entry = mod_list_entry->Flink;
+                }
+            }
 
-VOID
-CleanupProcessTree()
-{
-    PPROCESS_TREE_HEAD tree = GetProcessTreeHead();
-    PPROCESS_TREE_NODE node = NULL;
-
-    tree->active = FALSE;
-
-    KeAcquireGuardedMutex(&tree->lock);
-
-    /* We could do this in a single pass, but this is good enough for now -
-     * especially when performance doesnt really matter since we are unloading
-     * the driver... Will fix later.*/
-    EnumerateProcessTreeWithCallback(FreeProcessNodeModuleList, NULL);
-
-    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
-         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
-        RtlDeleteElementGenericTable(&tree->table, node);
-    }
-
-    ExDeleteLookasideListEx(&tree->module_list_entry_lookaside);
-
-end:
-    KeReleaseGuardedMutex(&tree->lock);
-}
-
-#if DEBUG
-STATIC
-VOID
-PrintEntireProcessTreeWithModules()
-{
-    PPROCESS_TREE_HEAD              tree   = get_process_tree_head();
-    PPROCESS_TREE_NODE              node   = NULL;
-    PLIST_ENTRY                     entry  = NULL;
-    PPROCESS_TREE_MODULE_LIST_ENTRY module = NULL;
-
-    KeAcquireGuardedMutex(&tree->lock);
-
-    for (node = RtlEnumerateGenericTable(&tree->table, TRUE); node != NULL;
-         node = RtlEnumerateGenericTable(&tree->table, FALSE)) {
-        DEBUG_VERBOSE("Process: %p, Parent: %p, Module Count: %u",
-                      node->process,
-                      node->parent,
-                      node->list_count);
-
-        // Iterate through the module list for the current process
-        for (entry = node->module_list.Flink; entry != &node->module_list;
-             entry = entry->Flink) {
-            module =
-                CONTAINING_RECORD(entry, PROCESS_TREE_MODULE_LIST_ENTRY, entry);
-            DEBUG_VERBOSE("  Module Base: %llx, Size: %x, Path: %s",
-                          module->base,
-                          module->size,
-                          module->path);
+            list_entry = list_entry->Flink;
         }
     }
 
-    KeReleaseGuardedMutex(&tree->lock);
+    KeReleaseGuardedMutex(&map->lock);
 }
-#endif
 
 VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
                            _In_ BOOLEAN Create)
 {
-    BOOLEAN new                     = FALSE;
-    PKPROCESS          parent       = NULL;
-    PKPROCESS          process      = NULL;
-    PDRIVER_LIST_HEAD  driver_list  = GetDriverList();
-    LPCSTR             process_name = NULL;
-    PPROCESS_TREE_HEAD tree         = GetProcessTreeHead();
-    PPROCESS_TREE_NODE node         = NULL;
+    BOOLEAN new                      = FALSE;
+    PKPROCESS           parent       = NULL;
+    PKPROCESS           process      = NULL;
+    PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
+    LPCSTR              process_name = NULL;
+    PRTL_HASHMAP        map          = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY entry        = NULL;
 
-    if (!tree->active)
+    if (!map->active)
         return;
 
     ImpPsLookupProcessByProcessId(ParentId, &parent);
@@ -628,18 +610,22 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
-    KeAcquireGuardedMutex(&tree->lock);
+    KeAcquireGuardedMutex(&map->lock);
 
     if (Create) {
-        node = RtlInsertElementGenericTable(
-            &tree->table, &process, sizeof(PROCESS_TREE_NODE), &new);
+        entry = RtlInsertEntryHashmap(map, ProcessId);
 
-        if (!new) {
-            DEBUG_ERROR("Unable to insert new process tree node!");
+        if (!entry)
             goto end;
-        }
 
-        InitialiseProcessNodeEntry(node, process, parent);
+        entry->process_id = ProcessId;
+        entry->process    = process;
+        entry->parent     = parent;
+
+        InitializeListHead(&entry->module_list);
+
+        entry->list_count = 0;
+
         /*
          * Notify to our driver that we can hash x86 modules, and hash
          * any x86 modules that werent hashed.
@@ -650,33 +636,24 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                             NormalWorkQueue,
                             NULL);
         }
-
-        DEBUG_VERBOSE("Inserted process node: %llx", (UINT64)process);
     }
     else {
-        node = RtlLookupElementGenericTable(&tree->table, &process);
+        entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
 
-        if (!node) {
+        if (!entry) {
             DEBUG_ERROR("UNABLE TO FIND PROCESS NODE!!!");
             goto end;
         }
 
-        FreeProcessNodeModuleList(node);
+        ImpObDereferenceObject(entry->parent);
+        ImpObDereferenceObject(entry->process);
 
-        ImpObDereferenceObject(node->parent);
-        ImpObDereferenceObject(node->process);
-
-        if (!RtlDeleteElementGenericTable(&tree->table, node)) {
-            DEBUG_ERROR("Failed to delete node from process tree: %llx",
-                        (UINT64)node);
-            goto end;
-        }
-
-        DEBUG_VERBOSE("Removed process node: %llx", (UINT64)process);
+        FreeProcessEntryModuleList(entry, NULL);
+        RtlDeleteEntryHashmap(map, ProcessId, &ProcessId);
     }
 
 end:
-    KeReleaseGuardedMutex(&tree->lock);
+    KeReleaseGuardedMutex(&map->lock);
 }
 
 VOID
@@ -1108,21 +1085,21 @@ end:
 }
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
+EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 {
     /* Handles are stored in pageable memory */
     PAGED_CODE();
 
     UNREFERENCED_PARAMETER(Context);
 
-    if (!Node)
+    if (!Entry)
         return STATUS_INVALID_PARAMETER;
 
-    if (Node->process == PsInitialSystemProcess)
+    if (Entry->process == PsInitialSystemProcess)
         return STATUS_SUCCESS;
 
     PHANDLE_TABLE handle_table =
-        *(PHANDLE_TABLE*)((uintptr_t)Node->process +
+        *(PHANDLE_TABLE*)((uintptr_t)Entry->process +
                           EPROCESS_HANDLE_TABLE_OFFSET);
 
     if (!handle_table)

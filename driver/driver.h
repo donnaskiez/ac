@@ -9,6 +9,7 @@
 #include "modules.h"
 #include "integrity.h"
 #include "callbacks.h"
+#include "map.h"
 
 BCRYPT_ALG_HANDLE*
 GetCryptAlgHandle();
@@ -79,8 +80,8 @@ IsNmiInProgress();
 BOOLEAN
 HasDriverLoaded();
 
-PPROCESS_TREE_HEAD
-GetProcessTreeHead();
+PRTL_HASHMAP
+GetProcessHashmap();
 
 VOID
 CleanupProcessTree();

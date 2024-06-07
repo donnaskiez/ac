@@ -83,12 +83,12 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context);
 
 STATIC
 VOID
-IncrementProcessCounter(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context);
+IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context);
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_TREE_NODE Node,
-                                        _In_opt_ PVOID          Context);
+CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY Node,
+                                        _In_opt_ PVOID           Context);
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, GetGlobalDebuggerData)
@@ -628,7 +628,7 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 
 STATIC
 VOID
-IncrementProcessCounter(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
+IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
     PAGED_CODE();
 
@@ -644,8 +644,8 @@ IncrementProcessCounter(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_TREE_NODE Node,
-                                        _In_opt_ PVOID          Context)
+CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY Node,
+                                        _In_opt_ PVOID           Context)
 {
     PAGED_CODE();
 
@@ -684,7 +684,7 @@ FindUnlinkedProcesses()
     UINT32 packet_size = CryptRequestRequiredBufferLength(
         sizeof(INVALID_PROCESS_ALLOCATION_REPORT));
 
-    EnumerateProcessTreeWithCallback(IncrementProcessCounter, &context);
+    RtlEnumerateHashmap(GetProcessHashmap(), IncrementProcessCounter, &context);
 
     if (context.process_count == 0) {
         DEBUG_ERROR("IncrementProcessCounter failed with no status.");
@@ -701,8 +701,8 @@ FindUnlinkedProcesses()
 
     WalkKernelPageTables(&context);
 
-    EnumerateProcessTreeWithCallback(CheckIfProcessAllocationIsInProcessList,
-                                     &context);
+    RtlEnumerateHashmap(
+        GetProcessHashmap(), CheckIfProcessAllocationIsInProcessList, &context);
 
     allocation_address = (PUINT64)context.process_buffer;
 

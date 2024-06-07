@@ -12,6 +12,7 @@
 #include "list.h"
 #include "session.h"
 #include "hw.h"
+#include "map.h"
 
 STATIC
 NTSTATUS
@@ -446,7 +447,7 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
         /* can maybe implement this better so we can extract a status
          * value */
-        EnumerateProcessTreeWithCallback(EnumerateProcessHandles, NULL);
+        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 
@@ -897,7 +898,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         /* can maybe implement this better so we can extract a status
          * value */
-        EnumerateProcessTreeWithCallback(EnumerateProcessHandles, NULL);
+        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 
@@ -1190,7 +1191,6 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
-
     // NTSTATUS status = ValidatePciDevices();
 
     // if (!NT_SUCCESS(status))

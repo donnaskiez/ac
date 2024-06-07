@@ -282,7 +282,11 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
      * IMAGE_NT_HEADER from the base of the image.
      */
-    nt_header    = PeGetNtHeader(ModuleBase);
+    nt_header = PeGetNtHeader(ModuleBase);
+
+    if (!nt_header)
+        return STATUS_INVALID_ADDRESS;
+
     num_sections = GetSectionCount(nt_header);
 
     /*
@@ -1413,7 +1417,7 @@ DetectEptHooksInKeyFunctions()
 }
 
 VOID
-FindWinLogonProcess(_In_ PPROCESS_TREE_NODE Node, _In_opt_ PVOID Context)
+FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
     LPCSTR     process_name = NULL;
     PEPROCESS* process      = (PEPROCESS*)Context;
@@ -1437,7 +1441,7 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
     PEPROCESS  process   = NULL;
     KAPC_STATE apc_state = {0};
 
-    EnumerateProcessTreeWithCallback(FindWinLogonProcess, &process);
+    RtlEnumerateHashmap(GetProcessHashmap(), FindWinLogonProcess, &process);
 
     if (!process)
         return STATUS_NOT_FOUND;

@@ -95,12 +95,12 @@ typedef struct _DRIVER_CONFIG {
     /* terrible name..lol what is tis timer for ?? */
     TIMER_OBJECT timer;
 
-    ACTIVE_SESSION        session_information;
-    THREAD_LIST_HEAD      thread_list;
-    DRIVER_LIST_HEAD      driver_list;
-    PROCESS_TREE_HEAD     process_tree;
-    SHARED_MAPPING        mapping;
-    BOOLEAN               has_driver_loaded;
+    ACTIVE_SESSION   session_information;
+    THREAD_LIST_HEAD thread_list;
+    DRIVER_LIST_HEAD driver_list;
+    RTL_HASHMAP      process_hashmap;
+    SHARED_MAPPING   mapping;
+    BOOLEAN          has_driver_loaded;
 
     BCRYPT_ALG_HANDLE alg_handle;
 
@@ -122,10 +122,10 @@ PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
 
-PPROCESS_TREE_HEAD
-GetProcessTreeHead()
+PRTL_HASHMAP
+GetProcessHashmap()
 {
-    return &g_DriverConfig->process_tree;
+    return &g_DriverConfig->process_hashmap;
 }
 
 BCRYPT_ALG_HANDLE*
@@ -349,7 +349,7 @@ VOID
 DrvUnloadFreeProcessList()
 {
     PAGED_CODE();
-    CleanupProcessTree();
+    CleanupProcessHashmap();
 }
 
 STATIC
@@ -469,7 +469,7 @@ DrvLoadSetupDriverLists()
         return status;
     }
 
-    status = InitialiseProcessTree();
+    status = InitialiseProcessHashmap();
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("InitialiseProcessList failed with status %x", status);
