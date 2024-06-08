@@ -43,7 +43,65 @@ MapAndReadPhysical(_In_ UINT64 PhysicalAddress,
 }
 
 NTSTATUS
-UnicodeToCharBufString(_In_ PUNICODE_STRING UnicodeString, _Out_ PCHAR OutBuffer)
+UnicodeToCharBufString(_In_ PUNICODE_STRING UnicodeString,
+                       _Out_ PVOID          OutBuffer,
+                       _In_ UINT32          OutBufferSize)
 {
+    ANSI_STRING string = {0};
+    NTSTATUS    status = STATUS_UNSUCCESSFUL;
 
+    status = RtlUnicodeStringToAnsiString(&string, UnicodeString, TRUE);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("RtlUnicodeStringToAnsiString: %x", status);
+        return status;
+    }
+
+    if (string.Length > OutBufferSize) {
+        RtlFreeAnsiString(&string);
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    RtlCopyMemory(OutBuffer, string.Buffer, string.Length);
+    RtlFreeAnsiString(&string);
+
+    return STATUS_SUCCESS;
+}
+
+#define BYTES_PER_LINE 16
+
+VOID
+DumpBufferToKernelDebugger(_In_ PCHAR Buffer, _In_ UINT32 BufferLength)
+{
+    UINT32 i = 0;
+    UINT32 j = 0;
+
+    for (i = 0; i < BufferLength; i += BYTES_PER_LINE) {
+        HEX_DUMP("%08x  ", i);
+
+        for (j = 0; j < BYTES_PER_LINE; ++j) {
+            if (i + j < BufferLength) {
+                HEX_DUMP("%02x ", (unsigned char)Buffer[i + j]);
+            }
+            else {
+                HEX_DUMP("   ");
+            }
+        }
+
+        HEX_DUMP("  ");
+
+        for (j = 0; j < BYTES_PER_LINE; ++j) {
+            if (i + j < BufferLength) {
+                char c = Buffer[i + j];
+                if (c >= 32 && c <= 126) {
+                    HEX_DUMP("%c", c);
+                }
+                else {
+                    HEX_DUMP(".");
+                }
+            }
+        }
+
+        HEX_DUMP("\n");
+    }
 }

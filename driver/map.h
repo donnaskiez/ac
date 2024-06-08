@@ -36,7 +36,7 @@ typedef struct _RTL_HASHMAP {
 
     KGUARDED_MUTEX    lock;
 
-    /* lookside list can be used for anything */
+    /* in the future bucket entries will use this */
     LOOKASIDE_LIST_EX pool;
 
     /* user allocated context */
@@ -45,6 +45,7 @@ typedef struct _RTL_HASHMAP {
 
 } RTL_HASHMAP, *PRTL_HASHMAP;
 
+/* Hashmap is caller allocated */
 NTSTATUS
 RtlCreateHashmap(_In_ UINT32           BucketCount,
                  _In_ UINT32           EntryObjectSize,

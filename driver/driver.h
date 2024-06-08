@@ -12,7 +12,10 @@
 #include "map.h"
 
 BCRYPT_ALG_HANDLE*
-GetCryptAlgHandle();
+GetCryptHandle_AES();
+
+BCRYPT_ALG_HANDLE*
+GetCryptHandle_Sha256();
 
 NTSTATUS
 QueryActiveApcContextsForCompletion();

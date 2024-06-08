@@ -22,4 +22,17 @@ PeGetExportDirectory(_In_ PVOID                 Image,
 UINT32
 GetSectionCount(_In_ PNT_HEADER_64 Header);
 
+PIMAGE_EXPORT_DIRECTORY
+PeGetExportDirectorySafe(_In_ PVOID                 Image,
+                         _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory);
+
+PIMAGE_DATA_DIRECTORY
+PeGetExportDataDirectorySafe(_In_ PVOID Image);
+
+PNT_HEADER_64
+PeGetNtHeaderSafe(_In_ PVOID Image);
+
+UINT32
+GetSectionCountSafe(_In_ PNT_HEADER_64 Header);
+
 #endif

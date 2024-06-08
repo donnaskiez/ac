@@ -242,7 +242,7 @@ CryptInitialiseSessionCryptObjects()
     UINT32                       data_copied = 0;
     PACTIVE_SESSION              session     = GetActiveSession();
     PBCRYPT_KEY_DATA_BLOB_HEADER blob        = NULL;
-    BCRYPT_ALG_HANDLE*           handle      = GetCryptAlgHandle();
+    BCRYPT_ALG_HANDLE*           handle      = GetCryptHandle_AES();
 
     blob = CryptBuildBlobForKeyImport(session);
 
@@ -301,7 +301,7 @@ NTSTATUS
 CryptInitialiseProvider()
 {
     NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    BCRYPT_ALG_HANDLE* handle = GetCryptAlgHandle();
+    BCRYPT_ALG_HANDLE* handle = GetCryptHandle_AES();
 
     status = BCryptOpenAlgorithmProvider(
         handle, BCRYPT_AES_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
@@ -315,7 +315,7 @@ CryptInitialiseProvider()
 VOID
 CryptCloseProvider()
 {
-    BCRYPT_ALG_HANDLE* handle = GetCryptAlgHandle();
+    BCRYPT_ALG_HANDLE* handle = GetCryptHandle_AES();
     BCryptCloseAlgorithmProvider(*handle, 0);
 }
 

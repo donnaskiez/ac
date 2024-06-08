@@ -33,7 +33,8 @@ typedef struct _DRIVER_LIST_ENTRY {
 typedef void (*DRIVERLIST_CALLBACK_ROUTINE)(
     _In_ PDRIVER_LIST_ENTRY DriverListEntry, _In_opt_ PVOID Context);
 
-
+typedef BOOLEAN (*PROCESS_MODULE_CALLBACK)(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+                                           _In_opt_ PVOID Context);
 
 NTSTATUS
 InitialiseDriverList();
@@ -130,5 +131,14 @@ EnumerateAndPrintProcessHashmap();
 
 VOID
 CleanupProcessHashmap();
+
+VOID
+EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
+                           _In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context);
+
+VOID
+FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context);
 
 #endif

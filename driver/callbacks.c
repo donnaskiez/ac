@@ -11,6 +11,7 @@
 #include "session.h"
 #include "crypt.h"
 #include "map.h"
+#include "util.h"
 
 #define PROCESS_HASHMAP_BUCKET_COUNT 101
 
@@ -297,6 +298,11 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     module->base = ImageInfo->ImageBase;
     module->size = ImageInfo->ImageSize;
 
+    /* We dont care if this errors. */
+    if (FullImageName)
+        UnicodeToCharBufString(
+            FullImageName, module->path, sizeof(module->path));
+
     InsertTailList(&entry->module_list, &module->entry);
     entry->list_count++;
 
@@ -328,6 +334,7 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
 
     FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
 
+    /* if we image exists, exit */
     if (entry)
         return;
 
@@ -346,23 +353,10 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     module.ImageSize = ImageInfo->ImageSize;
 
     if (FullImageName) {
-        status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
-
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
-                        status);
-            goto hash;
-        }
-
-        if (ansi_path.Length > sizeof(module.FullPathName)) {
-            RtlFreeAnsiString(&ansi_path);
-            goto hash;
-        }
-
-        RtlCopyMemory(module.FullPathName, ansi_path.Buffer, ansi_path.Length);
-        RtlCopyMemory(entry->path, ansi_path.Buffer, ansi_path.Length);
-
-        RtlFreeAnsiString(&ansi_path);
+        UnicodeToCharBufString(
+            FullImageName, module.FullPathName, sizeof(module.FullPathName));
+        RtlCopyMemory(
+            entry->path, module.FullPathName, sizeof(module.FullPathName));
     }
 
     DEBUG_VERBOSE("New system image ansi: %s", entry->path);
@@ -404,6 +398,74 @@ FreeProcessEntryModuleList(_In_ PPROCESS_LIST_ENTRY Entry,
 }
 
 VOID
+EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
+                           _In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context)
+{
+    PRTL_HASHMAP              map    = GetProcessHashmap();
+    BOOLEAN                   ret    = FALSE;
+    PPROCESS_LIST_ENTRY       entry  = NULL;
+    PLIST_ENTRY               list   = NULL;
+    PPROCESS_MAP_MODULE_ENTRY module = NULL;
+
+    if (!map->active)
+        return;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
+
+    if (!entry)
+        goto end;
+
+    for (list = entry->module_list.Flink; list != &entry->module_list;
+         list = list->Flink) {
+        module = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        if (Callback(module, Context))
+            goto end;
+    }
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+VOID
+FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context)
+{
+    PRTL_HASHMAP              map     = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY       entry   = NULL;
+    PACTIVE_SESSION           session = GetActiveSession();
+    PLIST_ENTRY               list    = NULL;
+    PPROCESS_MAP_MODULE_ENTRY module  = NULL;
+
+    if (!map->active)
+        return;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    entry = RtlLookupEntryHashmap(map, session->km_handle, &session->km_handle);
+
+    if (!entry)
+        return;
+
+    for (list = entry->module_list.Flink; list != &entry->module_list;
+         list = list->Flink) {
+        module = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        if (module->base == session->module.base_address &&
+            module->size == session->module.size) {
+            Callback(module, Context);
+            goto end;
+        }
+    }
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+VOID
 CleanupProcessHashmap()
 {
     PRTL_HASHMAP                map     = GetProcessHashmap();
@@ -433,7 +495,6 @@ CleanupProcessHashmap()
 
     ExDeleteLookasideListEx(&context->pool);
     ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
-
     RtlDeleteHashmap(map);
 
     KeReleaseGuardedMutex(&map->lock);
@@ -1124,6 +1185,34 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 
 STATIC
 VOID
+TimerObjectValidateProcessModuleCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+                                         _In_opt_ PVOID                 Context)
+{
+    CHAR            hash[SHA_256_HASH_LENGTH] = {0};
+    NTSTATUS        status                    = STATUS_UNSUCCESSFUL;
+    PACTIVE_SESSION session                   = (PACTIVE_SESSION)Context;
+
+    if (!ARGUMENT_PRESENT(Context))
+        return;
+
+    status = HashUserModule(Entry, hash, sizeof(hash));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("HashUserModule: %x", status);
+        return;
+    }
+
+    if (RtlCompareMemory(hash, session->module.module_hash, sizeof(hash)) !=
+        sizeof(hash)) {
+        DEBUG_ERROR("User module hash not matching!! MODIFIED!");
+        return;
+    }
+
+    DEBUG_VERBOSE("User module hash valid.");
+}
+
+STATIC
+VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
                            _In_opt_ PVOID      Context)
 {
@@ -1157,7 +1246,8 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
         goto end;
     }
 
-    // note 2 self: not sure if the incoming messages are encrypted yet.
+    FindOurUserModeModuleEntry(TimerObjectValidateProcessModuleCallback,
+                               session);
 
     KeReleaseGuardedMutex(&session->lock);
 end:

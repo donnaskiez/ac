@@ -102,7 +102,8 @@ typedef struct _DRIVER_CONFIG {
     SHARED_MAPPING   mapping;
     BOOLEAN          has_driver_loaded;
 
-    BCRYPT_ALG_HANDLE alg_handle;
+    BCRYPT_ALG_HANDLE aes_hash;
+    BCRYPT_ALG_HANDLE sha256_hash;
 
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
@@ -122,6 +123,12 @@ PDRIVER_CONFIG g_DriverConfig = NULL;
 
 #define POOL_TAG_CONFIG 'conf'
 
+BCRYPT_ALG_HANDLE*
+GetCryptHandle_Sha256()
+{
+    return &g_DriverConfig->sha256_hash;
+}
+
 PRTL_HASHMAP
 GetProcessHashmap()
 {
@@ -129,9 +136,9 @@ GetProcessHashmap()
 }
 
 BCRYPT_ALG_HANDLE*
-GetCryptAlgHandle()
+GetCryptHandle_AES()
 {
-    return &g_DriverConfig->alg_handle;
+    return &g_DriverConfig->aes_hash;
 }
 
 BOOLEAN
@@ -362,6 +369,14 @@ DrvUnloadFreeModuleValidationContext()
 
 STATIC
 VOID
+CloseHashingAlgorithmProvider()
+{
+    BCRYPT_ALG_HANDLE* handle = GetCryptHandle_Sha256();
+    BCryptCloseAlgorithmProvider(*handle, 0);
+}
+
+STATIC
+VOID
 DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
     DEBUG_VERBOSE("Unloading...");
@@ -390,6 +405,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
     DrvUnloadFreeDriverList();
 
     CryptCloseProvider();
+    CloseHashingAlgorithmProvider();
 
     DrvUnloadFreeConfigStrings();
     DrvUnloadDeleteSymbolicLink();
@@ -825,6 +841,22 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
     return status;
 }
 
+STATIC
+NTSTATUS
+InitialiseHashingAlgorithmProvider()
+{
+    NTSTATUS           status = STATUS_UNSUCCESSFUL;
+    BCRYPT_ALG_HANDLE* handle = GetCryptHandle_Sha256();
+
+    status = BCryptOpenAlgorithmProvider(
+        handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
+
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("BCryptOpenAlgorithmProvider: %x", status);
+
+    return status;
+}
+
 NTSTATUS
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
@@ -904,10 +936,23 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         return status;
     }
 
+    status = InitialiseHashingAlgorithmProvider();
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("InitialiseHashingAlgorithmProvider failed with status %x",
+                    status);
+        DrvUnloadFreeConfigStrings();
+        DrvUnloadFreeTimerObject();
+        DrvUnloadDeleteSymbolicLink();
+        ImpIoDeleteDevice(DriverObject->DeviceObject);
+        return status;
+    }
+
     status = DrvLoadSetupDriverLists();
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("DrvLoadSetupDriverLists failed with status %x", status);
+        CloseHashingAlgorithmProvider();
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
         DrvUnloadDeleteSymbolicLink();

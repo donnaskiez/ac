@@ -2,6 +2,7 @@
 
 #include "imports.h"
 #include "crypt.h"
+#include "util.h"
 
 NTSTATUS
 SessionInitialiseStructure()
@@ -83,6 +84,34 @@ SessionTerminate()
     KeReleaseGuardedMutex(&session->lock);
 }
 
+/* Return type for this doesnt matter */
+STATIC
+BOOLEAN
+HashOurUserModuleOnEntryCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+                                 _In_opt_ PVOID                 Context)
+{
+    NTSTATUS        status  = STATUS_UNSUCCESSFUL;
+    PACTIVE_SESSION session = (PACTIVE_SESSION)Context;
+
+    if (!ARGUMENT_PRESENT(Context))
+        return FALSE;
+
+    status = HashUserModule(Entry,
+                            session->module.module_hash,
+                            sizeof(session->module.module_hash));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("HashUserModule: %lx", status);
+        return FALSE;
+    }
+
+    DEBUG_VERBOSE("User module hashed!");
+    DumpBufferToKernelDebugger(session->module.module_hash,
+                               sizeof(session->module.module_hash));
+
+    return TRUE;
+}
+
 NTSTATUS
 SessionInitialise(_In_ PIRP Irp)
 {
@@ -94,7 +123,8 @@ SessionInitialise(_In_ PIRP Irp)
 
     DEBUG_VERBOSE("Initialising new session.");
 
-    status = ValidateIrpInputBuffer(Irp, sizeof(SESSION_INITIATION_PACKET));
+    status = ValidateIrpInputBuffer(
+        Irp, sizeof(SESSION_INITIATION_PACKET) - SHA_256_HASH_LENGTH);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
@@ -124,10 +154,10 @@ SessionInitialise(_In_ PIRP Irp)
     RtlCopyMemory(session->iv, initiation->aes_iv, AES_256_IV_SIZE);
 
     session->module.base_address = initiation->module_info.base_address;
-    session->module.size = initiation->module_info.size;
-    
-    RtlCopyMemory(session->module.path, initiation->module_info.path,
-                  MAX_MODULE_PATH);
+    session->module.size         = initiation->module_info.size;
+
+    RtlCopyMemory(
+        session->module.path, initiation->module_info.path, MAX_MODULE_PATH);
 
     DEBUG_VERBOSE("Module base: %llx", session->module.base_address);
     DEBUG_VERBOSE("Module size: %lx ", session->module.size);
@@ -146,6 +176,8 @@ SessionInitialise(_In_ PIRP Irp)
         DEBUG_ERROR("InitialiseHeartbeatConfiguration %x", status);
         goto end;
     }
+
+    FindOurUserModeModuleEntry(HashOurUserModuleOnEntryCallback, session);
 
 end:
     KeReleaseGuardedMutex(&session->lock);

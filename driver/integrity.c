@@ -278,16 +278,30 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     if (*Buffer == NULL)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
+    /* For context, when we are hashing x86 modules, MmIsAddressValid will
+     * return FALSE. Yet we still need protection for when an invalid address is
+     * passed for a non-x86 based image.*/
+
     /*
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
      * IMAGE_NT_HEADER from the base of the image.
      */
-    nt_header = PeGetNtHeader(ModuleBase);
+    nt_header = PeGetNtHeaderSafe(ModuleBase);
 
-    if (!nt_header)
+    if (!nt_header) {
+        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+        *Buffer = NULL;
         return STATUS_INVALID_ADDRESS;
+    }
 
-    num_sections = GetSectionCount(nt_header);
+    num_sections = IsModulex86 == TRUE ? GetSectionCount(nt_header)
+                                       : GetSectionCountSafe(nt_header);
+
+    if (!num_sections) {
+        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
+        *Buffer = NULL;
+        return STATUS_INVALID_ADDRESS;
+    }
 
     /*
      * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns
@@ -438,7 +452,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     PAGED_CODE();
 
     NTSTATUS           status              = STATUS_UNSUCCESSFUL;
-    BCRYPT_ALG_HANDLE  algo_handle         = NULL;
+    BCRYPT_ALG_HANDLE* algo_handle         = GetCryptHandle_Sha256();
     BCRYPT_HASH_HANDLE hash_handle         = NULL;
     ULONG              bytes_copied        = 0;
     ULONG              resulting_hash_size = 0;
@@ -449,21 +463,12 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     *HashResult     = NULL;
     *HashResultSize = 0;
 
-    status = BCryptOpenAlgorithmProvider(
-        &algo_handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptOpenAlogrithmProvider failed with status %x",
-                    status);
-        goto end;
-    }
-
     /*
      * Request the size of the hash object buffer, this is different then
      * the buffer that will store the resulting hash, instead this will be
      * used to store the hash object used to create the hash.
      */
-    status = BCryptGetProperty(algo_handle,
+    status = BCryptGetProperty(*algo_handle,
                                BCRYPT_OBJECT_LENGTH,
                                (PCHAR)&hash_object_size,
                                sizeof(ULONG),
@@ -487,7 +492,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
      * This call gets the size of the resulting hash, which we will use to
      * allocate the resulting hash buffer.
      */
-    status = BCryptGetProperty(algo_handle,
+    status = BCryptGetProperty(*algo_handle,
                                BCRYPT_HASH_LENGTH,
                                (PCHAR)&resulting_hash_size,
                                sizeof(ULONG),
@@ -511,7 +516,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
      * Here we create our hash object and store it in the hash_object
      * buffer.
      */
-    status = BCryptCreateHash(algo_handle,
+    status = BCryptCreateHash(*algo_handle,
                               &hash_handle,
                               hash_object,
                               hash_object_size,
@@ -552,9 +557,6 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     *HashResultSize = resulting_hash_size;
 
 end:
-
-    if (algo_handle)
-        BCryptCloseAlgorithmProvider(algo_handle, NULL);
 
     if (hash_handle)
         BCryptDestroyHash(hash_handle);
@@ -1027,6 +1029,66 @@ end:
 
     if (disk_hash)
         ImpExFreePoolWithTag(disk_hash, POOL_TAG_INTEGRITY);
+
+    return status;
+}
+
+NTSTATUS
+HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+               _Out_ PVOID                    OutBuffer,
+               _In_ UINT32                    OutBufferSize)
+{
+    PAGED_CODE();
+
+    NTSTATUS              status           = STATUS_UNSUCCESSFUL;
+    KAPC_STATE            apc_state        = {0};
+    PVAL_INTEGRITY_HEADER memory_buffer    = NULL;
+    PVOID                 memory_hash      = NULL;
+    ULONG                 memory_hash_size = 0;
+    SIZE_T                bytes_written    = 0;
+    PACTIVE_SESSION       session          = GetActiveSession();
+
+    /*
+     * Attach because the offsets given are from the process' context.
+     */
+    ImpKeStackAttachProcess(session->process, &apc_state);
+
+    status = StoreModuleExecutableRegionsInBuffer(
+        &memory_buffer, Entry->base, Entry->size, &bytes_written, FALSE);
+
+    ImpKeUnstackDetachProcess(&apc_state);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR(
+            "StoreModuleExecutableRegionsInBuffer failed with status %x",
+            status);
+        goto end;
+    }
+
+    status = ComputeHashOfBuffer(memory_buffer->section_base,
+                                 memory_buffer->section_header.SizeOfRawData,
+                                 &memory_hash,
+                                 &memory_hash_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+        goto end;
+    }
+
+    if (OutBufferSize > memory_hash_size) {
+        status = STATUS_BUFFER_TOO_SMALL;
+        goto end;
+    }
+
+    RtlCopyMemory(OutBuffer, memory_hash, memory_hash_size);
+
+end:
+
+    if (memory_buffer)
+        ImpExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
+
+    if (memory_hash)
+        ImpExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
 
     return status;
 }

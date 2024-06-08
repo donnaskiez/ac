@@ -1,7 +1,7 @@
 #include "pe.h"
 
 PNT_HEADER_64
-PeGetNtHeader(_In_ PVOID Image)
+PeGetNtHeaderSafe(_In_ PVOID Image)
 {
     PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)Image;
 
@@ -14,8 +14,31 @@ PeGetNtHeader(_In_ PVOID Image)
     return CONVERT_RELATIVE_ADDRESS(PNT_HEADER_64, Image, dos->e_lfanew);
 }
 
+PNT_HEADER_64
+PeGetNtHeader(_In_ PVOID Image)
+{
+    PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)Image;
+
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE)
+        return NULL;
+
+    return CONVERT_RELATIVE_ADDRESS(PNT_HEADER_64, Image, dos->e_lfanew);
+}
+
 PIMAGE_DATA_DIRECTORY
 PeGetExportDataDirectory(_In_ PVOID Image)
+{
+    PNT_HEADER_64 nt = PeGetNtHeader(Image);
+
+    if (IMAGE_DIRECTORY_ENTRY_EXPORT >= nt->OptionalHeader.NumberOfRvaAndSizes)
+        return NULL;
+
+    return (PIMAGE_DATA_DIRECTORY)&nt->OptionalHeader
+        .DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+}
+
+PIMAGE_DATA_DIRECTORY
+PeGetExportDataDirectorySafe(_In_ PVOID Image)
 {
     PNT_HEADER_64 nt = PeGetNtHeader(Image);
 
@@ -33,6 +56,17 @@ PIMAGE_EXPORT_DIRECTORY
 PeGetExportDirectory(_In_ PVOID                 Image,
                      _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
 {
+    if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
+        return NULL;
+
+    return CONVERT_RELATIVE_ADDRESS(
+        PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
+}
+
+PIMAGE_EXPORT_DIRECTORY
+PeGetExportDirectorySafe(_In_ PVOID                 Image,
+                     _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
+{
     if (!MmIsAddressValid(Image))
         return NULL;
 
@@ -46,6 +80,15 @@ PeGetExportDirectory(_In_ PVOID                 Image,
 UINT32
 GetSectionCount(_In_ PNT_HEADER_64 Header)
 {
+    return Header->FileHeader.NumberOfSections;
+}
+
+UINT32
+GetSectionCountSafe(_In_ PNT_HEADER_64 Header)
+{
+    if (!MmIsAddressValid(Header))
+        return NULL;
+
     return Header->FileHeader.NumberOfSections;
 }
 

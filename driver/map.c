@@ -44,9 +44,9 @@ RtlFindUnusedHashmapEntry(_In_ PRTL_HASHMAP_ENTRY Head)
     PRTL_HASHMAP_ENTRY entry = Head;
 
     while (entry) {
-        if (entry->in_use == FALSE) {
+        if (entry->in_use == FALSE)
             return entry;
-        }
+
         entry = CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
     }
 
@@ -56,16 +56,15 @@ RtlFindUnusedHashmapEntry(_In_ PRTL_HASHMAP_ENTRY Head)
 FORCEINLINE
 STATIC
 PRTL_HASHMAP_ENTRY
-AllocateBucketListEntry(_In_ PRTL_HASHMAP Hashmap)
+RtlAllocateBucketListEntry(_In_ PRTL_HASHMAP Hashmap)
 {
     PRTL_HASHMAP_ENTRY entry =
         ExAllocatePool2(POOL_FLAG_NON_PAGED,
                         Hashmap->object_size + sizeof(RTL_HASHMAP_ENTRY),
                         POOL_TAG_HASHMAP);
 
-    if (!entry) {
+    if (!entry)
         return NULL;
-    }
 
     entry->in_use = TRUE;
     return entry;
@@ -110,7 +109,7 @@ RtlInsertEntryHashmap(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
         list_entry = list_entry->Flink;
     }
 
-    new_entry = AllocateBucketListEntry(Hashmap);
+    new_entry = RtlAllocateBucketListEntry(Hashmap);
 
     if (!new_entry) {
         DEBUG_ERROR("Failed to allocate new entry");
@@ -144,15 +143,13 @@ RtlLookupEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
     entry = &Hashmap->buckets[index];
 
     while (entry) {
-        if (entry->in_use == FALSE) {
-            entry =
-                CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
-            continue;
-        }
+        if (entry->in_use == FALSE)
+            goto increment;
 
         if (Hashmap->compare_function(entry->object, Compare))
             return entry->object;
 
+    increment:
         entry = CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
     }
 
@@ -166,9 +163,9 @@ RtlDeleteEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
                       _In_ UINT64       Key,
                       _In_ PVOID        Compare)
 {
-    UINT32             index      = 0;
-    PRTL_HASHMAP_ENTRY entry      = NULL;
-    PRTL_HASHMAP_ENTRY next_entry = NULL;
+    UINT32             index = 0;
+    PRTL_HASHMAP_ENTRY entry = NULL;
+    PRTL_HASHMAP_ENTRY next  = NULL;
 
     index = Hashmap->hash_function(Key);
 
@@ -181,13 +178,13 @@ RtlDeleteEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
 
     while (entry) {
         if (entry->in_use == FALSE) {
-            next_entry =
+            next =
                 CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
 
-            if (next_entry == &Hashmap->buckets[index])
+            if (next == &Hashmap->buckets[index])
                 break;
 
-            entry = next_entry;
+            entry = next;
             continue;
         }
 
@@ -199,16 +196,16 @@ RtlDeleteEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
                 RemoveEntryList(&entry->entry);
                 ExFreePoolWithTag(entry, POOL_TAG_HASHMAP);
             }
+
             return TRUE;
         }
 
-        next_entry =
-            CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
+        next = CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
 
-        if (next_entry == &Hashmap->buckets[index])
+        if (next == &Hashmap->buckets[index])
             break;
 
-        entry = next_entry;
+        entry = next;
     }
 
     return FALSE;

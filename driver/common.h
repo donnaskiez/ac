@@ -45,6 +45,12 @@
                "donna-ac : [VERBOSE] : " fmt "\n", \
                ##__VA_ARGS__)
 
+#define HEX_DUMP(fmt, ...)                    \
+    DbgPrintEx(DPFLTR_DEFAULT_ID,             \
+               LOG_VERBOSE_LEVEL,             \
+               fmt, \
+               ##__VA_ARGS__)
+
 #define STATIC static
 #define INLINE inline
 
@@ -242,10 +248,14 @@ typedef struct _HEARTBEAT_CONFIGURATION {
 
 } HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
 
+#define SHA_256_HASH_LENGTH 32
+
+/* Contains information on our user mode module. */
 typedef struct _MODULE_INFORMATION {
     PVOID  base_address;
     UINT32 size;
     CHAR   path[MAX_MODULE_PATH];
+    CHAR   module_hash[SHA_256_HASH_LENGTH];
 
 } MODULE_INFORMATION, *PMODULE_INFORMATION;
 
