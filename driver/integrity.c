@@ -257,6 +257,9 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     MM_COPY_ADDRESS        address                 = {0};
     INTEGRITY_CHECK_HEADER header                  = {0};
 
+    //DEBUG_VERBOSE("Storing x regions -> x86 module: %lx", (UINT32)IsModulex86);
+    //DEBUG_VERBOSE("MmIsAddressValid: %lx", MmIsAddressValid(ModuleBase));
+
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
 
@@ -286,22 +289,8 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
      * IMAGE_NT_HEADER from the base of the image.
      */
-    nt_header = PeGetNtHeaderSafe(ModuleBase);
-
-    if (!nt_header) {
-        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
-        *Buffer = NULL;
-        return STATUS_INVALID_ADDRESS;
-    }
-
-    num_sections = IsModulex86 == TRUE ? GetSectionCount(nt_header)
-                                       : GetSectionCountSafe(nt_header);
-
-    if (!num_sections) {
-        ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
-        *Buffer = NULL;
-        return STATUS_INVALID_ADDRESS;
-    }
+    nt_header    = PeGetNtHeader(ModuleBase);
+    num_sections = GetSectionCount(nt_header);
 
     /*
      * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns
