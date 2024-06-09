@@ -257,8 +257,9 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     MM_COPY_ADDRESS        address                 = {0};
     INTEGRITY_CHECK_HEADER header                  = {0};
 
-    //DEBUG_VERBOSE("Storing x regions -> x86 module: %lx", (UINT32)IsModulex86);
-    //DEBUG_VERBOSE("MmIsAddressValid: %lx", MmIsAddressValid(ModuleBase));
+    // DEBUG_VERBOSE("Storing x regions -> x86 module: %lx",
+    // (UINT32)IsModulex86); DEBUG_VERBOSE("MmIsAddressValid: %lx",
+    // MmIsAddressValid(ModuleBase));
 
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
@@ -1720,6 +1721,11 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
         DEBUG_ERROR("FindDriverEntryByBaseAddress failed with no status");
         goto end;
     }
+
+    /* For now, there is some issue that sometimes occurs when validing x86
+     * modules, for now lets skip them.*/
+    if (entry->x86)
+        goto end;
 
     /*
      * Ideally, we would like to have access to the offset into the module that
