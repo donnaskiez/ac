@@ -45,10 +45,16 @@
                "donna-ac : [VERBOSE] : " fmt "\n", \
                ##__VA_ARGS__)
 
+#define HEX_DUMP(fmt, ...)                    \
+    DbgPrintEx(DPFLTR_DEFAULT_ID,             \
+               LOG_VERBOSE_LEVEL,             \
+               fmt, \
+               ##__VA_ARGS__)
+
 #define STATIC static
 #define INLINE inline
 
-#define MAX_MODULE_PATH 256
+#define MAX_MODULE_PATH 260
 
 #define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
     ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
@@ -65,14 +71,6 @@ typedef struct _THREAD_LIST_HEAD {
     LOOKASIDE_LIST_EX lookaside_list;
 
 } THREAD_LIST_HEAD, *PTHREAD_LIST_HEAD;
-
-typedef struct _PROCESS_LIST_HEAD {
-    SINGLE_LIST_ENTRY start;
-    volatile BOOLEAN  active;
-    KGUARDED_MUTEX    lock;
-    LOOKASIDE_LIST_EX lookaside_list;
-
-} PROCESS_LIST_HEAD, *PPROCESS_LIST_HEAD;
 
 typedef struct _DRIVER_LIST_HEAD {
     SINGLE_LIST_ENTRY start;
@@ -97,11 +95,24 @@ typedef struct _THREAD_LIST_ENTRY {
 
 } THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
 
-typedef struct _PROCESS_LIST_ENTRY {
-    SINGLE_LIST_ENTRY list;
-    PKPROCESS         process;
-    PKPROCESS         parent;
+typedef struct _PROCESS_MODULE_MAP_CONTEXT {
+    LOOKASIDE_LIST_EX pool;
+} PROCESS_MODULE_MAP_CONTEXT, *PPROCESS_MODULE_MAP_CONTEXT;
 
+typedef struct _PROCESS_MAP_MODULE_ENTRY {
+    LIST_ENTRY entry;
+    UINT64     base;
+    UINT32     size;
+    CHAR       path[MAX_MODULE_PATH];
+} PROCESS_MAP_MODULE_ENTRY, *PPROCESS_MAP_MODULE_ENTRY;
+
+typedef struct _PROCESS_LIST_ENTRY {
+    /* IMPORTANT THIS IS FIRST!*/
+    HANDLE          process_id;
+    PEPROCESS       process;
+    PEPROCESS       parent;
+    LIST_ENTRY      module_list;
+    volatile UINT32 list_count;
 } PROCESS_LIST_ENTRY, *PPROCESS_LIST_ENTRY;
 
 /*
@@ -237,16 +248,28 @@ typedef struct _HEARTBEAT_CONFIGURATION {
 
 } HEARTBEAT_CONFIGURATION, *PHEARTBEAT_CONFIGURATION;
 
+#define SHA_256_HASH_LENGTH 32
+
+/* Contains information on our user mode module. */
+typedef struct _MODULE_INFORMATION {
+    PVOID  base_address;
+    UINT32 size;
+    CHAR   path[MAX_MODULE_PATH];
+    CHAR   module_hash[SHA_256_HASH_LENGTH];
+
+} MODULE_INFORMATION, *PMODULE_INFORMATION;
+
 typedef struct _SESSION_INITIATION_PACKET {
-    UINT32 cookie;
-    PVOID  process_id;
-    UCHAR  aes_key[AES_256_KEY_SIZE];
-    UCHAR  aes_iv[AES_256_IV_SIZE];
+    UINT32             cookie;
+    PVOID              process_id;
+    UCHAR              aes_key[AES_256_KEY_SIZE];
+    UCHAR              aes_iv[AES_256_IV_SIZE];
+    MODULE_INFORMATION module_info;
 
 } SESSION_INITIATION_PACKET, *PSESSION_INITIATION_PACKET;
 
 typedef struct _ACTIVE_SESSION {
-    BOOLEAN             is_session_active;
+    volatile BOOLEAN    is_session_active;
     PVOID               um_handle;
     PVOID               km_handle;
     PEPROCESS           process;
@@ -268,6 +291,8 @@ typedef struct _ACTIVE_SESSION {
         UINT32 report_count;
         UINT32 heartbeat_count;
     };
+
+    MODULE_INFORMATION module;
 
     HEARTBEAT_CONFIGURATION heartbeat_config;
     KGUARDED_MUTEX          lock;
@@ -306,9 +331,13 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_LIST_ITEM             'tsil'
 #define POOL_TAG_THREAD_LIST           'list'
 #define POOL_TAG_PROCESS_LIST          'plis'
+#define POOL_TAG_USER_MODULE_LIST      'resu'
+#define POOL_TAG_USER_MODULE_NODE      'edon'
 #define POOL_TAG_DRIVER_LIST           'drvl'
 #define POOL_TAG_IRP_QUEUE             'irpp'
 #define POOL_TAG_TIMER                 'time'
+#define POOL_TAG_MODULE_LIST           'elom'
+#define POOL_TAG_HASHMAP               'hsah'
 
 #define IA32_APERF_MSR 0x000000E8
 

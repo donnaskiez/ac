@@ -1,16 +1,19 @@
 #include "dispatcher.h"
 
 #include "../client/message_queue.h"
-#include "../helper.h"
 #include "../crypt/crypt.h"
+#include "../helper.h"
 
 #include <bcrypt.h>
 #include <chrono>
 
 dispatcher::dispatcher::dispatcher(LPCWSTR driver_name,
-                                   client::message_queue &message_queue)
+                                   client::message_queue &message_queue,
+                                   module::module_information *module_info)
     : thread_pool(DISPATCHER_THREAD_COUNT),
-      k_interface(driver_name, message_queue) {}
+      k_interface(driver_name, message_queue, module_info) {
+  this->module_info = module_info;
+}
 
 void dispatcher::dispatcher::request_session_pk() {
 #ifdef NO_SERVER
@@ -56,7 +59,7 @@ void dispatcher::dispatcher::run() {
   this->run_io_port_thread();
   thread_pool.queue_job([this]() { k_interface.run_completion_port(); });
   while (true) {
-      LOG_INFO("issueing kernel job!");
+    LOG_INFO("issueing kernel job!");
     this->issue_kernel_job();
     helper::sleep_thread(DISPATCH_LOOP_SLEEP_TIME);
   }

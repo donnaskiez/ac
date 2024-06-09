@@ -12,6 +12,7 @@
 #include "list.h"
 #include "session.h"
 #include "hw.h"
+#include "map.h"
 
 STATIC
 NTSTATUS
@@ -446,19 +447,20 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
         /* can maybe implement this better so we can extract a status
          * value */
-        EnumerateProcessListWithCallbackRoutine(EnumerateProcessHandles, NULL);
+        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 
     case ssScanForUnlinkedProcesses:
 
-        DEBUG_INFO(
-            "SHARED_STATE_OPERATION_ID: ScanForUnlinkedProcesses Received");
+        // DEBUG_INFO(
+        //     "SHARED_STATE_OPERATION_ID: ScanForUnlinkedProcesses Received");
 
-        status = FindUnlinkedProcesses();
+        // status = FindUnlinkedProcesses();
 
-        if (!NT_SUCCESS(status))
-            DEBUG_ERROR("FindUnlinkedProcesses failed with status %x", status);
+        // if (!NT_SUCCESS(status))
+        //     DEBUG_ERROR("FindUnlinkedProcesses failed with status %x",
+        //     status);
 
         break;
 
@@ -896,7 +898,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         /* can maybe implement this better so we can extract a status
          * value */
-        EnumerateProcessListWithCallbackRoutine(EnumerateProcessHandles, NULL);
+        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 
@@ -961,12 +963,13 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
     case IOCTL_SCAN_FOR_UNLINKED_PROCESS:
 
-        DEBUG_INFO("IOCTL_SCAN_FOR_UNLINKED_PROCESS Received");
+        // DEBUG_INFO("IOCTL_SCAN_FOR_UNLINKED_PROCESS Received");
 
-        status = FindUnlinkedProcesses();
+        // status = FindUnlinkedProcesses();
 
-        if (!NT_SUCCESS(status))
-            DEBUG_ERROR("FindUnlinkedProcesses failed with status %x", status);
+        // if (!NT_SUCCESS(status))
+        //     DEBUG_ERROR("FindUnlinkedProcesses failed with status %x",
+        //     status);
 
         break;
 
@@ -1124,11 +1127,20 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         DEBUG_INFO("IOCTL_VALIDATE_PCI_DEVICES Received");
 
-        status = ValidatePciDevices();
+        status = ImpPsCreateSystemThread(&handle,
+                                         PROCESS_ALL_ACCESS,
+                                         NULL,
+                                         NULL,
+                                         NULL,
+                                         ValidatePciDevices,
+                                         NULL);
 
-        if (!NT_SUCCESS(status))
-            DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
+        if (!NT_SUCCESS(status)) {
+            DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
+            goto end;
+        }
 
+        ImpZwClose(handle);
         break;
 
     case IOCTL_VALIDATE_WIN32K_TABLES:
@@ -1179,7 +1191,6 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
-
     // NTSTATUS status = ValidatePciDevices();
 
     // if (!NT_SUCCESS(status))

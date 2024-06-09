@@ -4,6 +4,8 @@
 
 #include "../client/message_queue.h"
 
+#include "../module.h"
+
 namespace kernel_interface {
 
 static constexpr int EVENT_COUNT = 5;
@@ -130,17 +132,17 @@ struct process_module_validation_report {
 };
 
 struct system_module_integrity_check_report {
-    report_header header;
-    uint64_t               image_base;
-    uint32_t               image_size;
-    char                 path_name[0x100];
+  report_header header;
+  uint64_t image_base;
+  uint32_t image_size;
+  char path_name[0x100];
 };
 
 struct driver_self_integrity_check_report {
-    report_header header;
-    uint64_t      image_base;
-    uint32_t      image_size;
-    char          path_name[0x100];
+  report_header header;
+  uint64_t image_base;
+  uint32_t image_size;
+  char path_name[0x100];
 };
 
 struct heartbeat_packet {
@@ -152,10 +154,10 @@ struct heartbeat_packet {
 };
 
 struct blacklisted_pcie_device_report {
-    report_header header;
-    uint64_t      device_object;
-    uint16_t      device_id;
-    uint16_t      vendor_id;
+  report_header header;
+  uint64_t device_object;
+  uint16_t device_id;
+  uint16_t vendor_id;
 };
 
 enum apc_operation { operation_stackwalk = 0x1 };
@@ -224,6 +226,7 @@ class kernel_interface {
     void *process_id;
     unsigned char aes_key[32];
     unsigned char aes_iv[16];
+    struct module::module_information module_info;
   };
 
   struct hv_detection_packet {
@@ -247,6 +250,7 @@ class kernel_interface {
   HANDLE port;
   std::mutex lock;
   std::vector<event_dispatcher> events;
+  module::module_information* module_info;
 
   struct shared_data {
     unsigned __int32 status;
@@ -278,7 +282,8 @@ class kernel_interface {
   void generic_driver_call_apc(apc_operation operation);
 
 public:
-  kernel_interface(LPCWSTR driver_name, client::message_queue &queue);
+  kernel_interface(LPCWSTR driver_name, client::message_queue &queue,
+                   module::module_information *module_info);
   ~kernel_interface();
 
   void run_completion_port();

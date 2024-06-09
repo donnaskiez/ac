@@ -10,6 +10,10 @@
 #include "list.h"
 #include "session.h"
 #include "crypt.h"
+#include "map.h"
+#include "util.h"
+
+#define PROCESS_HASHMAP_BUCKET_COUNT 101
 
 STATIC
 BOOLEAN
@@ -27,17 +31,6 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 #    pragma alloc_text(PAGE, ExUnlockHandleTableEntry)
 #endif
 
-/*
- * Its important on unload we dereference any objects to ensure the kernels
- * reference count remains correct.
- */
-VOID
-CleanupProcessListFreeCallback(_In_ PPROCESS_LIST_ENTRY ProcessListEntry)
-{
-    ImpObDereferenceObject(ProcessListEntry->parent);
-    ImpObDereferenceObject(ProcessListEntry->process);
-}
-
 VOID
 CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 {
@@ -48,8 +41,8 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 VOID
 UnregisterProcessCreateNotifyRoutine()
 {
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    InterlockedExchange(&list->active, FALSE);
+    PRTL_HASHMAP map = GetProcessHashmap();
+    InterlockedExchange(&map->active, FALSE);
     ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 }
 
@@ -67,24 +60,6 @@ UnregisterThreadCreateNotifyRoutine()
     PTHREAD_LIST_HEAD list = GetThreadList();
     InterlockedExchange(&list->active, FALSE);
     ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
-}
-
-/*
- * While ExDeleteLookasideListEx already frees each item, we wanna allow
- * ourselves to reduce the reference count to any objects we are referencing.
- */
-VOID
-CleanupProcessListOnDriverUnload()
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    DEBUG_VERBOSE("Freeing process list");
-    for (;;) {
-        if (!LookasideListFreeFirstEntry(
-                &list->start, &list->lock, CleanupProcessListFreeCallback)) {
-            ExDeleteLookasideListEx(&list->lookaside_list);
-            return;
-        }
-    }
 }
 
 VOID
@@ -126,27 +101,6 @@ EnumerateThreadListWithCallbackRoutine(
     while (entry) {
         CallbackRoutine(entry, Context);
         entry = (PTHREAD_LIST_ENTRY)entry->list.Next;
-    }
-
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
-}
-
-VOID
-EnumerateProcessListWithCallbackRoutine(
-    _In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-
-    if (!CallbackRoutine)
-        goto unlock;
-
-    PPROCESS_LIST_ENTRY entry = list->start.Next;
-
-    while (entry) {
-        CallbackRoutine(entry, Context);
-        entry = (PPROCESS_LIST_ENTRY)entry->list.Next;
     }
 
 unlock:
@@ -283,6 +237,79 @@ unlock:
     ImpKeReleaseGuardedMutex(&list->lock);
 }
 
+STATIC
+BOOLEAN
+ProcessHashmapCompareFunction(_In_ PVOID Struct1, _In_ PVOID Struct2)
+{
+    HANDLE h1 = *((PHANDLE)Struct1);
+    HANDLE h2 = *((PHANDLE)Struct2);
+
+    return h1 == h2 ? TRUE : FALSE;
+}
+
+STATIC
+UINT32
+ProcessHashmapHashFunction(_In_ UINT64 Key)
+{
+    return ((UINT32)Key) % PROCESS_HASHMAP_BUCKET_COUNT;
+}
+
+STATIC
+VOID
+ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
+                                                _In_ HANDLE      ProcessId,
+                                                _In_opt_ PUNICODE_STRING
+                                                    FullImageName)
+{
+    NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
+    PEPROCESS                   process = NULL;
+    PRTL_HASHMAP                map     = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY         entry   = NULL;
+    PPROCESS_MAP_MODULE_ENTRY   module  = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
+
+    if (!map->active)
+        return;
+
+    status = PsLookupProcessByProcessId(ProcessId, &process);
+
+    if (!NT_SUCCESS(status))
+        return;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    /* the PEPROCESS is the first element and is the only thing compared, hence
+     * we can simply pass it in the context parameter.*/
+    entry = RtlLookupEntryHashmap(GetProcessHashmap(), ProcessId, &ProcessId);
+
+    /* critical error has occured */
+    if (!entry) {
+        DEBUG_ERROR("RtlLookupEntryHashmap failed.");
+        goto end;
+    }
+
+    context = (PPROCESS_MODULE_MAP_CONTEXT)map->context;
+    module  = ExAllocateFromLookasideListEx(&context->pool);
+
+    if (!module)
+        goto end;
+
+    /* for now lets just do base and size */
+    module->base = ImageInfo->ImageBase;
+    module->size = ImageInfo->ImageSize;
+
+    /* We dont care if this errors. */
+    if (FullImageName)
+        UnicodeToCharBufString(
+            FullImageName, module->path, sizeof(module->path));
+
+    InsertTailList(&entry->module_list, &module->entry);
+    entry->list_count++;
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
+}
+
 VOID
 ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
                                _In_ HANDLE              ProcessId,
@@ -299,11 +326,15 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     if (InterlockedExchange(&list->active, list->active) == FALSE)
         return;
 
-    if (ImageInfo->SystemModeImage == FALSE)
+    if (ImageInfo->SystemModeImage == FALSE) {
+        ImageLoadInsertNonSystemImageIntoProcessHashmap(
+            ImageInfo, ProcessId, FullImageName);
         return;
+    }
 
     FindDriverEntryByBaseAddress(ImageInfo->ImageBase, &entry);
 
+    /* if we image exists, exit */
     if (entry)
         return;
 
@@ -322,23 +353,10 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     module.ImageSize = ImageInfo->ImageSize;
 
     if (FullImageName) {
-        status = RtlUnicodeStringToAnsiString(&ansi_path, FullImageName, TRUE);
-
-        if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
-                        status);
-            goto hash;
-        }
-
-        if (ansi_path.Length > sizeof(module.FullPathName)) {
-            RtlFreeAnsiString(&ansi_path);
-            goto hash;
-        }
-
-        RtlCopyMemory(module.FullPathName, ansi_path.Buffer, ansi_path.Length);
-        RtlCopyMemory(entry->path, ansi_path.Buffer, ansi_path.Length);
-
-        RtlFreeAnsiString(&ansi_path);
+        UnicodeToCharBufString(
+            FullImageName, module.FullPathName, sizeof(module.FullPathName));
+        RtlCopyMemory(
+            entry->path, module.FullPathName, sizeof(module.FullPathName));
     }
 
     DEBUG_VERBOSE("New system image ansi: %s", entry->path);
@@ -359,29 +377,172 @@ hash:
     ListInsert(&list->start, entry, &list->lock);
 }
 
-NTSTATUS
-InitialiseProcessList()
+/* assumes map lock is held */
+VOID
+FreeProcessEntryModuleList(_In_ PPROCESS_LIST_ENTRY Entry,
+                           _In_opt_ PVOID           Context)
 {
-    NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    PPROCESS_LIST_HEAD list   = GetProcessList();
+    UNREFERENCED_PARAMETER(Context);
 
-    status = ExInitializeLookasideListEx(&list->lookaside_list,
+    PRTL_HASHMAP                map        = GetProcessHashmap();
+    PLIST_ENTRY                 list       = NULL;
+    PPROCESS_MAP_MODULE_ENTRY   list_entry = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context    = map->context;
+
+    while (!IsListEmpty(&Entry->module_list)) {
+        list       = RemoveTailList(&Entry->module_list);
+        list_entry = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        ExFreeToLookasideListEx(&context->pool, list_entry);
+    }
+}
+
+VOID
+EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
+                           _In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context)
+{
+    PRTL_HASHMAP              map    = GetProcessHashmap();
+    BOOLEAN                   ret    = FALSE;
+    PPROCESS_LIST_ENTRY       entry  = NULL;
+    PLIST_ENTRY               list   = NULL;
+    PPROCESS_MAP_MODULE_ENTRY module = NULL;
+
+    if (!map->active)
+        return;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
+
+    if (!entry)
+        goto end;
+
+    for (list = entry->module_list.Flink; list != &entry->module_list;
+         list = list->Flink) {
+        module = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        if (Callback(module, Context))
+            goto end;
+    }
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+VOID
+FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context)
+{
+    PRTL_HASHMAP              map     = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY       entry   = NULL;
+    PACTIVE_SESSION           session = GetActiveSession();
+    PLIST_ENTRY               list    = NULL;
+    PPROCESS_MAP_MODULE_ENTRY module  = NULL;
+
+    if (!map->active)
+        return;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    entry = RtlLookupEntryHashmap(map, session->km_handle, &session->km_handle);
+
+    if (!entry)
+        return;
+
+    for (list = entry->module_list.Flink; list != &entry->module_list;
+         list = list->Flink) {
+        module = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+
+        if (module->base == session->module.base_address &&
+            module->size == session->module.size) {
+            Callback(module, Context);
+            goto end;
+        }
+    }
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+VOID
+CleanupProcessHashmap()
+{
+    PRTL_HASHMAP                map     = GetProcessHashmap();
+    PRTL_HASHMAP_ENTRY          entry   = NULL;
+    PRTL_HASHMAP_ENTRY          temp    = NULL;
+    PLIST_ENTRY                 list    = NULL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
+
+    map->active = FALSE;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    /* First, free all module lists */
+    RtlEnumerateHashmap(map, FreeProcessEntryModuleList, NULL);
+
+    for (UINT32 index = 0; index < map->bucket_count; index++) {
+        entry = &map->buckets[index];
+
+        while (!IsListEmpty(&entry->entry)) {
+            list = RemoveHeadList(&entry->entry);
+            temp = CONTAINING_RECORD(list, RTL_HASHMAP_ENTRY, entry);
+            ExFreePoolWithTag(temp, POOL_TAG_HASHMAP);
+        }
+    }
+
+    context = map->context;
+
+    ExDeleteLookasideListEx(&context->pool);
+    ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
+    RtlDeleteHashmap(map);
+
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+NTSTATUS
+InitialiseProcessHashmap()
+{
+    PAGED_CODE();
+
+    NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
+    PPROCESS_MODULE_MAP_CONTEXT context = NULL;
+
+    context = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                              sizeof(PROCESS_MODULE_MAP_CONTEXT),
+                              POOL_TAG_HASHMAP);
+
+    if (!context)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    status = ExInitializeLookasideListEx(&context->pool,
                                          NULL,
                                          NULL,
-                                         POOL_NX_ALLOCATION,
+                                         NonPagedPoolNx,
                                          0,
-                                         sizeof(PROCESS_LIST_ENTRY),
-                                         POOL_TAG_PROCESS_LIST,
+                                         sizeof(PROCESS_MAP_MODULE_ENTRY),
+                                         POOL_TAG_MODULE_LIST,
                                          0);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x",
-                    status);
+        ExFreePoolWithTag(context, POOL_TAG_HASHMAP);
         return status;
     }
 
-    InterlockedExchange(&list->active, TRUE);
-    ListInit(&list->start, &list->lock);
+    status = RtlCreateHashmap(PROCESS_HASHMAP_BUCKET_COUNT,
+                              sizeof(PROCESS_LIST_ENTRY),
+                              ProcessHashmapHashFunction,
+                              ProcessHashmapCompareFunction,
+                              context,
+                              GetProcessHashmap());
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("RtlCreateHashmap: %lx", status);
+        ExDeleteLookasideListEx(&context->pool);
+        ExFreePoolWithTag(context, POOL_TAG_HASHMAP);
+        return status;
+    }
+
     return status;
 }
 
@@ -409,28 +570,6 @@ InitialiseThreadList()
     InterlockedExchange(&list->active, TRUE);
     ListInit(&list->start, &list->lock);
     return status;
-}
-
-VOID
-FindProcessListEntryByProcess(_In_ PKPROCESS             Process,
-                              _Out_ PPROCESS_LIST_ENTRY* Entry)
-{
-    PPROCESS_LIST_HEAD list = GetProcessList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-    *Entry = NULL;
-
-    PPROCESS_LIST_ENTRY entry = (PPROCESS_LIST_ENTRY)list->start.Next;
-
-    while (entry) {
-        if (entry->process == Process) {
-            *Entry = entry;
-            goto unlock;
-        }
-
-        entry = entry->list.Next;
-    }
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
@@ -465,18 +604,65 @@ CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
 }
 
 VOID
+EnumerateAndPrintProcessHashmap()
+{
+    PRTL_HASHMAP              map            = GetProcessHashmap();
+    PRTL_HASHMAP_ENTRY        entry          = NULL;
+    PPROCESS_LIST_ENTRY       proc_entry     = NULL;
+    PPROCESS_MAP_MODULE_ENTRY mod_entry      = NULL;
+    PLIST_ENTRY               list_head      = NULL;
+    PLIST_ENTRY               list_entry     = NULL;
+    PLIST_ENTRY               mod_list_entry = NULL;
+
+    KeAcquireGuardedMutex(&map->lock);
+
+    for (UINT32 index = 0; index < map->bucket_count; index++) {
+        list_head  = &map->buckets[index];
+        list_entry = list_head->Flink;
+
+        DEBUG_VERBOSE("Bucket %u:\n", index);
+
+        while (list_entry != list_head) {
+            entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
+
+            if (entry->in_use == TRUE) {
+                proc_entry = (PPROCESS_LIST_ENTRY)entry->object;
+                DEBUG_VERBOSE(" -> process id: %lx", proc_entry->process_id);
+                DEBUG_VERBOSE(" -> process: %llx", proc_entry->process);
+                DEBUG_VERBOSE(" -> parent: %llx", proc_entry->parent);
+
+                mod_list_entry = proc_entry->module_list.Flink;
+                while (mod_list_entry != &proc_entry->module_list) {
+                    mod_entry = CONTAINING_RECORD(
+                        mod_list_entry, PROCESS_MAP_MODULE_ENTRY, entry);
+                    DEBUG_VERBOSE("    -> module base: %llx", mod_entry->base);
+                    DEBUG_VERBOSE("    -> module size: %lx", mod_entry->size);
+
+                    mod_list_entry = mod_list_entry->Flink;
+                }
+            }
+
+            list_entry = list_entry->Flink;
+        }
+    }
+
+    KeReleaseGuardedMutex(&map->lock);
+}
+
+VOID
 ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
                            _In_ BOOLEAN Create)
 {
-    PPROCESS_LIST_ENTRY entry        = NULL;
+    BOOLEAN new                      = FALSE;
     PKPROCESS           parent       = NULL;
     PKPROCESS           process      = NULL;
-    PPROCESS_LIST_HEAD  list         = GetProcessList();
     PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
     LPCSTR              process_name = NULL;
+    PRTL_HASHMAP        map          = GetProcessHashmap();
+    PPROCESS_LIST_ENTRY entry        = NULL;
 
-    if (!list->active)
+    if (!map->active)
         return;
 
     ImpPsLookupProcessByProcessId(ParentId, &parent);
@@ -487,19 +673,21 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
+    KeAcquireGuardedMutex(&map->lock);
+
     if (Create) {
-        entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
+        entry = RtlInsertEntryHashmap(map, ProcessId);
 
         if (!entry)
-            return;
+            goto end;
 
-        ImpObfReferenceObject(parent);
-        ImpObfReferenceObject(process);
+        entry->process_id = ProcessId;
+        entry->process    = process;
+        entry->parent     = parent;
 
-        entry->parent  = parent;
-        entry->process = process;
+        InitializeListHead(&entry->module_list);
 
-        ListInsert(&list->start, entry, &list->lock);
+        entry->list_count = 0;
 
         /*
          * Notify to our driver that we can hash x86 modules, and hash
@@ -513,16 +701,22 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         }
     }
     else {
-        FindProcessListEntryByProcess(process, &entry);
+        entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
 
-        if (!entry)
-            return;
+        if (!entry) {
+            DEBUG_ERROR("UNABLE TO FIND PROCESS NODE!!!");
+            goto end;
+        }
 
         ImpObDereferenceObject(entry->parent);
         ImpObDereferenceObject(entry->process);
 
-        LookasideListRemoveEntry(&list->start, entry, &list->lock);
+        FreeProcessEntryModuleList(entry, NULL);
+        RtlDeleteEntryHashmap(map, ProcessId, &ProcessId);
     }
+
+end:
+    KeReleaseGuardedMutex(&map->lock);
 }
 
 VOID
@@ -954,22 +1148,21 @@ end:
 }
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
-                        _In_opt_ PVOID           Context)
+EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 {
     /* Handles are stored in pageable memory */
     PAGED_CODE();
 
     UNREFERENCED_PARAMETER(Context);
 
-    if (!ProcessListEntry)
+    if (!Entry)
         return STATUS_INVALID_PARAMETER;
 
-    if (ProcessListEntry->process == PsInitialSystemProcess)
+    if (Entry->process == PsInitialSystemProcess)
         return STATUS_SUCCESS;
 
     PHANDLE_TABLE handle_table =
-        *(PHANDLE_TABLE*)((uintptr_t)ProcessListEntry->process +
+        *(PHANDLE_TABLE*)((uintptr_t)Entry->process +
                           EPROCESS_HANDLE_TABLE_OFFSET);
 
     if (!handle_table)
@@ -992,12 +1185,41 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
 
 STATIC
 VOID
+TimerObjectValidateProcessModuleCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+                                         _In_opt_ PVOID                 Context)
+{
+    CHAR            hash[SHA_256_HASH_LENGTH] = {0};
+    NTSTATUS        status                    = STATUS_UNSUCCESSFUL;
+    PACTIVE_SESSION session                   = (PACTIVE_SESSION)Context;
+
+    if (!ARGUMENT_PRESENT(Context))
+        return;
+
+    status = HashUserModule(Entry, hash, sizeof(hash));
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("HashUserModule: %x", status);
+        return;
+    }
+
+    if (RtlCompareMemory(hash, session->module.module_hash, sizeof(hash)) !=
+        sizeof(hash)) {
+        DEBUG_ERROR("User module hash not matching!! MODIFIED!");
+        return;
+    }
+
+    DEBUG_VERBOSE("User module hash valid.");
+}
+
+STATIC
+VOID
 TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
                            _In_opt_ PVOID      Context)
 {
-    NTSTATUS          status = STATUS_UNSUCCESSFUL;
-    PTIMER_OBJECT     timer  = (PTIMER_OBJECT)Context;
-    PDRIVER_LIST_HEAD list   = GetDriverList();
+    NTSTATUS          status  = STATUS_UNSUCCESSFUL;
+    PTIMER_OBJECT     timer   = (PTIMER_OBJECT)Context;
+    PDRIVER_LIST_HEAD list    = GetDriverList();
+    PACTIVE_SESSION   session = GetActiveSession();
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -1018,6 +1240,16 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("ValidateOurDriverImage failed with status %x", status);
 
+    KeAcquireGuardedMutex(&session->lock);
+    if (!session->is_session_active) {
+        KeReleaseGuardedMutex(&session->lock);
+        goto end;
+    }
+
+    FindOurUserModeModuleEntry(TimerObjectValidateProcessModuleCallback,
+                               session);
+
+    KeReleaseGuardedMutex(&session->lock);
 end:
     InterlockedExchange(&timer->state, FALSE);
 }

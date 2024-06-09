@@ -9,9 +9,6 @@
 typedef void (*THREADLIST_CALLBACK_ROUTINE)(
     _In_ PTHREAD_LIST_ENTRY ThreadListEntry, _In_opt_ PVOID Context);
 
-typedef void (*PROCESSLIST_CALLBACK_ROUTINE)(
-    _In_ PPROCESS_LIST_ENTRY ProcessListEntry, _In_opt_ PVOID Context);
-
 #define DRIVER_PATH_LENGTH  0x100
 #define SHA_256_HASH_LENGTH 32
 
@@ -36,6 +33,9 @@ typedef struct _DRIVER_LIST_ENTRY {
 typedef void (*DRIVERLIST_CALLBACK_ROUTINE)(
     _In_ PDRIVER_LIST_ENTRY DriverListEntry, _In_opt_ PVOID Context);
 
+typedef BOOLEAN (*PROCESS_MODULE_CALLBACK)(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+                                           _In_opt_ PVOID Context);
+
 NTSTATUS
 InitialiseDriverList();
 
@@ -53,14 +53,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
                        _In_ POB_PRE_OPERATION_INFORMATION OperationInformation);
 
 NTSTATUS
-EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY ProcessListEntry,
-                        _In_opt_ PVOID           Context);
-
-NTSTATUS
 InitialiseThreadList();
-
-NTSTATUS
-InitialiseProcessList();
 
 VOID
 ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
@@ -76,27 +69,16 @@ VOID
 CleanupThreadListOnDriverUnload();
 
 VOID
-FindThreadListEntryByThreadAddress(_In_ PKTHREAD               Thread,
+FindThreadListEntryByThreadAddress(_In_ PKTHREAD             Thread,
                                    _Out_ PTHREAD_LIST_ENTRY* Entry);
-
-VOID
-FindProcessListEntryByProcess(_In_ PKPROCESS               Process,
-                              _Out_ PPROCESS_LIST_ENTRY* Entry);
 
 VOID
 EnumerateThreadListWithCallbackRoutine(
     _In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context);
 
 VOID
-EnumerateProcessListWithCallbackRoutine(
-    _In_ PROCESSLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context);
-
-VOID
 FindDriverEntryByBaseAddress(_In_ PVOID                ImageBase,
                              _Out_ PDRIVER_LIST_ENTRY* Entry);
-
-VOID
-CleanupProcessListOnDriverUnload();
 
 VOID
 CleanupDriverListOnDriverUnload();
@@ -137,5 +119,26 @@ EnumerateDriverListWithCallbackRoutine(
 VOID
 DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
                                     _Out_ PRTL_MODULE_EXTENDED_INFO Extended);
+
+NTSTATUS
+InitialiseProcessHashmap();
+
+NTSTATUS
+EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context);
+
+VOID
+EnumerateAndPrintProcessHashmap();
+
+VOID
+CleanupProcessHashmap();
+
+VOID
+EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
+                           _In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context);
+
+VOID
+FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
+                           _In_opt_ PVOID               Context);
 
 #endif

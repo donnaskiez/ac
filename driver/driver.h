@@ -9,9 +9,13 @@
 #include "modules.h"
 #include "integrity.h"
 #include "callbacks.h"
+#include "map.h"
 
 BCRYPT_ALG_HANDLE*
-GetCryptAlgHandle();
+GetCryptHandle_AES();
+
+BCRYPT_ALG_HANDLE*
+GetCryptHandle_Sha256();
 
 NTSTATUS
 QueryActiveApcContextsForCompletion();
@@ -52,9 +56,6 @@ GetThreadList();
 PDRIVER_LIST_HEAD
 GetDriverList();
 
-PPROCESS_LIST_HEAD
-GetProcessList();
-
 PUINT64
 GetApcContextArray();
 
@@ -81,5 +82,11 @@ IsNmiInProgress();
 
 BOOLEAN
 HasDriverLoaded();
+
+PRTL_HASHMAP
+GetProcessHashmap();
+
+VOID
+CleanupProcessTree();
 
 #endif

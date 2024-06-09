@@ -257,6 +257,9 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     MM_COPY_ADDRESS        address                 = {0};
     INTEGRITY_CHECK_HEADER header                  = {0};
 
+    //DEBUG_VERBOSE("Storing x regions -> x86 module: %lx", (UINT32)IsModulex86);
+    //DEBUG_VERBOSE("MmIsAddressValid: %lx", MmIsAddressValid(ModuleBase));
+
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
 
@@ -277,6 +280,10 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 
     if (*Buffer == NULL)
         return STATUS_MEMORY_NOT_ALLOCATED;
+
+    /* For context, when we are hashing x86 modules, MmIsAddressValid will
+     * return FALSE. Yet we still need protection for when an invalid address is
+     * passed for a non-x86 based image.*/
 
     /*
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
@@ -434,7 +441,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     PAGED_CODE();
 
     NTSTATUS           status              = STATUS_UNSUCCESSFUL;
-    BCRYPT_ALG_HANDLE  algo_handle         = NULL;
+    BCRYPT_ALG_HANDLE* algo_handle         = GetCryptHandle_Sha256();
     BCRYPT_HASH_HANDLE hash_handle         = NULL;
     ULONG              bytes_copied        = 0;
     ULONG              resulting_hash_size = 0;
@@ -445,21 +452,12 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     *HashResult     = NULL;
     *HashResultSize = 0;
 
-    status = BCryptOpenAlgorithmProvider(
-        &algo_handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptOpenAlogrithmProvider failed with status %x",
-                    status);
-        goto end;
-    }
-
     /*
      * Request the size of the hash object buffer, this is different then
      * the buffer that will store the resulting hash, instead this will be
      * used to store the hash object used to create the hash.
      */
-    status = BCryptGetProperty(algo_handle,
+    status = BCryptGetProperty(*algo_handle,
                                BCRYPT_OBJECT_LENGTH,
                                (PCHAR)&hash_object_size,
                                sizeof(ULONG),
@@ -483,7 +481,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
      * This call gets the size of the resulting hash, which we will use to
      * allocate the resulting hash buffer.
      */
-    status = BCryptGetProperty(algo_handle,
+    status = BCryptGetProperty(*algo_handle,
                                BCRYPT_HASH_LENGTH,
                                (PCHAR)&resulting_hash_size,
                                sizeof(ULONG),
@@ -507,7 +505,7 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
      * Here we create our hash object and store it in the hash_object
      * buffer.
      */
-    status = BCryptCreateHash(algo_handle,
+    status = BCryptCreateHash(*algo_handle,
                               &hash_handle,
                               hash_object,
                               hash_object_size,
@@ -548,9 +546,6 @@ ComputeHashOfBuffer(_In_ PVOID   Buffer,
     *HashResultSize = resulting_hash_size;
 
 end:
-
-    if (algo_handle)
-        BCryptCloseAlgorithmProvider(algo_handle, NULL);
 
     if (hash_handle)
         BCryptDestroyHash(hash_handle);
@@ -1027,6 +1022,66 @@ end:
     return status;
 }
 
+NTSTATUS
+HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+               _Out_ PVOID                    OutBuffer,
+               _In_ UINT32                    OutBufferSize)
+{
+    PAGED_CODE();
+
+    NTSTATUS              status           = STATUS_UNSUCCESSFUL;
+    KAPC_STATE            apc_state        = {0};
+    PVAL_INTEGRITY_HEADER memory_buffer    = NULL;
+    PVOID                 memory_hash      = NULL;
+    ULONG                 memory_hash_size = 0;
+    SIZE_T                bytes_written    = 0;
+    PACTIVE_SESSION       session          = GetActiveSession();
+
+    /*
+     * Attach because the offsets given are from the process' context.
+     */
+    ImpKeStackAttachProcess(session->process, &apc_state);
+
+    status = StoreModuleExecutableRegionsInBuffer(
+        &memory_buffer, Entry->base, Entry->size, &bytes_written, FALSE);
+
+    ImpKeUnstackDetachProcess(&apc_state);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR(
+            "StoreModuleExecutableRegionsInBuffer failed with status %x",
+            status);
+        goto end;
+    }
+
+    status = ComputeHashOfBuffer(memory_buffer->section_base,
+                                 memory_buffer->section_header.SizeOfRawData,
+                                 &memory_hash,
+                                 &memory_hash_size);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+        goto end;
+    }
+
+    if (OutBufferSize > memory_hash_size) {
+        status = STATUS_BUFFER_TOO_SMALL;
+        goto end;
+    }
+
+    RtlCopyMemory(OutBuffer, memory_hash, memory_hash_size);
+
+end:
+
+    if (memory_buffer)
+        ImpExFreePoolWithTag(memory_buffer, POOL_TAG_INTEGRITY);
+
+    if (memory_hash)
+        ImpExFreePoolWithTag(memory_hash, POOL_TAG_INTEGRITY);
+
+    return status;
+}
+
 FORCEINLINE
 STATIC
 PCHAR
@@ -1258,6 +1313,9 @@ GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
     if (!RoutineAddress || !AverageTime)
         return STATUS_UNSUCCESSFUL;
 
+    if (!MmIsAddressValid(RoutineAddress))
+        return STATUS_INVALID_ADDRESS;
+
     *AverageTime = MeasureReads(RoutineAddress, EPT_CHECK_NUM_ITERATIONS);
 
     return *AverageTime == 0 ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
@@ -1304,8 +1362,11 @@ WCHAR PROTECTED_FUNCTIONS[EPT_PROTECTED_FUNCTIONS_COUNT]
  * call thereafter fails. So will be storing the routine addresses in arrays
  * since they dont change once the kernel is loaded.
  */
-UINT64 CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT]     = {0};
-UINT64 PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = {0};
+#pragma section("NonPagedPool", read, write)
+__declspec(allocate("NonPagedPool")) UINT64
+    CONTROL_FUNCTION_ADDRESSES[EPT_CONTROL_FUNCTIONS_COUNT] = {0};
+__declspec(allocate("NonPagedPool")) UINT64
+    PROTECTED_FUNCTION_ADDRESSES[EPT_PROTECTED_FUNCTIONS_COUNT] = {0};
 
 STATIC
 NTSTATUS
@@ -1407,7 +1468,7 @@ DetectEptHooksInKeyFunctions()
 }
 
 VOID
-FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
+FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
     LPCSTR     process_name = NULL;
     PEPROCESS* process      = (PEPROCESS*)Context;
@@ -1415,10 +1476,10 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
     if (!Context)
         return;
 
-    process_name = ImpPsGetProcessImageFileName(Entry->process);
+    process_name = ImpPsGetProcessImageFileName(Node->process);
 
     if (!strcmp(process_name, "winlogon.exe"))
-        *process = Entry->process;
+        *process = Node->process;
 }
 
 STATIC
@@ -1431,7 +1492,7 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
     PEPROCESS  process   = NULL;
     KAPC_STATE apc_state = {0};
 
-    EnumerateProcessListWithCallbackRoutine(FindWinLogonProcess, &process);
+    RtlEnumerateHashmap(GetProcessHashmap(), FindWinLogonProcess, &process);
 
     if (!process)
         return STATUS_NOT_FOUND;
@@ -2224,33 +2285,6 @@ WaitForHeartbeatCompletion(_In_ PHEARTBEAT_CONFIGURATION Configuration)
         YieldProcessor();
 }
 
-STATIC
-VOID
-HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-
-    if (!ARGUMENT_PRESENT(Context))
-        return;
-
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)Context;
-
-    /* Ensure we wait until our heartbeats DPC has terminated. */
-    KeFlushQueuedDpcs();
-    FreeHeartbeatObjects(config);
-
-    status = AllocateHeartbeatObjects(config);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
-        return;
-    }
-
-    InitialiseHeartbeatObjects(config);
-    SetHeartbeatInactive(config);
-}
-
 FORCEINLINE
 STATIC
 VOID
@@ -2291,22 +2325,17 @@ BuildHeartbeatPacket(_In_ UINT32 PacketSize)
 
 STATIC
 VOID
-HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
-                    _In_opt_ PVOID DeferredContext,
-                    _In_opt_ PVOID SystemArgument1,
-                    _In_opt_ PVOID SystemArgument2)
+HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
+    UNREFERENCED_PARAMETER(DeviceObject);
 
-    if (!ARGUMENT_PRESENT(DeferredContext))
+    if (!ARGUMENT_PRESENT(Context))
         return;
 
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
-    PHEARTBEAT_PACKET        packet = NULL;
     UINT32                   packet_size = 0;
+    NTSTATUS                 status      = STATUS_UNSUCCESSFUL;
+    PHEARTBEAT_PACKET        packet      = NULL;
+    PHEARTBEAT_CONFIGURATION config      = (PHEARTBEAT_CONFIGURATION)Context;
 
     DEBUG_VERBOSE("Heartbeat timer alerted. Generating heartbeat packet.");
 
@@ -2321,14 +2350,45 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
             ImpExFreePoolWithTag(packet, POOL_TAG_HEARTBEAT);
-            goto end;
+            goto queue_next;
         }
 
         IrpQueueSchedulePacket(packet, packet_size);
         IncrementHeartbeatCounter(config);
     }
 
-end:
+queue_next:
+    /* Ensure we wait until our heartbeats DPC has terminated. */
+    KeFlushQueuedDpcs();
+    FreeHeartbeatObjects(config);
+
+    status = AllocateHeartbeatObjects(config);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("AllocateHeartbeatObjects %x", status);
+        return;
+    }
+
+    InitialiseHeartbeatObjects(config);
+    SetHeartbeatInactive(config);
+}
+
+STATIC
+VOID
+HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
+                    _In_opt_ PVOID DeferredContext,
+                    _In_opt_ PVOID SystemArgument1,
+                    _In_opt_ PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    if (!ARGUMENT_PRESENT(DeferredContext))
+        return;
+
+    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
+
     IoQueueWorkItem(
         config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
 }
