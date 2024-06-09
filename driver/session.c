@@ -79,6 +79,9 @@ SessionTerminate()
     session->um_handle         = NULL;
     session->process           = NULL;
     session->is_session_active = FALSE;
+
+    RtlZeroMemory(&session->module, sizeof(MODULE_INFORMATION));
+
     SessionTerminateHeartbeat(&session->heartbeat_config);
     CryptCloseSessionCryptObjects();
     KeReleaseGuardedMutex(&session->lock);
