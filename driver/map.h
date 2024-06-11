@@ -3,11 +3,6 @@
 
 #include "common.h"
 
-typedef UINT32 (*HASH_FUNCTION)(_In_ UINT64 Key);
-
-/* Struct1 being the node being compared to the value in Struct 2*/
-typedef BOOLEAN (*COMPARE_FUNCTION)(_In_ PVOID Struct1, _In_ PVOID Struct2);
-
 /* To improve efficiency, each entry contains a common header
  * RTL_HASHMAP_ENTRY*, reducing the need to store a seperate pointer to the
  * entrys data. */
@@ -17,8 +12,10 @@ typedef struct _RTL_HASHMAP_ENTRY {
     CHAR       object[];
 } RTL_HASHMAP_ENTRY, *PRTL_HASHMAP_ENTRY;
 
-typedef VOID (*ENUMERATE_HASHMAP)(_In_ PRTL_HASHMAP_ENTRY Entry,
-                                  _In_opt_ PVOID          Context);
+typedef UINT32 (*HASH_FUNCTION)(_In_ UINT64 Key);
+
+/* Struct1 being the node being compared to the value in Struct 2*/
+typedef BOOLEAN (*COMPARE_FUNCTION)(_In_ PVOID Struct1, _In_ PVOID Struct2);
 
 typedef struct _RTL_HASHMAP {
     /* Array of RTL_HASHMAP_ENTRIES with length = bucket_count */
@@ -45,34 +42,59 @@ typedef struct _RTL_HASHMAP {
 
 } RTL_HASHMAP, *PRTL_HASHMAP;
 
+typedef VOID (*ENUMERATE_HASHMAP)(_In_ PRTL_HASHMAP_ENTRY Entry,
+                                  _In_opt_ PVOID          Context);
+
 /* Hashmap is caller allocated */
 NTSTATUS
-RtlCreateHashmap(_In_ UINT32           BucketCount,
+RtlHashmapCreate(_In_ UINT32           BucketCount,
                  _In_ UINT32           EntryObjectSize,
                  _In_ HASH_FUNCTION    HashFunction,
                  _In_ COMPARE_FUNCTION CompareFunction,
-                 _In_ PVOID            Context,
+                 _In_opt_ PVOID            Context,
                  _Out_ PRTL_HASHMAP    Hashmap);
 
 PVOID
-RtlInsertEntryHashmap(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key);
+RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key);
 
 PVOID
-RtlLookupEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
+RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
                       _In_ UINT64       Key,
                       _In_ PVOID        Compare);
 
 BOOLEAN
-RtlDeleteEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
+RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
                       _In_ UINT64       Key,
                       _In_ PVOID        Compare);
 
 VOID
-RtlEnumerateHashmap(_In_ PRTL_HASHMAP      Hashmap,
+RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
                     _In_ ENUMERATE_HASHMAP EnumerationCallback,
                     _In_opt_ PVOID         Context);
 
 VOID
-RtlDeleteHashmap(_In_ PRTL_HASHMAP Hashmap);
+RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap);
+
+FORCEINLINE
+VOID
+RtlHashmapAcquireLock(_Inout_ PRTL_HASHMAP Hashmap)
+{
+    KeAcquireGuardedMutex(&Hashmap->lock);
+}
+
+FORCEINLINE
+VOID
+RtlHashmapReleaseLock(_Inout_ PRTL_HASHMAP Hashmap)
+{
+    KeReleaseGuardedMutex(&Hashmap->lock);
+}
+
+FORCEINLINE
+VOID
+RtlHashmapSetInactive(_Inout_ PRTL_HASHMAP Hashmap)
+{
+    Hashmap->active = FALSE;
+}
+
 
 #endif

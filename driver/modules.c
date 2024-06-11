@@ -1957,7 +1957,7 @@ ValidateWin32kBase_gDxgInterface()
         goto end;
     }
 
-    RtlEnumerateHashmap(GetProcessHashmap(), FindWinLogonProcess, &winlogon);
+    RtlHashmapEnumerate(GetProcessHashmap(), FindWinLogonProcess, &winlogon);
 
     if (!winlogon) {
         status = STATUS_UNSUCCESSFUL;

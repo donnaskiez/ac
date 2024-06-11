@@ -447,7 +447,7 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
         /* can maybe implement this better so we can extract a status
          * value */
-        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
+        RtlHashmapEnumerate(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 
@@ -898,7 +898,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         /* can maybe implement this better so we can extract a status
          * value */
-        RtlEnumerateHashmap(GetProcessHashmap(), EnumerateProcessHandles, NULL);
+        RtlHashmapEnumerate(GetProcessHashmap(), EnumerateProcessHandles, NULL);
 
         break;
 

@@ -1,16 +1,26 @@
 #include "map.h"
 
+VOID
+RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap)
+{
+    ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
+    ExDeleteLookasideListEx(&Hashmap->pool);
+}
+
 NTSTATUS
-RtlCreateHashmap(_In_ UINT32           BucketCount,
+RtlHashmapCreate(_In_ UINT32           BucketCount,
                  _In_ UINT32           EntryObjectSize,
                  _In_ HASH_FUNCTION    HashFunction,
                  _In_ COMPARE_FUNCTION CompareFunction,
-                 _In_ PVOID            Context,
+                 _In_opt_ PVOID        Context,
                  _Out_ PRTL_HASHMAP    Hashmap)
 {
     NTSTATUS           status     = STATUS_UNSUCCESSFUL;
     UINT32             entry_size = sizeof(RTL_HASHMAP_ENTRY) + EntryObjectSize;
     PRTL_HASHMAP_ENTRY entry      = NULL;
+
+    if (!CompareFunction || !HashFunction)
+        return STATUS_INVALID_PARAMETER;
 
     Hashmap->buckets = ExAllocatePool2(
         POOL_FLAG_NON_PAGED, BucketCount * entry_size, POOL_TAG_HASHMAP);
@@ -26,6 +36,21 @@ RtlCreateHashmap(_In_ UINT32           BucketCount,
 
     KeInitializeGuardedMutex(&Hashmap->lock);
 
+    status = ExInitializeLookasideListEx(&Hashmap->pool,
+                                         NULL,
+                                         NULL,
+                                         NonPagedPoolNx,
+                                         0,
+                                         entry_size,
+                                         POOL_TAG_HASHMAP,
+                                         0);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("ExInitializeLookasideListEx: %x", status);
+        ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
+        return status;
+    }
+
     Hashmap->bucket_count     = BucketCount;
     Hashmap->hash_function    = HashFunction;
     Hashmap->compare_function = CompareFunction;
@@ -39,15 +64,20 @@ RtlCreateHashmap(_In_ UINT32           BucketCount,
 FORCEINLINE
 STATIC
 PRTL_HASHMAP_ENTRY
-RtlFindUnusedHashmapEntry(_In_ PRTL_HASHMAP_ENTRY Head)
+RtlHashmapFindUnusedEntry(_In_ PLIST_ENTRY Head)
 {
-    PRTL_HASHMAP_ENTRY entry = Head;
+    PRTL_HASHMAP_ENTRY entry      = NULL;
+    PLIST_ENTRY        list_entry = Head->Flink;
 
-    while (entry) {
-        if (entry->in_use == FALSE)
+    while (list_entry != Head) {
+        entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
+
+        if (entry->in_use == FALSE) {
+            entry->in_use = TRUE;
             return entry;
+        }
 
-        entry = CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
+        list_entry = list_entry->Flink;
     }
 
     return NULL;
@@ -56,12 +86,9 @@ RtlFindUnusedHashmapEntry(_In_ PRTL_HASHMAP_ENTRY Head)
 FORCEINLINE
 STATIC
 PRTL_HASHMAP_ENTRY
-RtlAllocateBucketListEntry(_In_ PRTL_HASHMAP Hashmap)
+RtlHashmapAllocateBucketEntry(_In_ PRTL_HASHMAP Hashmap)
 {
-    PRTL_HASHMAP_ENTRY entry =
-        ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                        Hashmap->object_size + sizeof(RTL_HASHMAP_ENTRY),
-                        POOL_TAG_HASHMAP);
+    PRTL_HASHMAP_ENTRY entry = ExAllocateFromLookasideListEx(&Hashmap->pool);
 
     if (!entry)
         return NULL;
@@ -73,43 +100,34 @@ RtlAllocateBucketListEntry(_In_ PRTL_HASHMAP Hashmap)
 FORCEINLINE
 STATIC
 BOOLEAN
-RtlIsIndexInHashmapRange(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
+RtlHashmapIsIndexInRange(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
 {
     return Index < Hashmap->bucket_count ? TRUE : FALSE;
 }
 
 /* assumes map lock is held */
 PVOID
-RtlInsertEntryHashmap(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
+RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
 {
-    UINT32             index      = 0;
-    PLIST_ENTRY        list_head  = NULL;
-    PLIST_ENTRY        list_entry = NULL;
-    PRTL_HASHMAP_ENTRY entry      = NULL;
-    PRTL_HASHMAP_ENTRY new_entry  = NULL;
+    UINT32             index     = 0;
+    PLIST_ENTRY        list_head = NULL;
+    PRTL_HASHMAP_ENTRY entry     = NULL;
+    PRTL_HASHMAP_ENTRY new_entry = NULL;
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlIsIndexInHashmapRange(Hashmap, index)) {
+    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return NULL;
     }
 
-    list_head  = &(&Hashmap->buckets[index])->entry;
-    list_entry = list_head->Flink;
+    list_head = &(&Hashmap->buckets[index])->entry;
+    entry     = RtlHashmapFindUnusedEntry(list_head);
 
-    while (list_entry != list_head) {
-        entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
+    if (entry)
+        return entry;
 
-        if (entry->in_use == FALSE) {
-            entry->in_use = TRUE;
-            return entry->object;
-        }
-
-        list_entry = list_entry->Flink;
-    }
-
-    new_entry = RtlAllocateBucketListEntry(Hashmap);
+    new_entry = RtlHashmapAllocateBucketEntry(Hashmap);
 
     if (!new_entry) {
         DEBUG_ERROR("Failed to allocate new entry");
@@ -126,7 +144,7 @@ RtlInsertEntryHashmap(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
  * Also assumes lock is held.
  */
 PVOID
-RtlLookupEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
+RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
                       _In_ UINT64       Key,
                       _In_ PVOID        Compare)
 {
@@ -135,7 +153,7 @@ RtlLookupEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlIsIndexInHashmapRange(Hashmap, index)) {
+    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return NULL;
     }
@@ -159,83 +177,67 @@ RtlLookupEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
 
 /* Assumes lock is held */
 BOOLEAN
-RtlDeleteEntryHashmap(_In_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT64       Key,
-                      _In_ PVOID        Compare)
+RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
+                      _In_ UINT64          Key,
+                      _In_ PVOID           Compare)
 {
-    UINT32             index = 0;
-    PRTL_HASHMAP_ENTRY entry = NULL;
-    PRTL_HASHMAP_ENTRY next  = NULL;
+    UINT32             index      = 0;
+    PLIST_ENTRY        list_head  = NULL;
+    PLIST_ENTRY        list_entry = NULL;
+    PRTL_HASHMAP_ENTRY entry      = NULL;
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlIsIndexInHashmapRange(Hashmap, index)) {
+    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return FALSE;
     }
 
-    entry = &Hashmap->buckets[index];
+    list_head  = &(&Hashmap->buckets[index])->entry;
+    list_entry = list_head->Flink;
 
-    while (entry) {
-        if (entry->in_use == FALSE) {
-            next =
-                CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
+    while (list_entry != list_head) {
+        entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
 
-            if (next == &Hashmap->buckets[index])
-                break;
-
-            entry = next;
-            continue;
-        }
-
-        if (Hashmap->compare_function(entry->object, Compare)) {
-            if (entry == &Hashmap->buckets[index]) {
+        if (entry->in_use &&
+            Hashmap->compare_function(entry->object, Compare)) {
+            if (entry == list_head) {
                 entry->in_use = FALSE;
             }
             else {
                 RemoveEntryList(&entry->entry);
-                ExFreePoolWithTag(entry, POOL_TAG_HASHMAP);
+                ExFreeToLookasideListEx(&Hashmap->pool, entry);
             }
 
             return TRUE;
         }
 
-        next = CONTAINING_RECORD(entry->entry.Flink, RTL_HASHMAP_ENTRY, entry);
-
-        if (next == &Hashmap->buckets[index])
-            break;
-
-        entry = next;
+        list_entry = list_entry->Flink;
     }
 
     return FALSE;
 }
 
 VOID
-RtlEnumerateHashmap(_In_ PRTL_HASHMAP      Hashmap,
+RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
                     _In_ ENUMERATE_HASHMAP EnumerationCallback,
                     _In_opt_ PVOID         Context)
 {
-    PRTL_HASHMAP_ENTRY entry = NULL;
+    PLIST_ENTRY        list_head  = NULL;
+    PLIST_ENTRY        list_entry = NULL;
+    PRTL_HASHMAP_ENTRY entry      = NULL;
 
     for (UINT32 index = 0; index < Hashmap->bucket_count; index++) {
-        PLIST_ENTRY list_head  = &Hashmap->buckets[index];
-        PLIST_ENTRY list_entry = list_head->Flink;
+        list_head  = &Hashmap->buckets[index];
+        list_entry = list_head->Flink;
 
         while (list_entry != list_head) {
             entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
 
-            if (entry->in_use == TRUE) {
+            if (entry->in_use == TRUE)
                 EnumerationCallback(entry->object, Context);
-            }
 
             list_entry = list_entry->Flink;
         }
     }
-}
-
-VOID
-RtlDeleteHashmap(_In_ PRTL_HASHMAP Hashmap)
-{
-    ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
 }

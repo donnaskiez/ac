@@ -684,7 +684,7 @@ FindUnlinkedProcesses()
     UINT32 packet_size = CryptRequestRequiredBufferLength(
         sizeof(INVALID_PROCESS_ALLOCATION_REPORT));
 
-    RtlEnumerateHashmap(GetProcessHashmap(), IncrementProcessCounter, &context);
+    RtlHashmapEnumerate(GetProcessHashmap(), IncrementProcessCounter, &context);
 
     if (context.process_count == 0) {
         DEBUG_ERROR("IncrementProcessCounter failed with no status.");
@@ -701,7 +701,7 @@ FindUnlinkedProcesses()
 
     WalkKernelPageTables(&context);
 
-    RtlEnumerateHashmap(
+    RtlHashmapEnumerate(
         GetProcessHashmap(), CheckIfProcessAllocationIsInProcessList, &context);
 
     allocation_address = (PUINT64)context.process_buffer;

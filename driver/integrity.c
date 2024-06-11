@@ -1493,7 +1493,7 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
     PEPROCESS  process   = NULL;
     KAPC_STATE apc_state = {0};
 
-    RtlEnumerateHashmap(GetProcessHashmap(), FindWinLogonProcess, &process);
+    RtlHashmapEnumerate(GetProcessHashmap(), FindWinLogonProcess, &process);
 
     if (!process)
         return STATUS_NOT_FOUND;

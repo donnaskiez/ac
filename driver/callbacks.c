@@ -41,8 +41,7 @@ CleanupThreadListFreeCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry)
 VOID
 UnregisterProcessCreateNotifyRoutine()
 {
-    PRTL_HASHMAP map = GetProcessHashmap();
-    InterlockedExchange(&map->active, FALSE);
+    RtlHashmapSetInactive(GetProcessHashmap());
     ImpPsSetCreateProcessNotifyRoutine(ProcessCreateNotifyRoutine, TRUE);
 }
 
@@ -276,11 +275,11 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     if (!NT_SUCCESS(status))
         return;
 
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapAcquireLock(map);
 
     /* the PEPROCESS is the first element and is the only thing compared, hence
      * we can simply pass it in the context parameter.*/
-    entry = RtlLookupEntryHashmap(GetProcessHashmap(), ProcessId, &ProcessId);
+    entry = RtlHashmapEntryLookup(GetProcessHashmap(), ProcessId, &ProcessId);
 
     /* critical error has occured */
     if (!entry) {
@@ -307,7 +306,7 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     entry->list_count++;
 
 end:
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 VOID
@@ -411,9 +410,9 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
     if (!map->active)
         return;
 
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapAcquireLock(map);
 
-    entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
+    entry = RtlHashmapEntryLookup(map, ProcessId, &ProcessId);
 
     if (!entry)
         goto end;
@@ -427,7 +426,7 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
     }
 
 end:
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 VOID
@@ -443,9 +442,9 @@ FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
     if (!map->active)
         return;
 
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapAcquireLock(map);
 
-    entry = RtlLookupEntryHashmap(map, session->km_handle, &session->km_handle);
+    entry = RtlHashmapEntryLookup(map, session->km_handle, &session->km_handle);
 
     if (!entry)
         return;
@@ -462,7 +461,7 @@ FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
     }
 
 end:
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 VOID
@@ -474,12 +473,11 @@ CleanupProcessHashmap()
     PLIST_ENTRY                 list    = NULL;
     PPROCESS_MODULE_MAP_CONTEXT context = NULL;
 
-    map->active = FALSE;
-
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapSetInactive(map);
+    RtlHashmapAcquireLock(map);
 
     /* First, free all module lists */
-    RtlEnumerateHashmap(map, FreeProcessEntryModuleList, NULL);
+    RtlHashmapEnumerate(map, FreeProcessEntryModuleList, NULL);
 
     for (UINT32 index = 0; index < map->bucket_count; index++) {
         entry = &map->buckets[index];
@@ -495,9 +493,9 @@ CleanupProcessHashmap()
 
     ExDeleteLookasideListEx(&context->pool);
     ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
-    RtlDeleteHashmap(map);
+    RtlHashmapDelete(map);
 
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 NTSTATUS
@@ -529,7 +527,7 @@ InitialiseProcessHashmap()
         return status;
     }
 
-    status = RtlCreateHashmap(PROCESS_HASHMAP_BUCKET_COUNT,
+    status = RtlHashmapCreate(PROCESS_HASHMAP_BUCKET_COUNT,
                               sizeof(PROCESS_LIST_ENTRY),
                               ProcessHashmapHashFunction,
                               ProcessHashmapCompareFunction,
@@ -614,7 +612,7 @@ EnumerateAndPrintProcessHashmap()
     PLIST_ENTRY               list_entry     = NULL;
     PLIST_ENTRY               mod_list_entry = NULL;
 
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapAcquireLock(map);
 
     for (UINT32 index = 0; index < map->bucket_count; index++) {
         list_head  = &map->buckets[index];
@@ -646,7 +644,7 @@ EnumerateAndPrintProcessHashmap()
         }
     }
 
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 VOID
@@ -673,10 +671,10 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
 
     process_name = ImpPsGetProcessImageFileName(process);
 
-    KeAcquireGuardedMutex(&map->lock);
+    RtlHashmapAcquireLock(map);
 
     if (Create) {
-        entry = RtlInsertEntryHashmap(map, ProcessId);
+        entry = RtlHashmapEntryInsert(map, ProcessId);
 
         if (!entry)
             goto end;
@@ -701,7 +699,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         }
     }
     else {
-        entry = RtlLookupEntryHashmap(map, ProcessId, &ProcessId);
+        entry = RtlHashmapEntryLookup(map, ProcessId, &ProcessId);
 
         if (!entry) {
             DEBUG_ERROR("UNABLE TO FIND PROCESS NODE!!!");
@@ -712,11 +710,11 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         ImpObDereferenceObject(entry->process);
 
         FreeProcessEntryModuleList(entry, NULL);
-        RtlDeleteEntryHashmap(map, ProcessId, &ProcessId);
+        RtlHashmapEntryDelete(map, ProcessId, &ProcessId);
     }
 
 end:
-    KeReleaseGuardedMutex(&map->lock);
+    RtlHashmapReleaseLock(map);
 }
 
 VOID
