@@ -64,7 +64,7 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
 FORCEINLINE
 STATIC
 PRTL_HASHMAP_ENTRY
-RtlHashmapFindUnusedEntry(_In_ PLIST_ENTRY Head)
+RtlpHashmapFindUnusedEntry(_In_ PLIST_ENTRY Head)
 {
     PRTL_HASHMAP_ENTRY entry      = NULL;
     PLIST_ENTRY        list_entry = Head->Flink;
@@ -86,7 +86,7 @@ RtlHashmapFindUnusedEntry(_In_ PLIST_ENTRY Head)
 FORCEINLINE
 STATIC
 PRTL_HASHMAP_ENTRY
-RtlHashmapAllocateBucketEntry(_In_ PRTL_HASHMAP Hashmap)
+RtlpHashmapAllocateBucketEntry(_In_ PRTL_HASHMAP Hashmap)
 {
     PRTL_HASHMAP_ENTRY entry = ExAllocateFromLookasideListEx(&Hashmap->pool);
 
@@ -100,7 +100,7 @@ RtlHashmapAllocateBucketEntry(_In_ PRTL_HASHMAP Hashmap)
 FORCEINLINE
 STATIC
 BOOLEAN
-RtlHashmapIsIndexInRange(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
+RtlpHashmapIsIndexInRange(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
 {
     return Index < Hashmap->bucket_count ? TRUE : FALSE;
 }
@@ -116,18 +116,18 @@ RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
+    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return NULL;
     }
 
     list_head = &(&Hashmap->buckets[index])->entry;
-    entry     = RtlHashmapFindUnusedEntry(list_head);
+    entry     = RtlpHashmapFindUnusedEntry(list_head);
 
     if (entry)
         return entry;
 
-    new_entry = RtlHashmapAllocateBucketEntry(Hashmap);
+    new_entry = RtlpHashmapAllocateBucketEntry(Hashmap);
 
     if (!new_entry) {
         DEBUG_ERROR("Failed to allocate new entry");
@@ -153,7 +153,7 @@ RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
+    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return NULL;
     }
@@ -188,7 +188,7 @@ RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
 
     index = Hashmap->hash_function(Key);
 
-    if (!RtlHashmapIsIndexInRange(Hashmap, index)) {
+    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
         DEBUG_ERROR("Key is not in range of buckets");
         return FALSE;
     }
@@ -218,6 +218,7 @@ RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
     return FALSE;
 }
 
+/* assumes lock is held */
 VOID
 RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
                     _In_ ENUMERATE_HASHMAP EnumerationCallback,
