@@ -1191,10 +1191,6 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
-    // NTSTATUS status = ValidatePciDevices();
-
-    // if (!NT_SUCCESS(status))
-    //     DEBUG_ERROR("ValidatePciDevices failed with status %x", status);
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Irp->IoStatus.Status;

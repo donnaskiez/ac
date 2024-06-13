@@ -4,6 +4,7 @@ VOID
 RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap)
 {
     ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
+    ExFreePoolWithTag(Hashmap->locks, POOL_TAG_HASHMAP);
     ExDeleteLookasideListEx(&Hashmap->pool);
 }
 
@@ -28,13 +29,21 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
     if (!Hashmap->buckets)
         return STATUS_INSUFFICIENT_RESOURCES;
 
+    Hashmap->locks = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                     sizeof(KGUARDED_MUTEX) * BucketCount,
+                                     POOL_TAG_HASHMAP);
+
+    if (!Hashmap->locks) {
+        ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     for (UINT32 index = 0; index < BucketCount; index++) {
         entry         = &Hashmap->buckets[index];
         entry->in_use = FALSE;
         InitializeListHead(&entry->entry);
+        KeInitializeGuardedMutex(&Hashmap->locks[index]);
     }
-
-    KeInitializeGuardedMutex(&Hashmap->lock);
 
     status = ExInitializeLookasideListEx(&Hashmap->pool,
                                          NULL,
@@ -48,6 +57,7 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ExInitializeLookasideListEx: %x", status);
         ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
+        ExFreePoolWithTag(Hashmap->locks, POOL_TAG_HASHMAP);
         return status;
     }
 
@@ -105,21 +115,37 @@ RtlpHashmapIsIndexInRange(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
     return Index < Hashmap->bucket_count ? TRUE : FALSE;
 }
 
+INT32
+RtlHashmapHashKeyAndAcquireBucket(_Inout_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
+{
+    UINT32 index = Hashmap->hash_function(Key);
+
+    if (!RtlpHashmapIsIndexInRange(Hashmap, index))
+        return -1;
+
+    KeAcquireGuardedMutex(&Hashmap->locks[index]);
+    return index;
+}
+
+VOID
+RtlHashmapReleaseBucket(_Inout_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
+{
+    /* No index check here, assuming we exit the caller early if we fail on
+     * acquisition */
+    KeReleaseGuardedMutex(&Hashmap->locks[Index]);
+}
+
 /* assumes map lock is held */
 PVOID
-RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
+RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
 {
     UINT32             index     = 0;
     PLIST_ENTRY        list_head = NULL;
     PRTL_HASHMAP_ENTRY entry     = NULL;
     PRTL_HASHMAP_ENTRY new_entry = NULL;
 
-    index = Hashmap->hash_function(Key);
-
-    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
-        DEBUG_ERROR("Key is not in range of buckets");
+    if (!Hashmap->active)
         return NULL;
-    }
 
     list_head = &(&Hashmap->buckets[index])->entry;
     entry     = RtlpHashmapFindUnusedEntry(list_head);
@@ -145,18 +171,14 @@ RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key)
  */
 PVOID
 RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT64       Key,
+                      _In_ UINT32       Index,
                       _In_ PVOID        Compare)
 {
     UINT32             index = 0;
     PRTL_HASHMAP_ENTRY entry = NULL;
 
-    index = Hashmap->hash_function(Key);
-
-    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
-        DEBUG_ERROR("Key is not in range of buckets");
+    if (!Hashmap->active)
         return NULL;
-    }
 
     entry = &Hashmap->buckets[index];
 
@@ -178,7 +200,7 @@ RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
 /* Assumes lock is held */
 BOOLEAN
 RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT64          Key,
+                      _In_ UINT32          Index,
                       _In_ PVOID           Compare)
 {
     UINT32             index      = 0;
@@ -186,12 +208,8 @@ RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
     PLIST_ENTRY        list_entry = NULL;
     PRTL_HASHMAP_ENTRY entry      = NULL;
 
-    index = Hashmap->hash_function(Key);
-
-    if (!RtlpHashmapIsIndexInRange(Hashmap, index)) {
-        DEBUG_ERROR("Key is not in range of buckets");
+    if (!Hashmap->active)
         return FALSE;
-    }
 
     list_head  = &(&Hashmap->buckets[index])->entry;
     list_entry = list_head->Flink;
@@ -229,6 +247,8 @@ RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
     PRTL_HASHMAP_ENTRY entry      = NULL;
 
     for (UINT32 index = 0; index < Hashmap->bucket_count; index++) {
+        KeAcquireGuardedMutex(&Hashmap->locks[index]);
+
         list_head  = &Hashmap->buckets[index];
         list_entry = list_head->Flink;
 
@@ -240,5 +260,7 @@ RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
 
             list_entry = list_entry->Flink;
         }
+
+        KeReleaseGuardedMutex(&Hashmap->locks[index]);
     }
 }

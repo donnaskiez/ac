@@ -21,6 +21,9 @@ typedef struct _RTL_HASHMAP {
     /* Array of RTL_HASHMAP_ENTRIES with length = bucket_count */
     PRTL_HASHMAP_ENTRY buckets;
 
+    /* per bucket locks */
+    PKGUARDED_MUTEX locks;
+
     /* Number of buckets, ideally a prime number */
     UINT32 bucket_count;
 
@@ -31,19 +34,19 @@ typedef struct _RTL_HASHMAP {
     HASH_FUNCTION    hash_function;
     COMPARE_FUNCTION compare_function;
 
-    KGUARDED_MUTEX    lock;
-
     /* in the future bucket entries will use this */
     LOOKASIDE_LIST_EX pool;
 
     /* user allocated context */
-    PVOID context;
-    volatile UINT32   active;
+    PVOID           context;
+    volatile UINT32 active;
 
 } RTL_HASHMAP, *PRTL_HASHMAP;
 
 typedef VOID (*ENUMERATE_HASHMAP)(_In_ PRTL_HASHMAP_ENTRY Entry,
                                   _In_opt_ PVOID          Context);
+
+#define STATUS_INVALID_HASHMAP_INDEX -1
 
 /* Hashmap is caller allocated */
 NTSTATUS
@@ -51,21 +54,21 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
                  _In_ UINT32           EntryObjectSize,
                  _In_ HASH_FUNCTION    HashFunction,
                  _In_ COMPARE_FUNCTION CompareFunction,
-                 _In_opt_ PVOID            Context,
+                 _In_opt_ PVOID        Context,
                  _Out_ PRTL_HASHMAP    Hashmap);
 
 PVOID
-RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT64 Key);
+RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index);
 
 PVOID
 RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT64       Key,
+                      _In_ UINT32       Index,
                       _In_ PVOID        Compare);
 
 BOOLEAN
 RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT64       Key,
-                      _In_ PVOID        Compare);
+                      _In_ UINT32          Index,
+                      _In_ PVOID           Compare);
 
 VOID
 RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
@@ -75,19 +78,12 @@ RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
 VOID
 RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap);
 
-FORCEINLINE
-VOID
-RtlHashmapAcquireLock(_Inout_ PRTL_HASHMAP Hashmap)
-{
-    KeAcquireGuardedMutex(&Hashmap->lock);
-}
+INT32
+RtlHashmapHashKeyAndAcquireBucket(_Inout_ PRTL_HASHMAP Hashmap,
+                                  _In_ UINT64          Key);
 
-FORCEINLINE
 VOID
-RtlHashmapReleaseLock(_Inout_ PRTL_HASHMAP Hashmap)
-{
-    KeReleaseGuardedMutex(&Hashmap->lock);
-}
+RtlHashmapReleaseBucket(_Inout_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index);
 
 FORCEINLINE
 VOID
@@ -95,6 +91,5 @@ RtlHashmapSetInactive(_Inout_ PRTL_HASHMAP Hashmap)
 {
     Hashmap->active = FALSE;
 }
-
 
 #endif

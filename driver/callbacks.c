@@ -260,6 +260,7 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
                                                 _In_opt_ PUNICODE_STRING
                                                     FullImageName)
 {
+    UINT32                      index   = 0;
     NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
     PEPROCESS                   process = NULL;
     PRTL_HASHMAP                map     = GetProcessHashmap();
@@ -275,11 +276,12 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     if (!NT_SUCCESS(status))
         return;
 
-    RtlHashmapAcquireLock(map);
+    index = RtlHashmapHashKeyAndAcquireBucket(map, ProcessId);
 
-    /* the PEPROCESS is the first element and is the only thing compared, hence
-     * we can simply pass it in the context parameter.*/
-    entry = RtlHashmapEntryLookup(GetProcessHashmap(), ProcessId, &ProcessId);
+    if (index == STATUS_INVALID_HASHMAP_INDEX)
+        return;
+
+    entry = RtlHashmapEntryLookup(GetProcessHashmap(), index, &ProcessId);
 
     /* critical error has occured */
     if (!entry) {
@@ -306,7 +308,7 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     entry->list_count++;
 
 end:
-    RtlHashmapReleaseLock(map);
+    RtlHashmapReleaseBucket(map, index);
 }
 
 VOID
@@ -401,6 +403,7 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
                            _In_ PROCESS_MODULE_CALLBACK Callback,
                            _In_opt_ PVOID               Context)
 {
+    UINT32                    index  = 0;
     PRTL_HASHMAP              map    = GetProcessHashmap();
     BOOLEAN                   ret    = FALSE;
     PPROCESS_LIST_ENTRY       entry  = NULL;
@@ -410,9 +413,12 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
     if (!map->active)
         return;
 
-    RtlHashmapAcquireLock(map);
+    index = RtlHashmapHashKeyAndAcquireBucket(map, ProcessId);
 
-    entry = RtlHashmapEntryLookup(map, ProcessId, &ProcessId);
+    if (index == STATUS_INVALID_HASHMAP_INDEX)
+        return;
+
+    entry = RtlHashmapEntryLookup(map, index, &ProcessId);
 
     if (!entry)
         goto end;
@@ -426,13 +432,14 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
     }
 
 end:
-    RtlHashmapReleaseLock(map);
+    RtlHashmapReleaseBucket(map, index);
 }
 
 VOID
 FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
                            _In_opt_ PVOID               Context)
 {
+    UINT32                    index   = 0;
     PRTL_HASHMAP              map     = GetProcessHashmap();
     PPROCESS_LIST_ENTRY       entry   = NULL;
     PACTIVE_SESSION           session = GetActiveSession();
@@ -442,9 +449,12 @@ FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
     if (!map->active)
         return;
 
-    RtlHashmapAcquireLock(map);
+    index = RtlHashmapHashKeyAndAcquireBucket(map, session->km_handle);
 
-    entry = RtlHashmapEntryLookup(map, session->km_handle, &session->km_handle);
+    if (index == STATUS_INVALID_HASHMAP_INDEX)
+        return;
+
+    entry = RtlHashmapEntryLookup(map, index, &session->km_handle);
 
     if (!entry)
         return;
@@ -461,7 +471,7 @@ FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
     }
 
 end:
-    RtlHashmapReleaseLock(map);
+    RtlHashmapReleaseBucket(map, index);
 }
 
 VOID
@@ -474,7 +484,6 @@ CleanupProcessHashmap()
     PPROCESS_MODULE_MAP_CONTEXT context = NULL;
 
     RtlHashmapSetInactive(map);
-    RtlHashmapAcquireLock(map);
 
     /* First, free all module lists */
     RtlHashmapEnumerate(map, FreeProcessEntryModuleList, NULL);
@@ -482,11 +491,15 @@ CleanupProcessHashmap()
     for (UINT32 index = 0; index < map->bucket_count; index++) {
         entry = &map->buckets[index];
 
+        KeAcquireGuardedMutex(&map->locks[index]);
+
         while (!IsListEmpty(&entry->entry)) {
             list = RemoveHeadList(&entry->entry);
             temp = CONTAINING_RECORD(list, RTL_HASHMAP_ENTRY, entry);
             ExFreePoolWithTag(temp, POOL_TAG_HASHMAP);
         }
+
+        KeReleaseGuardedMutex(&map->locks[index]);
     }
 
     context = map->context;
@@ -494,8 +507,6 @@ CleanupProcessHashmap()
     ExDeleteLookasideListEx(&context->pool);
     ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
     RtlHashmapDelete(map);
-
-    RtlHashmapReleaseLock(map);
 }
 
 NTSTATUS
@@ -601,50 +612,30 @@ CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
                                                                    : FALSE;
 }
 
+STATIC
+VOID
+PrintHashmapCallback(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
+{
+    PPROCESS_MAP_MODULE_ENTRY module = NULL;
+    PLIST_ENTRY               list   = NULL;
+
+    UNREFERENCED_PARAMETER(Context);
+    DEBUG_VERBOSE("Process ID: %p", Entry->process_id);
+
+    for (list = Entry->module_list.Flink; list != &Entry->module_list;
+         list = list->Flink) {
+        module = CONTAINING_RECORD(list, PROCESS_MAP_MODULE_ENTRY, entry);
+        DEBUG_VERBOSE("  -> Module Base: %p, size: %lx, path: %s",
+                      (PVOID)module->base,
+                      module->size,
+                      module->path);
+    }
+}
+
 VOID
 EnumerateAndPrintProcessHashmap()
 {
-    PRTL_HASHMAP              map            = GetProcessHashmap();
-    PRTL_HASHMAP_ENTRY        entry          = NULL;
-    PPROCESS_LIST_ENTRY       proc_entry     = NULL;
-    PPROCESS_MAP_MODULE_ENTRY mod_entry      = NULL;
-    PLIST_ENTRY               list_head      = NULL;
-    PLIST_ENTRY               list_entry     = NULL;
-    PLIST_ENTRY               mod_list_entry = NULL;
-
-    RtlHashmapAcquireLock(map);
-
-    for (UINT32 index = 0; index < map->bucket_count; index++) {
-        list_head  = &map->buckets[index];
-        list_entry = list_head->Flink;
-
-        DEBUG_VERBOSE("Bucket %u:\n", index);
-
-        while (list_entry != list_head) {
-            entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
-
-            if (entry->in_use == TRUE) {
-                proc_entry = (PPROCESS_LIST_ENTRY)entry->object;
-                DEBUG_VERBOSE(" -> process id: %lx", proc_entry->process_id);
-                DEBUG_VERBOSE(" -> process: %llx", proc_entry->process);
-                DEBUG_VERBOSE(" -> parent: %llx", proc_entry->parent);
-
-                mod_list_entry = proc_entry->module_list.Flink;
-                while (mod_list_entry != &proc_entry->module_list) {
-                    mod_entry = CONTAINING_RECORD(
-                        mod_list_entry, PROCESS_MAP_MODULE_ENTRY, entry);
-                    DEBUG_VERBOSE("    -> module base: %llx", mod_entry->base);
-                    DEBUG_VERBOSE("    -> module size: %lx", mod_entry->size);
-
-                    mod_list_entry = mod_list_entry->Flink;
-                }
-            }
-
-            list_entry = list_entry->Flink;
-        }
-    }
-
-    RtlHashmapReleaseLock(map);
+    RtlHashmapEnumerate(GetProcessHashmap(), PrintHashmapCallback, NULL);
 }
 
 VOID
@@ -652,7 +643,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
                            _In_ BOOLEAN Create)
 {
-    BOOLEAN new                      = FALSE;
+    UINT32              index        = 0;
     PKPROCESS           parent       = NULL;
     PKPROCESS           process      = NULL;
     PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
@@ -670,8 +661,10 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         return;
 
     process_name = ImpPsGetProcessImageFileName(process);
+    index        = RtlHashmapHashKeyAndAcquireBucket(map, ProcessId);
 
-    RtlHashmapAcquireLock(map);
+    if (index == STATUS_INVALID_HASHMAP_INDEX)
+        return;
 
     if (Create) {
         entry = RtlHashmapEntryInsert(map, ProcessId);
@@ -714,7 +707,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
     }
 
 end:
-    RtlHashmapReleaseLock(map);
+    RtlHashmapReleaseBucket(map, index);
 }
 
 VOID
