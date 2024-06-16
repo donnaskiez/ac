@@ -1,12 +1,53 @@
 #include "tree.h"
 
 /*
- * Basic red-black tree implementation. Currently the enumeration routines are
- * recursive which maybe isnt the best idea given the environment this is meant
+ * Basic red-black tree implementation. Currently, the enumeration routines are
+ * recursive, which may not be the best idea given the environment this is meant
  * for (kernel mode). We can always fix that up later though :).
- * 
+ *
+ * Example of a Red-Black Tree:
+ *
+ *                grandparent(B)
+ *                       |
+ *              +--------+--------+
+ *              |                 |
+ *            parent(R)          uncle(R)
+ *              |
+ *        +-----+-----+
+ *        |           |
+ *      Node(R)      sibling(B)
+ *                    |
+ *                    +-----+
+ *                    |     |
+ *                  child  ...
+ *
+ * Legend:
+ * - 'B' represents a Black node
+ * - 'R' represents a Red node
+ *
+ * Labels for components during insert and delete fix-up:
+ *
+ * - Node: The newly inserted node that may cause a violation.
+ * - Parent: The parent of the newly inserted node.
+ * - Grandparent: The grandparent of the newly inserted node.
+ * - Uncle: The sibling of the parent node.
+ * - Sibling: The sibling of the node to be deleted or fixed.
+ * - Child: The child of the node to be deleted or fixed.
+ *
+ * In this example:
+ * - Each 'B' is a black node.
+ * - Each 'R' is a red node.
+ * - The labels illustrate a typical structure that might be encountered during
+ *   the insertion or deletion process, where the new node, its parent,
+ * grandparent, uncle, sibling, and child are involved in the rebalancing
+ * operations.
+ *
+ * Resources used:
  * https://www.kernel.org/doc/Documentation/rbtree.txt
  * https://github.com/torvalds/linux/blob/master/lib/rbtree.c
+ * https://www.osronline.com/article.cfm%5Earticle=516.htm
+ * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_rtl_avl_table (for structure ideas)
+ * 
  */
 
 /**
@@ -357,9 +398,9 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             else {
                 if (sibling &&
                     (!sibling->right || sibling->right->colour == black)) {
-                    if (sibling->left) {
+                    if (sibling->left)
                         sibling->left->colour = black;
-                    }
+
                     sibling->colour = red;
                     RtlpRbTreeRotateRight(Tree, sibling);
                     sibling = Node->parent->right;
@@ -368,11 +409,13 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
                 if (sibling) {
                     sibling->colour      = Node->parent->colour;
                     Node->parent->colour = black;
-                    if (sibling->right) {
+
+                    if (sibling->right)
                         sibling->right->colour = black;
-                    }
+
                     RtlpRbTreeRotateLeft(Tree, Node->parent);
                 }
+
                 Node = Tree->root;
             }
         }
@@ -395,9 +438,9 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             else {
                 if (sibling &&
                     (!sibling->left || sibling->left->colour == black)) {
-                    if (sibling->right) {
+                    if (sibling->right)
                         sibling->right->colour = black;
-                    }
+
                     sibling->colour = red;
                     RtlpRbTreeRotateLeft(Tree, sibling);
                     sibling = Node->parent->left;
@@ -406,11 +449,13 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
                 if (sibling) {
                     sibling->colour      = Node->parent->colour;
                     Node->parent->colour = black;
-                    if (sibling->left) {
+
+                    if (sibling->left)
                         sibling->left->colour = black;
-                    }
+
                     RtlpRbTreeRotateRight(Tree, Node->parent);
                 }
+
                 Node = Tree->root;
             }
         }
