@@ -10,6 +10,7 @@
 #include "integrity.h"
 #include "callbacks.h"
 #include "map.h"
+#include "tree.h"
 
 BCRYPT_ALG_HANDLE*
 GetCryptHandle_AES();
@@ -50,8 +51,8 @@ GetDriverSymbolicLink();
 PSYSTEM_INFORMATION
 GetDriverConfigSystemInformation();
 
-PTHREAD_LIST_HEAD
-GetThreadList();
+PRB_TREE
+GetThreadTree();
 
 PDRIVER_LIST_HEAD
 GetDriverList();

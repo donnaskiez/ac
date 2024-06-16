@@ -12,6 +12,7 @@
 #include "crypt.h"
 #include "map.h"
 #include "util.h"
+#include "tree.h"
 
 #define PROCESS_HASHMAP_BUCKET_COUNT 101
 
@@ -56,23 +57,18 @@ UnregisterImageLoadNotifyRoutine()
 VOID
 UnregisterThreadCreateNotifyRoutine()
 {
-    PTHREAD_LIST_HEAD list = GetThreadList();
-    InterlockedExchange(&list->active, FALSE);
+    PRB_TREE tree = GetThreadTree();
+    InterlockedExchange(&tree->active, FALSE);
     ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 }
 
 VOID
 CleanupThreadListOnDriverUnload()
 {
-    PTHREAD_LIST_HEAD list = GetThreadList();
+    PRB_TREE tree = GetThreadTree();
     DEBUG_VERBOSE("Freeing thread list!");
-    for (;;) {
-        if (!LookasideListFreeFirstEntry(
-                &list->start, &list->lock, CleanupThreadListFreeCallback)) {
-            ExDeleteLookasideListEx(&list->lookaside_list);
-            return;
-        }
-    }
+    RtlRbTreeEnumerate(tree, CleanupThreadListFreeCallback, NULL);
+    RtlRbTreeDeleteTree(tree);
 }
 
 VOID
@@ -83,27 +79,6 @@ CleanupDriverListOnDriverUnload()
         if (!ListFreeFirstEntry(&list->start, &list->lock, NULL))
             return;
     }
-}
-
-VOID
-EnumerateThreadListWithCallbackRoutine(
-    _In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
-{
-    PTHREAD_LIST_HEAD list = GetThreadList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-
-    if (!CallbackRoutine)
-        goto unlock;
-
-    PTHREAD_LIST_ENTRY entry = list->start.Next;
-
-    while (entry) {
-        CallbackRoutine(entry, Context);
-        entry = (PTHREAD_LIST_ENTRY)entry->list.Next;
-    }
-
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
 }
 
 VOID
@@ -299,7 +274,10 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
     module->base = ImageInfo->ImageBase;
     module->size = ImageInfo->ImageSize;
 
-    /* We dont care if this errors. */
+    /*
+     * 1. We dont care if this errors
+     * 2. There is a bug with the conversion need 2 look into...
+     */
     if (FullImageName)
         UnicodeToCharBufString(
             FullImageName, module->path, sizeof(module->path));
@@ -555,52 +533,45 @@ InitialiseProcessHashmap()
     return status;
 }
 
+STATIC
+UINT32
+ThreadListTreeCompare(_In_ PVOID Key, _In_ PVOID Object)
+{
+    HANDLE tid_1 = *((PHANDLE)Object);
+    HANDLE tid_2 = *((PHANDLE)Key);
+
+    if (tid_2 < tid_1)
+        return RB_TREE_LESS_THAN;
+    else if (tid_2 > tid_1)
+        return RB_TREE_GREATER_THAN;
+    else
+        return RB_TREE_EQUAL;
+}
+
 NTSTATUS
 InitialiseThreadList()
 {
-    NTSTATUS          status = STATUS_UNSUCCESSFUL;
-    PTHREAD_LIST_HEAD list   = GetThreadList();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PRB_TREE tree   = GetThreadTree();
 
-    status = ExInitializeLookasideListEx(&list->lookaside_list,
-                                         NULL,
-                                         NULL,
-                                         POOL_NX_ALLOCATION,
-                                         0,
-                                         sizeof(THREAD_LIST_ENTRY),
-                                         POOL_TAG_PROCESS_LIST,
-                                         0);
+    status =
+        RtlRbTreeCreate(ThreadListTreeCompare, sizeof(THREAD_LIST_ENTRY), tree);
 
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ExInitializeLookasideListEx failed with status %x",
-                    status);
-        return status;
-    }
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("RtlRbTreeCreate: %x", status);
 
-    InterlockedExchange(&list->active, TRUE);
-    ListInit(&list->start, &list->lock);
+    tree->active = TRUE;
     return status;
 }
 
 VOID
-FindThreadListEntryByThreadAddress(_In_ PKTHREAD             Thread,
+FindThreadListEntryByThreadAddress(_In_ HANDLE               ThreadId,
                                    _Out_ PTHREAD_LIST_ENTRY* Entry)
 {
-    PTHREAD_LIST_HEAD list = GetThreadList();
-    ImpKeAcquireGuardedMutex(&list->lock);
-    *Entry = NULL;
-
-    PTHREAD_LIST_ENTRY entry = (PTHREAD_LIST_ENTRY)list->start.Next;
-
-    while (entry) {
-        if (entry->thread == Thread) {
-            *Entry = entry;
-            goto unlock;
-        }
-
-        entry = entry->list.Next;
-    }
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
+    PRB_TREE tree = GetThreadTree();
+    RtlRbTreeAcquireLock(tree);
+    *Entry = RtlRbTreeFindNode(tree, &ThreadId);
+    RtlRbTreeReleaselock(tree);
 }
 
 FORCEINLINE
@@ -718,10 +689,10 @@ ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
     PTHREAD_LIST_ENTRY entry   = NULL;
     PKTHREAD           thread  = NULL;
     PKPROCESS          process = NULL;
-    PTHREAD_LIST_HEAD  list    = GetThreadList();
+    PRB_TREE           tree    = GetThreadTree();
 
     /* ensure we don't insert new entries if we are unloading */
-    if (!list->active)
+    if (!tree->active)
         return;
 
     ImpPsLookupThreadByThreadId(ThreadId, &thread);
@@ -730,33 +701,37 @@ ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
     if (!thread || !process)
         return;
 
+    RtlRbTreeAcquireLock(tree);
+
     if (Create) {
-        entry = ExAllocateFromLookasideListEx(&list->lookaside_list);
+        entry = RtlRbTreeInsertNode(tree, &ThreadId);
 
         if (!entry)
-            return;
+            goto end;
 
         ImpObfReferenceObject(thread);
         ImpObfReferenceObject(process);
 
+        entry->thread_id      = ThreadId;
         entry->thread         = thread;
         entry->owning_process = process;
         entry->apc            = NULL;
         entry->apc_queued     = FALSE;
-
-        ListInsert(&list->start, &entry->list, &list->lock);
     }
     else {
-        FindThreadListEntryByThreadAddress(thread, &entry);
+        entry = RtlRbTreeFindNode(tree, &ThreadId);
 
         if (!entry)
-            return;
+            goto end;
 
         ImpObDereferenceObject(entry->thread);
         ImpObDereferenceObject(entry->owning_process);
 
-        LookasideListRemoveEntry(&list->start, entry, &list->lock);
+        RtlRbTreeDeleteNode(tree, &ThreadId);
     }
+
+end:
+    RtlRbTreeReleaselock(tree);
 }
 
 VOID

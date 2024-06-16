@@ -9,6 +9,7 @@
 #include "thread.h"
 #include "pe.h"
 #include "crypt.h"
+#include "tree.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -1191,8 +1192,8 @@ ValidateThreadsViaKernelApc()
     InsertApcContext(context);
 
     SetApcAllocationInProgress(context);
-    EnumerateThreadListWithCallbackRoutine(ValidateThreadViaKernelApcCallback,
-                                           context);
+    RtlRbTreeEnumerate(
+        GetThreadTree(), ValidateThreadViaKernelApcCallback, context);
     UnsetApcAllocationInProgress(context);
     return status;
 }

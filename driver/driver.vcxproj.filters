@@ -78,6 +78,9 @@
     <ClCompile Include="map.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="tree.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -150,6 +153,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="map.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tree.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

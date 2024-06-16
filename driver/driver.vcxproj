@@ -261,6 +261,7 @@
     <ClCompile Include="queue.c" />
     <ClCompile Include="session.c" />
     <ClCompile Include="thread.c" />
+    <ClCompile Include="tree.c" />
     <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
@@ -283,6 +284,7 @@
     <ClInclude Include="queue.h" />
     <ClInclude Include="session.h" />
     <ClInclude Include="thread.h" />
+    <ClInclude Include="tree.h" />
     <ClInclude Include="types\tpm12.h" />
     <ClInclude Include="types\tpm20.h" />
     <ClInclude Include="types\tpmptp.h" />

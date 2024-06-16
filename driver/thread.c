@@ -8,6 +8,7 @@
 #include "queue.h"
 #include "session.h"
 #include "imports.h"
+#include "tree.h"
 #include "crypt.h"
 
 #ifdef ALLOC_PRAGMA
@@ -137,8 +138,6 @@ DetectThreadsAttachedToProtectedProcess()
 {
     PAGED_CODE();
     DEBUG_VERBOSE("Detecting threads attached to our process...");
-    EnumerateThreadListWithCallbackRoutine(DetectAttachedThreadsProcessCallback,
-                                           NULL);
+    RtlRbTreeEnumerate(
+        GetThreadTree(), DetectAttachedThreadsProcessCallback, NULL);
 }
-
-

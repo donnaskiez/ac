@@ -96,7 +96,7 @@ typedef struct _DRIVER_CONFIG {
     TIMER_OBJECT timer;
 
     ACTIVE_SESSION   session_information;
-    THREAD_LIST_HEAD thread_list;
+    RB_TREE          thread_tree;
     DRIVER_LIST_HEAD driver_list;
     RTL_HASHMAP      process_hashmap;
     SHARED_MAPPING   mapping;
@@ -270,11 +270,11 @@ GetDriverConfigSystemInformation()
     return &g_DriverConfig->system_information;
 }
 
-PTHREAD_LIST_HEAD
-GetThreadList()
+PRB_TREE
+GetThreadTree()
 {
     PAGED_CODE();
-    return &g_DriverConfig->thread_list;
+    return &g_DriverConfig->thread_tree;
 }
 
 PDRIVER_LIST_HEAD

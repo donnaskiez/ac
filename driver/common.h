@@ -45,11 +45,8 @@
                "donna-ac : [VERBOSE] : " fmt "\n", \
                ##__VA_ARGS__)
 
-#define HEX_DUMP(fmt, ...)                    \
-    DbgPrintEx(DPFLTR_DEFAULT_ID,             \
-               LOG_VERBOSE_LEVEL,             \
-               fmt, \
-               ##__VA_ARGS__)
+#define HEX_DUMP(fmt, ...) \
+    DbgPrintEx(DPFLTR_DEFAULT_ID, LOG_VERBOSE_LEVEL, fmt, ##__VA_ARGS__)
 
 #define STATIC static
 #define INLINE inline
@@ -87,7 +84,7 @@ typedef struct _DRIVER_LIST_HEAD {
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;
 
 typedef struct _THREAD_LIST_ENTRY {
-    SINGLE_LIST_ENTRY list;
+    HANDLE            thread_id;
     PKTHREAD          thread;
     PKPROCESS         owning_process;
     BOOLEAN           apc_queued;
@@ -337,6 +334,7 @@ typedef struct _ACTIVE_SESSION {
 #define POOL_TAG_IRP_QUEUE             'irpp'
 #define POOL_TAG_TIMER                 'time'
 #define POOL_TAG_MODULE_LIST           'elom'
+#define POOL_TAG_RB_TREE               'eert'
 #define POOL_TAG_HASHMAP               'hsah'
 
 #define IA32_APERF_MSR 0x000000E8

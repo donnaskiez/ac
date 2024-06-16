@@ -69,12 +69,8 @@ VOID
 CleanupThreadListOnDriverUnload();
 
 VOID
-FindThreadListEntryByThreadAddress(_In_ PKTHREAD             Thread,
+FindThreadListEntryByThreadAddress(_In_ HANDLE               ThreadId,
                                    _Out_ PTHREAD_LIST_ENTRY* Entry);
-
-VOID
-EnumerateThreadListWithCallbackRoutine(
-    _In_ THREADLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context);
 
 VOID
 FindDriverEntryByBaseAddress(_In_ PVOID                ImageBase,

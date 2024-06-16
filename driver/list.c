@@ -120,7 +120,7 @@ LookasideListRemoveEntry(_Inout_ PSINGLE_LIST_ENTRY Head,
 {
     ImpKeAcquireGuardedMutex(Lock);
 
-    PTHREAD_LIST_HEAD  head  = GetThreadList();
+    PTHREAD_LIST_HEAD  head  = GetThreadTree();
     PSINGLE_LIST_ENTRY entry = Head->Next;
 
     if (!entry)
@@ -153,7 +153,7 @@ LookasideListFreeFirstEntry(_Inout_ PSINGLE_LIST_ENTRY       Head,
 {
     ImpKeAcquireGuardedMutex(Lock);
 
-    PTHREAD_LIST_HEAD head   = GetThreadList();
+    PTHREAD_LIST_HEAD head   = GetThreadTree();
     BOOLEAN           result = FALSE;
 
     if (Head->Next) {
