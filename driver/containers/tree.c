@@ -1,6 +1,34 @@
 #include "tree.h"
 
-/* Caller allocated RB_TREE */
+/*
+ * Basic red-black tree implementation. Currently the enumeration routines are
+ * recursive which maybe isnt the best idea given the environment this is meant
+ * for (kernel mode). We can always fix that up later though :).
+ */
+
+/**
+ * Initialises a caller allocated RB_TREE structure.
+ *
+ * Key Member Variables in `RB_TREE`:
+ *
+ * > `RB_COMPARE compare`:
+ *   - This is a function pointer to the comparison function provided by the
+ *     caller. It is used to compare two keys and maintain the order of the
+ *     red-black tree.
+ *
+ * > `UINT32 object_size`:
+ *   - This stores the size of the objects that will be stored in the tree. It
+ *     is used to allocate memory for the nodes.
+ *   - Lets say each node needs to have a THREAD_LIST_ENTRY object. The
+ * ObjectSize = sizeof(THREAD_LIST_OBJECT) and in turn will mean each node will
+ * be of size: sizeof(THREAD_LIST_OBJECT) + sizeof(RB_TREE_NODE). This is also
+ * this size the lookaside list pools will be set to.
+ *
+ * > `LOOKASIDE_LIST_EX pool`:
+ *   - This is a lookaside list that provides a fast, efficient way to allocate
+ *     and free fixed-size blocks of memory for the tree nodes. The size of each
+ *     block is `ObjectSize + sizeof(RB_TREE_NODE)`.
+ */
 NTSTATUS
 RtlRbTreeCreate(_In_ RB_COMPARE Compare,
                 _In_ UINT32     ObjectSize,
@@ -8,7 +36,7 @@ RtlRbTreeCreate(_In_ RB_COMPARE Compare,
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-    if (!ARGUMENT_PRESENT(Compare))
+    if (!ARGUMENT_PRESENT(Compare) || ObjectSize == 0)
         return STATUS_INVALID_PARAMETER;
 
     status = ExInitializeLookasideListEx(&Tree->pool,
