@@ -26,6 +26,11 @@ typedef struct _RB_TREE {
     LOOKASIDE_LIST_EX pool;
     UINT32            object_size;
     UINT32            active;
+
+    volatile UINT32 node_count;
+    volatile UINT32 insertion_count;
+    volatile UINT32 deletion_count;
+
 } RB_TREE, *PRB_TREE;
 
 typedef VOID (*RB_CALLBACK)(PRB_TREE_NODE Node);
@@ -71,5 +76,8 @@ RtlRbTreeReleaselock(_Inout_ PRB_TREE Tree)
 {
     KeReleaseGuardedMutex(&Tree->lock);
 }
+
+VOID
+RtlRbTreePrintCurrentStatistics(_In_ PRB_TREE Tree);
 
 #endif

@@ -1220,6 +1220,8 @@ TimerObjectWorkItemRoutine(_In_ PDEVICE_OBJECT DeviceObject,
 
     DEBUG_VERBOSE("Integrity check timer callback invoked.");
 
+    RtlRbTreePrintCurrentStatistics(GetThreadTree());
+
     if (!ValidateOurDriversDispatchRoutines()) {
         DEBUG_VERBOSE("l");
     }

@@ -1177,6 +1177,8 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver closed.");
 
+    /* This needs to be fixed lol, cos anyone can just open a handle whhich
+     * might not begin a session.*/
     SessionTerminate();
     UnregisterProcessObCallbacks();
     SharedMappingTerminate();
@@ -1191,7 +1193,6 @@ DeviceCreate(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
     PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceObject);
     DEBUG_INFO("Handle to driver opened.");
-
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Irp->IoStatus.Status;
 }

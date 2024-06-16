@@ -46,9 +46,51 @@
  * https://www.kernel.org/doc/Documentation/rbtree.txt
  * https://github.com/torvalds/linux/blob/master/lib/rbtree.c
  * https://www.osronline.com/article.cfm%5Earticle=516.htm
- * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_rtl_avl_table (for structure ideas)
- * 
+ * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_rtl_avl_table
+ * (for structure ideas)
+ *
  */
+
+FORCEINLINE
+STATIC
+VOID
+RtlpRbTreeIncrementInsertionCount(_In_ PRB_TREE Tree)
+{
+    InterlockedIncrement(&Tree->insertion_count);
+}
+
+FORCEINLINE
+STATIC
+VOID
+RtlpRbTreeIncrementDeletionCount(_In_ PRB_TREE Tree)
+{
+    InterlockedIncrement(&Tree->deletion_count);
+}
+
+FORCEINLINE
+STATIC
+VOID
+RtlpRbTreeIncrementNodeCount(_In_ PRB_TREE Tree)
+{
+    InterlockedIncrement(&Tree->node_count);
+}
+
+FORCEINLINE
+STATIC
+VOID
+RtlpRbTreeDecrementNodeCount(_In_ PRB_TREE Tree)
+{
+    InterlockedDecrement(&Tree->node_count);
+}
+
+VOID
+RtlRbTreePrintCurrentStatistics(_In_ PRB_TREE Tree)
+{
+    DEBUG_VERBOSE("Tree: %llx", (UINT64)Tree);
+    DEBUG_VERBOSE("Node count: %lx", Tree->node_count);
+    DEBUG_VERBOSE("Insertion count: %lx", Tree->insertion_count);
+    DEBUG_VERBOSE("Deletion count: %lx", Tree->deletion_count);
+}
 
 /**
  * Initialises a caller allocated RB_TREE structure.
@@ -95,7 +137,11 @@ RtlRbTreeCreate(_In_ RB_COMPARE Compare,
     if (!NT_SUCCESS(status))
         return status;
 
-    Tree->compare = Compare;
+    Tree->compare         = Compare;
+    Tree->deletion_count  = 0;
+    Tree->insertion_count = 0;
+    Tree->node_count      = 0;
+
     KeInitializeGuardedMutex(&Tree->lock);
 
     return STATUS_SUCCESS;
@@ -306,6 +352,9 @@ RtlRbTreeInsertNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
         }
         else {
             ExFreeToLookasideListEx(&Tree->pool, node);
+
+            /* Since we allocate and free a node, no housekeeping regarding
+             * stats needs to be done. */
             return current->object;
         }
     }
@@ -320,6 +369,8 @@ RtlRbTreeInsertNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
         parent->right = node;
 
     RtlpRbTreeFixupInsert(Tree, node);
+    RtlpRbTreeIncrementInsertionCount(Tree);
+    RtlpRbTreeIncrementNodeCount(Tree);
 
     return node->object;
 }
@@ -590,6 +641,9 @@ RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
         RtlpRbTreeFixupDelete(Tree, child);
 
     ExFreeToLookasideListEx(&Tree->pool, target);
+
+    RtlpRbTreeIncrementDeletionCount(Tree);
+    RtlpRbTreeDecrementNodeCount(Tree);
 }
 
 /* Public API that is used to find the node object for an associated key. Should
@@ -661,13 +715,14 @@ RtlpPrintInOrder(PRB_TREE_NODE Node)
     RtlpPrintInOrder(Node->right);
 }
 
-/* assumes lock is held */
 VOID
 RtlRbTreeInOrderPrint(_In_ PRB_TREE Tree)
 {
     DEBUG_ERROR("*************************************************");
     DEBUG_ERROR("<><><><>STARTING IN ORDER PRINT <><><><><><");
+    RtlRbTreeAcquireLock(Tree);    
     RtlpPrintInOrder(Tree->root);
+    RtlRbTreeReleaselock(Tree);
     DEBUG_ERROR("<><><><>ENDING IN ORDER PRINT <><><><><><");
     DEBUG_ERROR("*************************************************");
 }
