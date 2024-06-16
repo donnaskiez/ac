@@ -43,7 +43,7 @@ VOID
 RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key);
 
 PVOID
-RtlRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key);
+RtlRbTreeFindNodeObject(_In_ PRB_TREE Tree, _In_ PVOID Key);
 
 VOID
 RtlRbTreeEnumerate(_In_ PRB_TREE         Tree,

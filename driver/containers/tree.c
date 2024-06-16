@@ -424,6 +424,27 @@ RtlpRbTreeTransplant(_In_ PRB_TREE      Tree,
         Replacement->parent = Target->parent;
 }
 
+STATIC
+PVOID
+RtlpRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
+{
+    INT32         result  = 0;
+    PRB_TREE_NODE current = Tree->root;
+
+    while (current) {
+        result = Tree->compare(Key, current->object);
+
+        if (result == RB_TREE_EQUAL)
+            return current;
+        else if (result == RB_TREE_LESS_THAN)
+            current = current->left;
+        else
+            current = current->right;
+    }
+
+    return NULL;
+}
+
 /*
  * ASSUMES LOCK IS HELD!
  *
@@ -447,27 +468,13 @@ RtlpRbTreeTransplant(_In_ PRB_TREE      Tree,
 VOID
 RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
-    UINT32        result    = 0;
-    COLOUR        colour    = 0;
-    PRB_TREE_NODE node      = Tree->root;
     PRB_TREE_NODE target    = NULL;
     PRB_TREE_NODE child     = NULL;
-    PRB_TREE_NODE parent    = NULL;
     PRB_TREE_NODE successor = NULL;
+    COLOUR        colour    = {0};
 
-    while (node) {
-        result = Tree->compare(Key, node->object);
-        if (result == RB_TREE_EQUAL) {
-            target = node;
-            break;
-        }
-        else if (result == RB_TREE_LESS_THAN) {
-            node = node->left;
-        }
-        else {
-            node = node->right;
-        }
-    }
+    /* We want the node not the object */
+    target = RtlpRbTreeFindNode(Tree, Key);
 
     if (!target)
         return;
@@ -509,8 +516,11 @@ RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
     ExFreeToLookasideListEx(&Tree->pool, target);
 }
 
+/* Public API that is used to find the node object for an associated key. Should
+ * be used externally when wanting to find an object with a key value. If you
+ * are wanting to get the node itself, use the RtlpRbTreeFindNode routine. */
 PVOID
-RtlRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
+RtlRbTreeFindNodeObject(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
     INT32         result  = 0;
     PRB_TREE_NODE current = Tree->root;

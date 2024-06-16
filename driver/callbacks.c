@@ -150,6 +150,8 @@ InitialiseDriverList()
         return status;
     }
 
+    KeAcquireGuardedMutex(&head->lock);
+
     /* skip hal.dll and ntoskrnl.exe */
     for (UINT32 index = 2; index < modules.module_count; index++) {
         entry = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
@@ -183,10 +185,10 @@ InitialiseDriverList()
             entry->hashed = FALSE;
         }
 
-        KeAcquireGuardedMutex(&head->lock);
         InsertHeadList(&head->list_entry, &entry->list_entry);
-        KeReleaseGuardedMutex(&head->lock);
     }
+
+    KeReleaseGuardedMutex(&head->lock);
 
     head->active = TRUE;
 
@@ -591,7 +593,7 @@ FindThreadListEntryByThreadAddress(_In_ HANDLE               ThreadId,
 {
     PRB_TREE tree = GetThreadTree();
     RtlRbTreeAcquireLock(tree);
-    *Entry = RtlRbTreeFindNode(tree, &ThreadId);
+    *Entry = RtlRbTreeFindNodeObject(tree, &ThreadId);
     RtlRbTreeReleaselock(tree);
 }
 
@@ -740,7 +742,7 @@ ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
         entry->apc_queued     = FALSE;
     }
     else {
-        entry = RtlRbTreeFindNode(tree, &ThreadId);
+        entry = RtlRbTreeFindNodeObject(tree, &ThreadId);
 
         if (!entry)
             goto end;
