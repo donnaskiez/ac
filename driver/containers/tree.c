@@ -4,6 +4,9 @@
  * Basic red-black tree implementation. Currently the enumeration routines are
  * recursive which maybe isnt the best idea given the environment this is meant
  * for (kernel mode). We can always fix that up later though :).
+ * 
+ * https://www.kernel.org/doc/Documentation/rbtree.txt
+ * https://github.com/torvalds/linux/blob/master/lib/rbtree.c
  */
 
 /**
