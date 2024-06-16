@@ -13,13 +13,13 @@ typedef void (*THREADLIST_CALLBACK_ROUTINE)(
 #define SHA_256_HASH_LENGTH 32
 
 typedef struct _DRIVER_LIST_ENTRY {
-    SINGLE_LIST_ENTRY list;
-    PVOID             ImageBase;
-    ULONG             ImageSize;
-    BOOLEAN           hashed;
-    BOOLEAN           x86;
-    CHAR              path[DRIVER_PATH_LENGTH];
-    CHAR              text_hash[SHA_256_HASH_LENGTH];
+    LIST_ENTRY list_entry;
+    PVOID      ImageBase;
+    ULONG      ImageSize;
+    BOOLEAN    hashed;
+    BOOLEAN    x86;
+    CHAR       path[DRIVER_PATH_LENGTH];
+    CHAR       text_hash[SHA_256_HASH_LENGTH];
 
     /*
      * This LIST_ENTRY is to be used for modules where the hashing needs to

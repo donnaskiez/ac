@@ -3,7 +3,7 @@
 #include <intrin.h>
 
 #include "callbacks.h"
-#include "queue.h"
+
 #include "ia32.h"
 #include "imports.h"
 #include "crypt.h"

@@ -252,16 +252,14 @@
     <ClCompile Include="imports.c" />
     <ClCompile Include="integrity.c" />
     <ClCompile Include="io.c" />
-    <ClCompile Include="list.c" />
-    <ClCompile Include="map.c" />
+    <ClCompile Include="containers\map.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="hw.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="pool.c" />
-    <ClCompile Include="queue.c" />
     <ClCompile Include="session.c" />
     <ClCompile Include="thread.c" />
-    <ClCompile Include="tree.c" />
+    <ClCompile Include="containers\tree.c" />
     <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
@@ -276,15 +274,13 @@
     <ClInclude Include="imports.h" />
     <ClInclude Include="integrity.h" />
     <ClInclude Include="io.h" />
-    <ClInclude Include="list.h" />
-    <ClInclude Include="map.h" />
+    <ClInclude Include="containers\map.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="pool.h" />
-    <ClInclude Include="queue.h" />
     <ClInclude Include="session.h" />
     <ClInclude Include="thread.h" />
-    <ClInclude Include="tree.h" />
+    <ClInclude Include="containers\tree.h" />
     <ClInclude Include="types\tpm12.h" />
     <ClInclude Include="types\tpm20.h" />
     <ClInclude Include="types\tpmptp.h" />

@@ -70,10 +70,10 @@ typedef struct _THREAD_LIST_HEAD {
 } THREAD_LIST_HEAD, *PTHREAD_LIST_HEAD;
 
 typedef struct _DRIVER_LIST_HEAD {
-    SINGLE_LIST_ENTRY start;
-    volatile ULONG    count;
-    volatile BOOLEAN  active;
-    KGUARDED_MUTEX    lock;
+    LIST_ENTRY       list_entry;
+    volatile ULONG   count;
+    volatile BOOLEAN active;
+    KGUARDED_MUTEX   lock;
 
     /* modules that need to be hashed later. */
     PIO_WORKITEM     work_item;
@@ -84,11 +84,11 @@ typedef struct _DRIVER_LIST_HEAD {
 } DRIVER_LIST_HEAD, *PDRIVER_LIST_HEAD;
 
 typedef struct _THREAD_LIST_ENTRY {
-    HANDLE            thread_id;
-    PKTHREAD          thread;
-    PKPROCESS         owning_process;
-    BOOLEAN           apc_queued;
-    PKAPC             apc;
+    HANDLE    thread_id;
+    PKTHREAD  thread;
+    PKPROCESS owning_process;
+    BOOLEAN   apc_queued;
+    PKAPC     apc;
 
 } THREAD_LIST_ENTRY, *PTHREAD_LIST_ENTRY;
 

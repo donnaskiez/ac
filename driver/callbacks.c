@@ -2,17 +2,16 @@
 
 #include "driver.h"
 
-#include "queue.h"
 #include "pool.h"
 #include "thread.h"
 #include "modules.h"
 #include "imports.h"
-#include "list.h"
 #include "session.h"
 #include "crypt.h"
-#include "map.h"
 #include "util.h"
-#include "tree.h"
+
+#include "containers/tree.h"
+#include "containers/map.h"
 
 #define PROCESS_HASHMAP_BUCKET_COUNT 101
 
@@ -74,32 +73,42 @@ CleanupThreadListOnDriverUnload()
 VOID
 CleanupDriverListOnDriverUnload()
 {
-    PDRIVER_LIST_HEAD list = GetDriverList();
-    for (;;) {
-        if (!ListFreeFirstEntry(&list->start, &list->lock, NULL))
-            return;
+    PDRIVER_LIST_HEAD head  = GetDriverList();
+    PLIST_ENTRY       entry = NULL;
+
+    ImpKeAcquireGuardedMutex(&head->lock);
+
+    while (!IsListEmpty(&head->list_entry)) {
+        entry = RemoveHeadList(&head->list_entry);
+        PDRIVER_LIST_ENTRY driverEntry =
+            CONTAINING_RECORD(entry, DRIVER_LIST_ENTRY, list_entry);
+        ExFreePoolWithTag(entry, POOL_TAG_DRIVER_LIST);
     }
+
+    ImpKeReleaseGuardedMutex(&head->lock);
 }
 
 VOID
 EnumerateDriverListWithCallbackRoutine(
     _In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
 {
-    PDRIVER_LIST_HEAD list = GetDriverList();
-    ImpKeAcquireGuardedMutex(&list->lock);
+    PDRIVER_LIST_HEAD  head         = GetDriverList();
+    PLIST_ENTRY        list_entry   = NULL;
+    PDRIVER_LIST_ENTRY driver_entry = NULL;
 
-    if (!CallbackRoutine)
-        goto unlock;
+    ImpKeAcquireGuardedMutex(&head->lock);
 
-    PDRIVER_LIST_ENTRY entry = list->start.Next;
-
-    while (entry) {
-        CallbackRoutine(entry, Context);
-        entry = (PDRIVER_LIST_ENTRY)entry->list.Next;
+    if (CallbackRoutine) {
+        list_entry = head->list_entry.Flink;
+        while (list_entry != &head->list_entry) {
+            driver_entry =
+                CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, list_entry);
+            CallbackRoutine(driver_entry, Context);
+            list_entry = list_entry->Flink;
+        }
     }
 
-unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
+    ImpKeReleaseGuardedMutex(&head->lock);
 }
 
 VOID
@@ -121,16 +130,17 @@ InitialiseDriverList()
     SYSTEM_MODULES            modules      = {0};
     PDRIVER_LIST_ENTRY        entry        = NULL;
     PRTL_MODULE_EXTENDED_INFO module_entry = NULL;
-    PDRIVER_LIST_HEAD         list         = GetDriverList();
+    PDRIVER_LIST_HEAD         head         = GetDriverList();
 
-    InterlockedExchange(&list->active, TRUE);
-    ListInit(&list->start, &list->lock);
-    InitializeListHead(&list->deferred_list);
+    InterlockedExchange(&head->active, TRUE);
+    InitializeListHead(&head->list_entry);
+    InitializeListHead(&head->deferred_list);
+    KeInitializeGuardedMutex(&head->lock);
 
-    list->can_hash_x86 = FALSE;
-    list->work_item    = IoAllocateWorkItem(GetDriverDeviceObject());
+    head->can_hash_x86 = FALSE;
+    head->work_item    = IoAllocateWorkItem(GetDriverDeviceObject());
 
-    if (!list->work_item)
+    if (!head->work_item)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     status = GetSystemModuleInformation(&modules);
@@ -141,7 +151,7 @@ InitialiseDriverList()
     }
 
     /* skip hal.dll and ntoskrnl.exe */
-    for (INT index = 2; index < modules.module_count; index++) {
+    for (UINT32 index = 2; index < modules.module_count; index++) {
         entry = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
                                    sizeof(DRIVER_LIST_ENTRY),
                                    POOL_TAG_DRIVER_LIST);
@@ -166,17 +176,19 @@ InitialiseDriverList()
                         status);
             entry->hashed = FALSE;
             entry->x86    = TRUE;
-            InsertHeadList(&list->deferred_list, &entry->deferred_entry);
+            InsertHeadList(&head->deferred_list, &entry->deferred_entry);
         }
         else if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("HashModule failed with status %x", status);
             entry->hashed = FALSE;
         }
 
-        ListInsert(&list->start, entry, &list->lock);
+        KeAcquireGuardedMutex(&head->lock);
+        InsertHeadList(&head->list_entry, &entry->list_entry);
+        KeReleaseGuardedMutex(&head->lock);
     }
 
-    list->active = TRUE;
+    head->active = TRUE;
 
     if (modules.address)
         ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -193,22 +205,29 @@ VOID
 FindDriverEntryByBaseAddress(_In_ PVOID                ImageBase,
                              _Out_ PDRIVER_LIST_ENTRY* Entry)
 {
-    PDRIVER_LIST_HEAD list = GetDriverList();
-    ImpKeAcquireGuardedMutex(&list->lock);
+    PDRIVER_LIST_HEAD  head         = GetDriverList();
+    PLIST_ENTRY        list_entry   = NULL;
+    PDRIVER_LIST_ENTRY driver_entry = NULL;
+
+    ImpKeAcquireGuardedMutex(&head->lock);
     *Entry = NULL;
 
-    PDRIVER_LIST_ENTRY entry = (PDRIVER_LIST_ENTRY)list->start.Next;
+    list_entry = head->list_entry.Flink;
 
-    while (entry) {
-        if (entry->ImageBase == ImageBase) {
-            *Entry = entry;
+    while (list_entry != &head->list_entry) {
+        driver_entry =
+            CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, list_entry);
+
+        if (driver_entry->ImageBase == ImageBase) {
+            *Entry = driver_entry;
             goto unlock;
         }
 
-        entry = entry->list.Next;
+        list_entry = list_entry->Flink;
     }
+
 unlock:
-    ImpKeReleaseGuardedMutex(&list->lock);
+    ImpKeReleaseGuardedMutex(&head->lock);
 }
 
 STATIC
@@ -299,10 +318,10 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     NTSTATUS                 status    = STATUS_UNSUCCESSFUL;
     PDRIVER_LIST_ENTRY       entry     = NULL;
     RTL_MODULE_EXTENDED_INFO module    = {0};
-    PDRIVER_LIST_HEAD        list      = GetDriverList();
+    PDRIVER_LIST_HEAD        head      = GetDriverList();
     ANSI_STRING              ansi_path = {0};
 
-    if (InterlockedExchange(&list->active, list->active) == FALSE)
+    if (InterlockedExchange(&head->active, head->active) == FALSE)
         return;
 
     if (ImageInfo->SystemModeImage == FALSE) {
@@ -353,7 +372,9 @@ hash:
         entry->hashed = FALSE;
     }
 
-    ListInsert(&list->start, entry, &list->lock);
+    KeAcquireGuardedMutex(&head->lock);
+    InsertHeadList(&head->list_entry, &entry->list_entry);
+    KeReleaseGuardedMutex(&head->lock);
 }
 
 /* assumes map lock is held */

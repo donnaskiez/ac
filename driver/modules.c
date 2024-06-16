@@ -9,7 +9,7 @@
 #include "thread.h"
 #include "pe.h"
 #include "crypt.h"
-#include "tree.h"
+#include "containers/tree.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 

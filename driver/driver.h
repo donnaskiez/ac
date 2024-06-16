@@ -5,12 +5,12 @@
 
 #include <wdf.h>
 
-#include "queue.h"
 #include "modules.h"
 #include "integrity.h"
 #include "callbacks.h"
-#include "map.h"
-#include "tree.h"
+
+#include "containers/map.h"
+#include "containers/tree.h"
 
 BCRYPT_ALG_HANDLE*
 GetCryptHandle_AES();

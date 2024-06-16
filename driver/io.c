@@ -6,13 +6,13 @@
 #include "pool.h"
 #include "integrity.h"
 #include "thread.h"
-#include "queue.h"
+
 #include "hv.h"
 #include "imports.h"
-#include "list.h"
+
 #include "session.h"
 #include "hw.h"
-#include "map.h"
+#include "containers/map.h"
 
 STATIC
 NTSTATUS

@@ -5,7 +5,6 @@
 #include <intrin.h>
 
 #include "common.h"
-#include "queue.h"
 
 typedef struct _APC_OPERATION_ID {
     int operation_id;

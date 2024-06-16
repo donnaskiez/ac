@@ -1,7 +1,7 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "common.h"
+#include "../common.h"
 
 #define RB_TREE_EQUAL 0
 #define RB_TREE_LESS_THAN 1

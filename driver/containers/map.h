@@ -1,7 +1,7 @@
 #ifndef MAP_H
 #define MAP_H
 
-#include "common.h"
+#include "../common.h"
 
 /* To improve efficiency, each entry contains a common header
  * RTL_HASHMAP_ENTRY*, reducing the need to store a seperate pointer to the
