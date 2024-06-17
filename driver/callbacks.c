@@ -404,7 +404,7 @@ EnumerateProcessModuleList(_In_ HANDLE                  ProcessId,
                            _In_ PROCESS_MODULE_CALLBACK Callback,
                            _In_opt_ PVOID               Context)
 {
-    UINT32                    index  = 0;
+    INT32                     index  = 0;
     PRTL_HASHMAP              map    = GetProcessHashmap();
     BOOLEAN                   ret    = FALSE;
     PPROCESS_LIST_ENTRY       entry  = NULL;
@@ -721,6 +721,8 @@ ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
     ImpPsLookupThreadByThreadId(ThreadId, &thread);
     ImpPsLookupProcessByProcessId(ProcessId, &process);
 
+    /* ideally we should dereference the other but this shouldnt really ever
+     * fail */
     if (!thread || !process)
         return;
 
@@ -731,9 +733,6 @@ ThreadCreateNotifyRoutine(_In_ HANDLE  ProcessId,
 
         if (!entry)
             goto end;
-
-        ImpObfReferenceObject(thread);
-        ImpObfReferenceObject(process);
 
         entry->thread_id      = ThreadId;
         entry->thread         = thread;

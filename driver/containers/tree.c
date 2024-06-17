@@ -106,9 +106,9 @@ RtlRbTreePrintCurrentStatistics(_In_ PRB_TREE Tree)
  *   - This stores the size of the objects that will be stored in the tree. It
  *     is used to allocate memory for the nodes.
  *   - Lets say each node needs to have a THREAD_LIST_ENTRY object. The
- * ObjectSize = sizeof(THREAD_LIST_OBJECT) and in turn will mean each node will
- * be of size: sizeof(THREAD_LIST_OBJECT) + sizeof(RB_TREE_NODE). This is also
- * this size the lookaside list pools will be set to.
+ *     ObjectSize = sizeof(THREAD_LIST_OBJECT) and in turn will mean each node will
+ *     be of size: sizeof(THREAD_LIST_OBJECT) + sizeof(RB_TREE_NODE). This is also
+ *     this size the lookaside list pools will be set to.
  *
  * > `LOOKASIDE_LIST_EX pool`:
  *   - This is a lookaside list that provides a fast, efficient way to allocate
@@ -552,7 +552,7 @@ RtlpRbTreeTransplant(_In_ PRB_TREE      Tree,
 }
 
 STATIC
-PVOID
+PRB_TREE_NODE
 RtlpRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
     INT32         result  = 0;
