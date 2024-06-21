@@ -11,23 +11,64 @@
 #include <immintrin.h>
 #include <bcrypt.h>
 
-#define XOR_KEY_1 0x1122334455667788
-#define XOR_KEY_2 0x0011223344556677
-#define XOR_KEY_3 0x5566778899AABBCC
-#define XOR_KEY_4 0x66778899AABBCCDD
+#define XOR_ROTATION_AMT 13
+
+FORCEINLINE
+STATIC
+UINT64
+CryptGenerateRandomKey64(_In_ PUINT32 Seed)
+{
+    return ((UINT64)RtlRandomEx(Seed) << 32 | RtlRandomEx(Seed));
+}
 
 STATIC
 __m256i
-CryptGenerateSseXorKey()
+CryptXorKeyGenerate_m256i()
 {
-    return _mm256_set_epi64x(XOR_KEY_1, XOR_KEY_2, XOR_KEY_3, XOR_KEY_4);
+    UINT32 seed  = (UINT32)__rdtsc();
+    UINT64 key_1 = CryptGenerateRandomKey64(&seed);
+    UINT64 key_2 = CryptGenerateRandomKey64(&seed);
+    UINT64 key_3 = CryptGenerateRandomKey64(&seed);
+    UINT64 key_4 = CryptGenerateRandomKey64(&seed);
+
+    return _mm256_set_epi64x(key_1, key_2, key_3, key_4);
+}
+
+UINT64
+CryptXorKeyGenerate_uint64()
+{
+    UINT32 seed = (UINT32)__rdtsc();
+    return CryptGenerateRandomKey64(&seed);
+}
+
+VOID
+CryptEncryptPointer64(_Inout_ PUINT64 Pointer, _In_ UINT64 Key)
+{
+    *Pointer = _rotl64(*Pointer ^ Key, XOR_ROTATION_AMT);
+}
+
+VOID
+CryptDecryptPointer64(_Inout_ PUINT64 Pointer, _In_ UINT64 Key)
+{
+    *Pointer = _rotr64(*Pointer, XOR_ROTATION_AMT) ^ Key;
+}
+
+UINT64
+CryptDecryptPointerOutOfPlace64(_In_ PUINT64 Pointer, _In_ UINT64 Key)
+{
+    volatile UINT64 temp = *Pointer;
+    CryptDecryptPointer64(&temp, Key);
+    return temp;
 }
 
 VOID
 CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries)
 {
-    UINT32 block_size  = sizeof(__m256i) / sizeof(UINT64);
-    UINT32 block_count = Entries / block_size;
+    __m256i* imports_key = GetDriverImportsKey();
+    UINT32   block_size  = sizeof(__m256i) / sizeof(UINT64);
+    UINT32   block_count = Entries / block_size;
+
+    *imports_key = CryptXorKeyGenerate_m256i();
 
     /*
      * Here we break down the import array into blocks of 32 bytes. Each
@@ -43,7 +84,7 @@ CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries)
             &current_block, &Array[block_index * block_size], sizeof(__m256i));
 
         load_block  = _mm256_loadu_si256(&current_block);
-        xored_block = _mm256_xor_si256(load_block, CryptGenerateSseXorKey());
+        xored_block = _mm256_xor_si256(load_block, *imports_key);
 
         RtlCopyMemory(
             &Array[block_index * block_size], &xored_block, sizeof(__m256i));
@@ -55,13 +96,14 @@ INLINE
 __m256i
 CryptDecryptImportBlock(_In_ PUINT64 Array, _In_ UINT32 BlockIndex)
 {
-    __m256i load_block = {0};
-    UINT32  block_size = sizeof(__m256i) / sizeof(UINT64);
+    __m256i  load_block  = {0};
+    __m256i* imports_key = GetDriverImportsKey();
+    UINT32   block_size  = sizeof(__m256i) / sizeof(UINT64);
 
     RtlCopyMemory(
         &load_block, &Array[BlockIndex * block_size], sizeof(__m256i));
 
-    return _mm256_xor_si256(load_block, CryptGenerateSseXorKey());
+    return _mm256_xor_si256(load_block, *imports_key);
 }
 
 FORCEINLINE
@@ -447,8 +489,6 @@ TpmGetPtpInterfaceType(_In_ PVOID                     Register,
 
     return status;
 }
-
-
 
 NTSTATUS
 TpmExtractEndorsementKey()

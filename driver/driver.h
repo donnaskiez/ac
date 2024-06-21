@@ -87,7 +87,10 @@ HasDriverLoaded();
 PRTL_HASHMAP
 GetProcessHashmap();
 
-VOID
-CleanupProcessTree();
+__m256i*
+GetDriverImportsKey();
+
+PUINT64
+GetDriverDeviceExtensionKey();
 
 #endif
