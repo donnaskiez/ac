@@ -11,8 +11,6 @@
 #include <immintrin.h>
 #include <bcrypt.h>
 
-#define XOR_ROTATION_AMT 13
-
 FORCEINLINE
 STATIC
 UINT64
@@ -39,26 +37,6 @@ CryptXorKeyGenerate_uint64()
 {
     UINT32 seed = (UINT32)__rdtsc();
     return CryptGenerateRandomKey64(&seed);
-}
-
-VOID
-CryptEncryptPointer64(_Inout_ PUINT64 Pointer, _In_ UINT64 Key)
-{
-    *Pointer = _rotl64(*Pointer ^ Key, XOR_ROTATION_AMT);
-}
-
-VOID
-CryptDecryptPointer64(_Inout_ PUINT64 Pointer, _In_ UINT64 Key)
-{
-    *Pointer = _rotr64(*Pointer, XOR_ROTATION_AMT) ^ Key;
-}
-
-UINT64
-CryptDecryptPointerOutOfPlace64(_In_ PUINT64 Pointer, _In_ UINT64 Key)
-{
-    volatile UINT64 temp = *Pointer;
-    CryptDecryptPointer64(&temp, Key);
-    return temp;
 }
 
 VOID

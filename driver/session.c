@@ -148,10 +148,9 @@ SessionInitialise(_In_ PIRP Irp)
         goto end;
     }
 
-    session->km_handle         = ImpPsGetProcessId(process);
-    session->process           = process;
-    session->is_session_active = TRUE;
-    session->cookie            = initiation->cookie;
+    session->km_handle = ImpPsGetProcessId(process);
+    session->process   = process;
+    session->cookie    = initiation->cookie;
 
     RtlCopyMemory(session->aes_key, initiation->aes_key, AES_256_KEY_SIZE);
     RtlCopyMemory(session->iv, initiation->aes_iv, AES_256_IV_SIZE);
@@ -181,6 +180,8 @@ SessionInitialise(_In_ PIRP Irp)
     }
 
     FindOurUserModeModuleEntry(HashOurUserModuleOnEntryCallback, session);
+
+    session->is_session_active = TRUE;
 
 end:
     KeReleaseGuardedMutex(&session->lock);

@@ -1179,9 +1179,12 @@ DeviceClose(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
     /* This needs to be fixed lol, cos anyone can just open a handle whhich
      * might not begin a session.*/
-    SessionTerminate();
-    UnregisterProcessObCallbacks();
-    SharedMappingTerminate();
+
+    if (GetActiveSession()->is_session_active) {
+        SessionTerminate();
+        UnregisterProcessObCallbacks();
+        SharedMappingTerminate();
+    }
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Irp->IoStatus.Status;
