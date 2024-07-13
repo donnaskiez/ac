@@ -691,7 +691,16 @@ DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
     if (IsUserModeAddress(ReturnAddress))
         return FALSE;
 
-    RtlCopyMemory(&opcodes, ReturnAddress, sizeof(opcodes));
+    if (!MmIsAddressValid(ReturnAddress))
+        return FALSE;
+
+    /* Shoudln't really ever occur */
+    __try {
+        RtlCopyMemory(&opcodes, ReturnAddress, sizeof(opcodes));
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return FALSE;
+    }
 
     if (opcodes[0] == INSTRUCTION_UD2_BYTE_1 &&
         opcodes[1] == INSTRUCTION_UD2_BYTE_2)
@@ -700,7 +709,7 @@ DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
     if (opcodes[0] == INSTRUCTION_INT3_BYTE_1)
         return TRUE;
 
-    DEBUG_VERBOSE("Ret address instruction doesnt throw exception");
+    DEBUG_VERBOSE("Ret address instruction doesnt unconditionally throw exception");
     return FALSE;
 }
 
