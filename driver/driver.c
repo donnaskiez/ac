@@ -132,6 +132,14 @@ UINT64 g_DeviceExtensionKey;
  */
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
+DECLSPEC_NOINLINE
+PDRIVER_CONFIG
+GetDecryptedDriverConfig()
+{
+    return (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
+        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+}
+
 #define POOL_TAG_CONFIG 'conf'
 
 STATIC
@@ -166,215 +174,178 @@ STATIC
 VOID
 SetDriverLoadedFlag()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    cfg->has_driver_loaded = TRUE;
+    PAGED_CODE();
+    GetDecryptedDriverConfig()->has_driver_loaded = TRUE;
 }
 
 BCRYPT_ALG_HANDLE*
 GetCryptHandle_Sha256()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->sha256_hash;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->sha256_hash;
 }
 
 PRTL_HASHMAP
 GetProcessHashmap()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->process_hashmap;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->process_hashmap;
 }
 
 BCRYPT_ALG_HANDLE*
 GetCryptHandle_AES()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->aes_hash;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->aes_hash;
 }
 
 BOOLEAN
 HasDriverLoaded()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return cfg->has_driver_loaded;
+    PAGED_CODE();
+    return GetDecryptedDriverConfig()->has_driver_loaded;
 }
 
 VOID
 UnsetNmiInProgressFlag()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    InterlockedDecrement(&cfg->nmi_status);
+    PAGED_CODE();
+    InterlockedDecrement(&GetDecryptedDriverConfig()->nmi_status);
 }
 
 BOOLEAN
 IsNmiInProgress()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return InterlockedCompareExchange(&cfg->nmi_status, TRUE, FALSE) == 0
-               ? FALSE
-               : TRUE;
+    PAGED_CODE();
+    return InterlockedCompareExchange(
+               &GetDecryptedDriverConfig()->nmi_status, TRUE, FALSE) != 0;
 }
 
 PSHARED_MAPPING
 GetSharedMappingConfig()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->mapping;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->mapping;
 }
 
 VOID
 AcquireDriverConfigLock()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    ImpKeAcquireGuardedMutex(&cfg->lock);
+    PAGED_CODE();
+    ImpKeAcquireGuardedMutex(&GetDecryptedDriverConfig()->lock);
 }
 
 VOID
 ReleaseDriverConfigLock()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    ImpKeReleaseGuardedMutex(&cfg->lock);
+    PAGED_CODE();
+    ImpKeReleaseGuardedMutex(&GetDecryptedDriverConfig()->lock);
 }
 
 PUINT64
 GetApcContextArray()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return (PUINT64)cfg->apc_contexts;
+    PAGED_CODE();
+    return (PUINT64)GetDecryptedDriverConfig()->apc_contexts;
 }
 
 BOOLEAN
 IsDriverUnloading()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return InterlockedExchange(&cfg->unload_in_progress,
-                               cfg->unload_in_progress);
+    PAGED_CODE();
+    return InterlockedExchange(&GetDecryptedDriverConfig()->unload_in_progress,
+                               GetDecryptedDriverConfig()->unload_in_progress);
 }
 
 PACTIVE_SESSION
 GetActiveSession()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->session_information;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->session_information;
 }
 
 LPCSTR
 GetDriverName()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return cfg->ansi_driver_name.Buffer;
+    return GetDecryptedDriverConfig()->ansi_driver_name.Buffer;
 }
 
 PDEVICE_OBJECT
 GetDriverDeviceObject()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return cfg->device_object;
+    return GetDecryptedDriverConfig()->device_object;
 }
 
 PDRIVER_OBJECT
 GetDriverObject()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return cfg->driver_object;
+    return GetDecryptedDriverConfig()->driver_object;
 }
 
 PIRP_QUEUE_HEAD
 GetIrpQueueHead()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->irp_queue;
+    PAGED_CODE();
+    return &GetDecryptedDriverConfig()->irp_queue;
 }
 
 PSYS_MODULE_VAL_CONTEXT
 GetSystemModuleValidationContext()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->sys_val_context;
+    return &GetDecryptedDriverConfig()->sys_val_context;
 }
 
 PUNICODE_STRING
 GetDriverPath()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->driver_path;
+    return &GetDecryptedDriverConfig()->driver_path;
 }
 
 PUNICODE_STRING
 GetDriverRegistryPath()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->registry_path;
+    return &GetDecryptedDriverConfig()->registry_path;
 }
 
 PUNICODE_STRING
 GetDriverDeviceName()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->device_name;
+    return &GetDecryptedDriverConfig()->device_name;
 }
 
 PUNICODE_STRING
 GetDriverSymbolicLink()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->device_symbolic_link;
+    return &GetDecryptedDriverConfig()->device_symbolic_link;
 }
 
 PSYSTEM_INFORMATION
 GetDriverConfigSystemInformation()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->system_information;
+    return &GetDecryptedDriverConfig()->system_information;
 }
 
 PRB_TREE
 GetThreadTree()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->thread_tree;
+    return &GetDecryptedDriverConfig()->thread_tree;
 }
 
 PDRIVER_LIST_HEAD
 GetDriverList()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    return &cfg->driver_list;
+    return &GetDecryptedDriverConfig()->driver_list;
 }
 
 /*
@@ -400,8 +371,7 @@ DrvUnloadFreeConfigStrings()
 {
     PAGED_CODE();
 
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg = GetDecryptedDriverConfig();
 
     if (cfg->unicode_driver_name.Buffer)
         ImpExFreePoolWithTag(cfg->unicode_driver_name.Buffer, POOL_TAG_STRINGS);
@@ -417,11 +387,9 @@ STATIC
 VOID
 DrvUnloadDeleteSymbolicLink()
 {
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-
-    if (cfg->device_symbolic_link)
-        ImpIoDeleteSymbolicLink(cfg->device_symbolic_link);
+    if (GetDecryptedDriverConfig()->device_symbolic_link)
+        ImpIoDeleteSymbolicLink(
+            GetDecryptedDriverConfig()->device_symbolic_link);
 }
 
 STATIC
@@ -445,9 +413,7 @@ VOID
 DrvUnloadFreeTimerObject()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    CleanupDriverTimerObjects(&cfg->timer);
+    CleanupDriverTimerObjects(&GetDecryptedDriverConfig()->timer);
 }
 
 STATIC
@@ -463,9 +429,8 @@ VOID
 DrvUnloadFreeModuleValidationContext()
 {
     PAGED_CODE();
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-    CleanupValidationContextOnUnload(&cfg->sys_val_context);
+    CleanupValidationContextOnUnload(
+        &GetDecryptedDriverConfig()->sys_val_context);
 }
 
 STATIC
@@ -482,10 +447,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
     DEBUG_VERBOSE("Unloading...");
 
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
-
-    InterlockedExchange(&cfg->unload_in_progress, TRUE);
+    InterlockedExchange(&GetDecryptedDriverConfig()->unload_in_progress, TRUE);
 
     while (DrvUnloadFreeAllApcContextStructures() == FALSE)
         YieldProcessor();
@@ -623,8 +585,7 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
 
     ImpRtlInitUnicodeString(&value_name, ValueName);
 
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg = GetDecryptedDriverConfig();
 
     if (ImpRtlCompareUnicodeString(&value_name, &image_path, FALSE) == FALSE) {
         temp_buffer =
@@ -679,8 +640,7 @@ NTSTATUS
 GetSystemProcessorType()
 {
     UINT32         cpuid[4] = {0};
-    PDRIVER_CONFIG cfg      = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg      = GetDecryptedDriverConfig();
 
     __cpuid(cpuid, 0);
 
@@ -715,8 +675,7 @@ NTSTATUS
 ParseSmbiosForGivenSystemEnvironment()
 {
     NTSTATUS       status = STATUS_UNSUCCESSFUL;
-    PDRIVER_CONFIG cfg    = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg    = GetDecryptedDriverConfig();
 
     status = ParseSMBIOSTable(&cfg->system_information.vendor,
                               VENDOR_STRING_MAX_LENGTH,
@@ -769,8 +728,7 @@ NTSTATUS
 DrvLoadGatherSystemEnvironmentSettings()
 {
     NTSTATUS       status = STATUS_UNSUCCESSFUL;
-    PDRIVER_CONFIG cfg    = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg    = GetDecryptedDriverConfig();
 
     if (APERFMsrTimingCheck())
         cfg->system_information.virtualised_environment = TRUE;
@@ -826,29 +784,28 @@ STATIC
 NTSTATUS
 DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
 {
-    NTSTATUS                 status         = STATUS_UNSUCCESSFUL;
-    RTL_QUERY_REGISTRY_TABLE query_table[3] = {0};
-    PDRIVER_CONFIG cfg = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    NTSTATUS                 status   = STATUS_UNSUCCESSFUL;
+    PDRIVER_CONFIG           cfg      = GetDecryptedDriverConfig();
+    RTL_QUERY_REGISTRY_TABLE query[3] = {0};
 
-    query_table[0].Flags         = RTL_QUERY_REGISTRY_NOEXPAND;
-    query_table[0].Name          = L"ImagePath";
-    query_table[0].DefaultType   = REG_MULTI_SZ;
-    query_table[0].DefaultLength = 0;
-    query_table[0].DefaultData   = NULL;
-    query_table[0].EntryContext  = NULL;
-    query_table[0].QueryRoutine  = RegistryPathQueryCallbackRoutine;
+    query[0].Flags         = RTL_QUERY_REGISTRY_NOEXPAND;
+    query[0].Name          = L"ImagePath";
+    query[0].DefaultType   = REG_MULTI_SZ;
+    query[0].DefaultLength = 0;
+    query[0].DefaultData   = NULL;
+    query[0].EntryContext  = NULL;
+    query[0].QueryRoutine  = RegistryPathQueryCallbackRoutine;
 
-    query_table[1].Flags         = RTL_QUERY_REGISTRY_NOEXPAND;
-    query_table[1].Name          = L"DisplayName";
-    query_table[1].DefaultType   = REG_SZ;
-    query_table[1].DefaultLength = 0;
-    query_table[1].DefaultData   = NULL;
-    query_table[1].EntryContext  = NULL;
-    query_table[1].QueryRoutine  = RegistryPathQueryCallbackRoutine;
+    query[1].Flags         = RTL_QUERY_REGISTRY_NOEXPAND;
+    query[1].Name          = L"DisplayName";
+    query[1].DefaultType   = REG_SZ;
+    query[1].DefaultLength = 0;
+    query[1].DefaultData   = NULL;
+    query[1].EntryContext  = NULL;
+    query[1].QueryRoutine  = RegistryPathQueryCallbackRoutine;
 
     status = RtlxQueryRegistryValues(
-        RTL_REGISTRY_ABSOLUTE, RegistryPath->Buffer, &query_table, NULL, NULL);
+        RTL_REGISTRY_ABSOLUTE, RegistryPath->Buffer, &query, NULL, NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
@@ -881,8 +838,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
     DEBUG_VERBOSE("Initialising driver configuration");
 
     NTSTATUS       status = STATUS_UNSUCCESSFUL;
-    PDRIVER_CONFIG cfg    = (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+    PDRIVER_CONFIG cfg    = GetDecryptedDriverConfig();
 
     ImpKeInitializeGuardedMutex(&cfg->lock);
 
@@ -950,7 +906,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
     BOOLEAN  flag   = FALSE;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT64   temp   = 0;
 
     DriverObject->MajorFunction[IRP_MJ_CREATE]         = DeviceCreate;
     DriverObject->MajorFunction[IRP_MJ_CLOSE]          = DeviceClose;
@@ -993,9 +948,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DEBUG_ERROR("InitialiseDriverConfigOnDriverEntry failed with status %x",
                     status);
         DrvUnloadFreeConfigStrings();
-        UINT64 temp = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                                      g_DeviceExtensionKey);
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
@@ -1005,23 +958,19 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DEBUG_ERROR("SessionInitialiseStructure failed with status %x", status);
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
-        UINT64 temp = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                                      g_DeviceExtensionKey);
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
-    temp   = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                           g_DeviceExtensionKey);
-
-    status = IoCreateSymbolicLink(((PDRIVER_CONFIG)temp)->device_symbolic_link,
-                                  ((PDRIVER_CONFIG)temp)->device_name);
+    status =
+        IoCreateSymbolicLink(GetDecryptedDriverConfig()->device_symbolic_link,
+                             GetDecryptedDriverConfig()->device_name);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("IoCreateSymbolicLink failed with status %x", status);
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
@@ -1032,9 +981,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
         DrvUnloadDeleteSymbolicLink();
-        temp = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                               g_DeviceExtensionKey);
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
@@ -1046,9 +993,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
         DrvUnloadDeleteSymbolicLink();
-        temp = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                               g_DeviceExtensionKey);
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
@@ -1060,9 +1005,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         DrvUnloadFreeConfigStrings();
         DrvUnloadFreeTimerObject();
         DrvUnloadDeleteSymbolicLink();
-        temp = CryptDecryptPointerOutOfPlace64((PUINT64)&g_DriverConfig,
-                                               g_DeviceExtensionKey);
-        ImpIoDeleteDevice(((PDRIVER_CONFIG)temp)->device_object);
+        ImpIoDeleteDevice(GetDecryptedDriverConfig()->device_object);
         return status;
     }
 
