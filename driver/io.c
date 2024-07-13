@@ -260,7 +260,7 @@ IrpQueueAllocateDeferredPacket(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
     return report;
 }
 
-#define MAX_DEFERRED_REPORTS_COUNT 100
+#define MAX_DEFERRED_REPORTS_COUNT 256
 
 STATIC
 VOID

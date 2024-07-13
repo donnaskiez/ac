@@ -497,6 +497,14 @@ end:
     return STATUS_SUCCESS;
 }
 
+FORCEINLINE
+STATIC
+BOOLEAN
+IsUserModeAddress(_In_ UINT64 Rip)
+{
+    return Rip <= WINDOWS_USERMODE_MAX_ADDRESS ? TRUE : FALSE;
+}
+
 NTSTATUS
 HandleValidateDriversIOCTL()
 {
@@ -638,7 +646,8 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
 
 STATIC
 VOID
-ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
+ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context,
+                               _In_ UINT32       ReportSubCode)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     UINT32   packet_size =
@@ -650,7 +659,7 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
     if (!report)
         return;
 
-    INIT_REPORT_PACKET(report, REPORT_NMI_CALLBACK_FAILURE, 0);
+    INIT_REPORT_PACKET(report, REPORT_NMI_CALLBACK_FAILURE, ReportSubCode);
 
     report->kthread_address    = Context->kthread;
     report->invalid_rip        = Context->interrupted_rip;
@@ -665,6 +674,34 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context)
     }
 
     IrpQueueSchedulePacket(report, packet_size);
+}
+
+#define INSTRUCTION_UD2_BYTE_1  0x0F
+#define INSTRUCTION_UD2_BYTE_2  0x0B
+#define INSTRUCTION_INT3_BYTE_1 0xCC
+
+STATIC
+BOOLEAN
+DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
+{
+    /* UD2 instruction is 2 bytes*/
+    UCHAR opcodes[2] = {0};
+
+    /* we deal with um later */
+    if (IsUserModeAddress(ReturnAddress))
+        return FALSE;
+
+    RtlCopyMemory(&opcodes, ReturnAddress, sizeof(opcodes));
+
+    if (opcodes[0] == INSTRUCTION_UD2_BYTE_1 &&
+        opcodes[1] == INSTRUCTION_UD2_BYTE_2)
+        return TRUE;
+
+    if (opcodes[0] == INSTRUCTION_INT3_BYTE_1)
+        return TRUE;
+
+    DEBUG_VERBOSE("Ret address instruction doesnt throw exception");
+    return FALSE;
 }
 
 /*
@@ -718,16 +755,19 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
          * PsGetNextProcess ?
          */
 
-        if (!DoesThreadHaveValidCidEntry(NmiContext[core].kthread)) {
+        if (!DoesThreadHaveValidCidEntry(NmiContext[core].kthread))
             ReportMissingCidTableEntry(&NmiContext[core]);
-        }
 
         if (NmiContext[core].user_thread)
             continue;
 
+        if (DoesRetInstructionCauseException(NmiContext[core].interrupted_rip))
+            ReportInvalidRipFoundDuringNmi(
+                &NmiContext[core], REPORT_SUBTYPE_EXCEPTION_THROWING_RET);
+
         if (IsInstructionPointerInInvalidRegion(
                 NmiContext[core].interrupted_rip, SystemModules))
-            ReportInvalidRipFoundDuringNmi(&NmiContext[core]);
+            ReportInvalidRipFoundDuringNmi(&NmiContext[core], 0);
     }
 
     return STATUS_SUCCESS;
@@ -747,14 +787,6 @@ PMACHINE_FRAME
 GetIsrMachineFrame(_In_ TASK_STATE_SEGMENT_64* TaskStateSegment)
 {
     return TaskStateSegment->Ist3 - sizeof(MACHINE_FRAME);
-}
-
-FORCEINLINE
-STATIC
-BOOLEAN
-IsUserModeAddress(_In_ UINT64 Rip)
-{
-    return Rip <= WINDOWS_USERMODE_MAX_ADDRESS ? TRUE : FALSE;
 }
 
 STATIC BOOLEAN
@@ -1266,7 +1298,9 @@ CheckForDpcCompletion(_In_ PDPC_CONTEXT Context)
 
 STATIC
 VOID
-ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
+ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context,
+                            _In_ UINT64       Frame,
+                            _In_ UINT32       ReportSubtype)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     UINT32   packet_size =
@@ -1278,7 +1312,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context, _In_ UINT64 Frame)
     if (!report)
         return;
 
-    INIT_REPORT_PACKET(report, REPORT_DPC_STACKWALK, 0);
+    INIT_REPORT_PACKET(report, REPORT_DPC_STACKWALK, ReportSubtype);
 
     report->kthread_address = PsGetCurrentThread();
     report->invalid_rip     = Frame;
@@ -1306,11 +1340,17 @@ ValidateDpcStackFrame(_In_ PDPC_CONTEXT Context, _In_ PSYSTEM_MODULES Modules)
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     BOOLEAN  flag   = FALSE;
 
+    /* With regards to this, lets only check the interrupted rip */
+    if (DoesRetInstructionCauseException(Context->stack_frame[0]))
+        ReportDpcStackwalkViolation(Context,
+                                    Context->stack_frame[0],
+                                    REPORT_SUBTYPE_EXCEPTION_THROWING_RET);
+
     for (UINT32 frame = 0; frame < Context->frames_captured; frame++) {
         UINT64 rip = Context->stack_frame[frame];
 
         if (IsInstructionPointerInInvalidRegion(rip, Modules))
-            ReportDpcStackwalkViolation(Context, rip);
+            ReportDpcStackwalkViolation(Context, rip, 0);
     }
 }
 

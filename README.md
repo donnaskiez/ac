@@ -9,6 +9,8 @@ open source anti cheat (lol) which I made for fun.
 - NMI stackwalking via isr iretq
 - APC stackwalking via RtlCaptureStackBackTrace
 - DPC stackwalking via RtlCaptureStackBackTrace
+- Return address exception hooking detection
+- Chained .data pointer detection (iffy)
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module device object verification
@@ -27,7 +29,7 @@ open source anti cheat (lol) which I made for fun.
 
 # architecuture
 
-For an overview of the architecture, see architecture.md.
+- todo!
 
 # planned features
 
