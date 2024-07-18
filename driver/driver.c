@@ -132,6 +132,9 @@ UINT64 g_DeviceExtensionKey;
  */
 PDRIVER_CONFIG g_DriverConfig = NULL;
 
+/* Its not ideal that this isnt inlined, but it causes errors with the
+ * decryption process and subsequently causes deadlocks / invalid pointer errors
+ * etc. Will need to look into it.*/
 DECLSPEC_NOINLINE
 PDRIVER_CONFIG
 GetDecryptedDriverConfig()

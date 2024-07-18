@@ -256,7 +256,7 @@ ImageLoadInsertNonSystemImageIntoProcessHashmap(_In_ PIMAGE_INFO ImageInfo,
                                                 _In_opt_ PUNICODE_STRING
                                                     FullImageName)
 {
-    UINT32                      index   = 0;
+    INT32                       index   = 0;
     NTSTATUS                    status  = STATUS_UNSUCCESSFUL;
     PEPROCESS                   process = NULL;
     PRTL_HASHMAP                map     = GetProcessHashmap();
@@ -440,7 +440,7 @@ VOID
 FindOurUserModeModuleEntry(_In_ PROCESS_MODULE_CALLBACK Callback,
                            _In_opt_ PVOID               Context)
 {
-    UINT32                    index   = 0;
+    INT32                     index   = 0;
     PRTL_HASHMAP              map     = GetProcessHashmap();
     PPROCESS_LIST_ENTRY       entry   = NULL;
     PACTIVE_SESSION           session = GetActiveSession();
@@ -637,7 +637,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
                            _In_ HANDLE  ProcessId,
                            _In_ BOOLEAN Create)
 {
-    UINT32              index        = 0;
+    INT32               index        = 0;
     PKPROCESS           parent       = NULL;
     PKPROCESS           process      = NULL;
     PDRIVER_LIST_HEAD   driver_list  = GetDriverList();
