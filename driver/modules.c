@@ -1,15 +1,15 @@
 #include "modules.h"
 
+#include "apc.h"
 #include "callbacks.h"
+#include "containers/tree.h"
+#include "crypt.h"
 #include "driver.h"
-#include "io.h"
 #include "ia32.h"
 #include "imports.h"
-#include "apc.h"
-#include "thread.h"
+#include "io.h"
 #include "pe.h"
-#include "crypt.h"
-#include "containers/tree.h"
+#include "thread.h"
 
 #define WHITELISTED_MODULE_TAG 'whte'
 
@@ -55,18 +55,6 @@ typedef struct _WHITELISTED_REGIONS {
 
 } WHITELISTED_REGIONS, *PWHITELISTED_REGIONS;
 
-typedef struct _NMI_POOLS {
-    PVOID thread_data_pool;
-    PVOID stack_frames;
-    PVOID nmi_context;
-
-} NMI_POOLS, *PNMI_POOLS;
-
-typedef struct _MODULE_VALIDATION_FAILURE_HEADER {
-    INT module_count;
-
-} MODULE_VALIDATION_FAILURE_HEADER, *PMODULE_VALIDATION_FAILURE_HEADER;
-
 typedef struct _NMI_CONTEXT {
     UINT64  interrupted_rip;
     UINT64  interrupted_rsp;
@@ -76,19 +64,39 @@ typedef struct _NMI_CONTEXT {
 
 } NMI_CONTEXT, *PNMI_CONTEXT;
 
+#define DPC_STACKWALK_STACKFRAME_COUNT 10
+
+/* the first 3 frames are isr handlers which we dont care about */
+#define DPC_STACKWALK_FRAMES_TO_SKIP 3
+
+typedef struct _DPC_CONTEXT {
+    UINT64           stack_frame[DPC_STACKWALK_STACKFRAME_COUNT];
+    UINT16           frames_captured;
+    volatile BOOLEAN executed;
+
+} DPC_CONTEXT, *PDPC_CONTEXT;
+
+// clang-format off
+
 STATIC
 VOID
-PopulateWhitelistedModuleBuffer(_Inout_ PWHITELISTED_REGIONS Whitelist,
-                                _In_ PSYSTEM_MODULES         SystemModules);
+PopulateWhitelistedModuleBuffer(
+    _Inout_ PWHITELISTED_REGIONS Whitelist,
+    _In_    PSYSTEM_MODULES         SystemModules
+);
 
 STATIC
 NTSTATUS
-ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules);
+ValidateDriverObjectsWrapper(
+    _In_ PSYSTEM_MODULES SystemModules
+);
 
 STATIC
 NTSTATUS
-AnalyseNmiData(_In_ PNMI_CONTEXT    NmiContext,
-               _In_ PSYSTEM_MODULES SystemModules);
+AnalyseNmiData(
+    _In_ PNMI_CONTEXT    NmiContext,
+    _In_ PSYSTEM_MODULES SystemModules
+);
 
 STATIC
 NTSTATUS
@@ -96,26 +104,35 @@ LaunchNonMaskableInterrupt();
 
 STATIC
 VOID
-ApcRundownRoutine(_In_ PRKAPC Apc);
+ApcRundownRoutine(
+    _In_ PRKAPC Apc
+);
 
 STATIC
 VOID
-ApcKernelRoutine(_In_ PRKAPC                                     Apc,
-                 _Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
-                 _Inout_ _Deref_pre_maybenull_ PVOID*            NormalContext,
-                 _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument1,
-                 _Inout_ _Deref_pre_maybenull_ PVOID* SystemArgument2);
+ApcKernelRoutine(
+    _In_                          PRKAPC            Apc,
+    _Inout_ _Deref_pre_maybenull_ PKNORMAL_ROUTINE* NormalRoutine,
+    _Inout_ _Deref_pre_maybenull_ PVOID*            NormalContext,
+    _Inout_ _Deref_pre_maybenull_ PVOID*            SystemArgument1,
+    _Inout_ _Deref_pre_maybenull_ PVOID*            SystemArgument2);
 
 STATIC
 VOID
-ApcNormalRoutine(_In_opt_ PVOID NormalContext,
-                 _In_opt_ PVOID SystemArgument1,
-                 _In_opt_ PVOID SystemArgument2);
+ApcNormalRoutine(
+    _In_opt_ PVOID NormalContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2
+);
 
 STATIC
 VOID
-ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
-                                   _Inout_opt_ PVOID       Context);
+ValidateThreadViaKernelApcCallback(
+    _In_        PTHREAD_LIST_ENTRY ThreadListEntry,
+    _Inout_opt_ PVOID              Context
+);
+
+// clang-format on
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, FindSystemModuleByName)
@@ -168,19 +185,21 @@ PopulateWhitelistedModuleBuffer(_Inout_ PWHITELISTED_REGIONS Whitelist,
 {
     PAGED_CODE();
 
-    for (INT index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
-        LPCSTR entry = WHITELISTED_MODULES[index];
+    LPCSTR                    entry  = NULL;
+    PRTL_MODULE_EXTENDED_INFO module = NULL;
+    PWHITELISTED_REGIONS      region = NULL;
 
-        PRTL_MODULE_EXTENDED_INFO module =
-            FindSystemModuleByName(entry, SystemModules);
+    for (UINT32 index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
+        entry  = WHITELISTED_MODULES[index];
+        module = FindSystemModuleByName(entry, SystemModules);
 
         /* not everyone will contain all whitelisted modules */
         if (!module)
             continue;
 
-        PWHITELISTED_REGIONS region = &Whitelist[index];
-        region->base                = (UINT64)module->ImageBase;
-        region->end = (UINT64)module->ImageBase + module->ImageSize;
+        region       = &Whitelist[index];
+        region->base = (UINT64)module->ImageBase;
+        region->end  = (UINT64)module->ImageBase + module->ImageSize;
     }
 }
 
@@ -199,25 +218,25 @@ DoesDriverHaveInvalidDispatchRoutine(_In_ PDRIVER_OBJECT       Driver,
 {
     PAGED_CODE();
 
-    UINT64 dispatch_function = 0;
-    UINT64 module_base       = 0;
-    UINT64 module_end        = 0;
+    UINT64                    dispatch_function = 0;
+    UINT64                    module_base       = 0;
+    UINT64                    module_end        = 0;
+    PRTL_MODULE_EXTENDED_INFO module            = NULL;
 
     dispatch_function = GetDriverMajorDispatchFunction(Driver);
 
-    if (dispatch_function == NULL)
+    if (!dispatch_function)
         return FALSE;
 
-    PRTL_MODULE_EXTENDED_INFO module =
-        (PRTL_MODULE_EXTENDED_INFO)Modules->address;
+    module = (PRTL_MODULE_EXTENDED_INFO)Modules->address;
 
-    for (INT index = 0; index < Modules->module_count; index++) {
+    for (UINT32 index = 0; index < Modules->module_count; index++) {
         if (module[index].ImageBase != Driver->DriverStart)
             continue;
 
         /* make sure our driver has a device object which is required
          * for IOCTL */
-        if (Driver->DeviceObject == NULL)
+        if (!Driver->DeviceObject)
             return FALSE;
 
         module_base = (UINT64)module[index].ImageBase;
@@ -265,14 +284,18 @@ DoesDriverObjectHaveBackingModule(_In_ PSYSTEM_MODULES ModuleInformation,
 {
     PAGED_CODE();
 
-    PRTL_MODULE_EXTENDED_INFO module =
-        (PRTL_MODULE_EXTENDED_INFO)ModuleInformation->address;
+    PRTL_MODULE_EXTENDED_INFO modules = NULL;
+    PRTL_MODULE_EXTENDED_INFO entry   = NULL;
 
-    for (INT index = 0; index < ModuleInformation->module_count; index++) {
-        if (module[index].ImageSize == 0 || module[index].ImageBase == 0)
+    modules = (PRTL_MODULE_EXTENDED_INFO)ModuleInformation->address;
+
+    for (UINT32 index = 0; index < ModuleInformation->module_count; index++) {
+        entry = &modules[index];
+
+        if (entry->ImageSize == 0 || entry->ImageBase == 0)
             return STATUS_INVALID_MEMBER;
 
-        if (module[index].ImageBase == DriverObject->DriverStart) {
+        if (entry->ImageBase == DriverObject->DriverStart) {
             return TRUE;
         }
     }
@@ -300,30 +323,32 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
 {
     PAGED_CODE();
 
+    ULONG                     size   = 0;
+    NTSTATUS                  status = STATUS_UNSUCCESSFUL;
+    PRTL_MODULE_EXTENDED_INFO buffer = NULL;
+
     if (!ModuleInformation)
         return STATUS_INVALID_PARAMETER;
 
-    ULONG    size   = 0;
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-
-    status = RtlQueryModuleInformation(
-        &size, sizeof(RTL_MODULE_EXTENDED_INFO), NULL);
+    status = RtlQueryModuleInformation(&size,
+                                       sizeof(RTL_MODULE_EXTENDED_INFO),
+                                       NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlQueryModuleInformation failed with status %x", status);
         return status;
     }
 
-    PRTL_MODULE_EXTENDED_INFO buffer =
-        ExAllocatePool2(POOL_FLAG_NON_PAGED, size, SYSTEM_MODULES_POOL);
+    buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, size, SYSTEM_MODULES_POOL);
 
     if (!buffer) {
         DEBUG_ERROR("Failed to allocate pool LOL");
         return STATUS_MEMORY_NOT_ALLOCATED;
     }
 
-    status = RtlQueryModuleInformation(
-        &size, sizeof(RTL_MODULE_EXTENDED_INFO), buffer);
+    status = RtlQueryModuleInformation(&size,
+                                       sizeof(RTL_MODULE_EXTENDED_INFO),
+                                       buffer);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlQueryModuleInformation 2 failed with status %x",
@@ -332,8 +357,9 @@ GetSystemModuleInformation(_Out_ PSYSTEM_MODULES ModuleInformation)
         return STATUS_ABANDONED;
     }
 
-    InitSystemModulesStructure(
-        ModuleInformation, buffer, size / sizeof(RTL_MODULE_EXTENDED_INFO));
+    InitSystemModulesStructure(ModuleInformation,
+                               buffer,
+                               ARRAYLEN(size, RTL_MODULE_EXTENDED_INFO));
 
     return status;
 }
@@ -342,12 +368,13 @@ STATIC
 VOID
 ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(MODULE_VALIDATION_FAILURE));
+    UINT32                     len    = 0;
+    NTSTATUS                   status = STATUS_UNSUCCESSFUL;
+    ANSI_STRING                string = {0};
+    PMODULE_VALIDATION_FAILURE report = NULL;
 
-    PMODULE_VALIDATION_FAILURE report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, packet_size, POOL_TAG_INTEGRITY);
+    len = CryptRequestRequiredBufferLength(sizeof(MODULE_VALIDATION_FAILURE));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, POOL_TAG_INTEGRITY);
 
     if (!report)
         return;
@@ -357,7 +384,6 @@ ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
     report->driver_base_address = Driver->DriverStart;
     report->driver_size         = Driver->DriverSize;
 
-    ANSI_STRING string   = {0};
     string.Length        = 0;
     string.MaximumLength = MODULE_REPORT_DRIVER_NAME_BUFFER_SIZE;
     string.Buffer        = &report->driver_name;
@@ -365,7 +391,7 @@ ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
     /* Continue regardless of result */
     ImpRtlUnicodeStringToAnsiString(&string, &Driver->DriverName, FALSE);
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -373,7 +399,7 @@ ReportInvalidDriverObject(_In_ PDRIVER_OBJECT Driver, _In_ UINT32 ReportSubType)
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 FORCEINLINE
@@ -384,6 +410,14 @@ GetNextObject(_In_ POBJECT_DIRECTORY_ENTRY Entry)
     return Entry->ChainLink;
 }
 
+FORCEINLINE
+STATIC
+PVOID
+GetObjectFromDirectory(_In_ POBJECT_DIRECTORY_ENTRY Entry)
+{
+    return Entry->Object;
+}
+
 STATIC
 VOID
 ValidateDriverObjects(_In_ PSYSTEM_MODULES         Modules,
@@ -392,9 +426,10 @@ ValidateDriverObjects(_In_ PSYSTEM_MODULES         Modules,
 {
     NTSTATUS                status = STATUS_UNSUCCESSFUL;
     POBJECT_DIRECTORY_ENTRY entry  = Entry;
+    PDRIVER_OBJECT          driver = NULL;
 
     while (entry) {
-        PDRIVER_OBJECT driver = entry->Object;
+        driver = GetObjectFromDirectory(entry);
 
         if (!DoesDriverObjectHaveBackingModule(Modules, driver)) {
             ReportInvalidDriverObject(driver, REPORT_SUBTYPE_NO_BACKING_MODULE);
@@ -418,29 +453,36 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
 {
     PAGED_CODE();
 
-    HANDLE               handle           = NULL;
-    OBJECT_ATTRIBUTES    attributes       = {0};
-    PVOID                directory        = {0};
-    UNICODE_STRING       directory_name   = {0};
-    PWHITELISTED_REGIONS whitelist        = NULL;
-    NTSTATUS             status           = STATUS_UNSUCCESSFUL;
-    POBJECT_DIRECTORY    directory_object = NULL;
+    HANDLE                  handle     = NULL;
+    OBJECT_ATTRIBUTES       oa         = {0};
+    PVOID                   dir        = {0};
+    UNICODE_STRING          dir_name   = {0};
+    PWHITELISTED_REGIONS    wl         = NULL;
+    NTSTATUS                status     = STATUS_UNSUCCESSFUL;
+    POBJECT_DIRECTORY       dir_object = NULL;
+    POBJECT_DIRECTORY_ENTRY bucket     = NULL;
 
-    ImpRtlInitUnicodeString(&directory_name, L"\\Driver");
+    ImpRtlInitUnicodeString(&dir_name, L"\\Driver");
 
-    InitializeObjectAttributes(
-        &attributes, &directory_name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    InitializeObjectAttributes(&oa,
+                               &dir_name,
+                               OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
 
-    status =
-        ImpZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &attributes);
+    status = ImpZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &oa);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwOpenDirectoryObject failed with status %x", status);
         return status;
     }
 
-    status = ImpObReferenceObjectByHandle(
-        handle, DIRECTORY_ALL_ACCESS, NULL, KernelMode, &directory, NULL);
+    status = ImpObReferenceObjectByHandle(handle,
+                                          DIRECTORY_ALL_ACCESS,
+                                          NULL,
+                                          KernelMode,
+                                          &dir,
+                                          NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x", status);
@@ -461,19 +503,19 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
      * accessed the most can be accessed quickly
      */
 
-    directory_object = (POBJECT_DIRECTORY)directory;
+    dir_object = (POBJECT_DIRECTORY)dir;
 
-    ImpExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
+    ImpExAcquirePushLockExclusiveEx(&dir_object->Lock, NULL);
 
-    whitelist = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                   WHITELISTED_MODULE_COUNT *
-                                       sizeof(WHITELISTED_REGIONS),
-                                   WHITELISTED_MODULE_TAG);
+    wl = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        WHITELISTED_MODULE_COUNT * sizeof(WHITELISTED_REGIONS),
+        WHITELISTED_MODULE_TAG);
 
-    if (!whitelist)
+    if (!wl)
         goto end;
 
-    PopulateWhitelistedModuleBuffer(whitelist, SystemModules);
+    PopulateWhitelistedModuleBuffer(wl, SystemModules);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("PopulateWhitelistedModuleBuffer failed with status %x",
@@ -481,17 +523,17 @@ ValidateDriverObjectsWrapper(_In_ PSYSTEM_MODULES SystemModules)
         goto end;
     }
 
-    for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++) {
-        POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[index];
-        ValidateDriverObjects(SystemModules, entry, whitelist);
+    for (UINT32 index = 0; index < NUMBER_HASH_BUCKETS; index++) {
+        bucket = dir_object->HashBuckets[index];
+        ValidateDriverObjects(SystemModules, bucket, wl);
     }
 
 end:
-    if (whitelist)
-        ImpExFreePoolWithTag(whitelist, WHITELISTED_MODULE_TAG);
+    if (wl)
+        ImpExFreePoolWithTag(wl, WHITELISTED_MODULE_TAG);
 
-    ImpExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
-    ImpObDereferenceObject(directory);
+    ImpExReleasePushLockExclusiveEx(&dir_object->Lock, 0);
+    ImpObDereferenceObject(dir);
     ImpZwClose(handle);
 
     return STATUS_SUCCESS;
@@ -510,21 +552,18 @@ HandleValidateDriversIOCTL()
 {
     PAGED_CODE();
 
-    NTSTATUS       status         = STATUS_UNSUCCESSFUL;
-    ULONG          buffer_size    = 0;
-    SYSTEM_MODULES system_modules = {0};
+    NTSTATUS       status  = STATUS_UNSUCCESSFUL;
+    ULONG          length  = 0;
+    SYSTEM_MODULES modules = {0};
 
-    /* Fix annoying visual studio linting error */
-    RtlZeroMemory(&system_modules, sizeof(SYSTEM_MODULES));
-
-    status = GetSystemModuleInformation(&system_modules);
+    status = GetSystemModuleInformation(&modules);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("GetSystemModuleInformation failed with status %x", status);
         return status;
     }
 
-    status = ValidateDriverObjectsWrapper(&system_modules);
+    status = ValidateDriverObjectsWrapper(&modules);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateDriverObjects failed with status %x", status);
@@ -533,7 +572,9 @@ HandleValidateDriversIOCTL()
 
 end:
 
-    ImpExFreePoolWithTag(system_modules.address, SYSTEM_MODULES_POOL);
+    if (modules.address)
+        ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
+
     return status;
 }
 
@@ -542,7 +583,7 @@ end:
  * boolean and remove the out variable.
  */
 BOOLEAN
-IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
+IsInstructionPointerInInvalidRegion(_In_ UINT64          Rip,
                                     _In_ PSYSTEM_MODULES SystemModules)
 {
     PAGED_CODE();
@@ -551,11 +592,11 @@ IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
         (PRTL_MODULE_EXTENDED_INFO)SystemModules->address;
 
     /* Note that this does not check for HAL or PatchGuard Execution */
-    for (INT index = 0; index < SystemModules->module_count; index++) {
+    for (UINT32 index = 0; index < SystemModules->module_count; index++) {
         UINT64 base = (UINT64)modules[index].ImageBase;
         UINT64 end  = base + modules[index].ImageSize;
 
-        if (RIP >= base && RIP <= end) {
+        if (Rip >= base && Rip <= end) {
             return FALSE;
         }
     }
@@ -580,12 +621,12 @@ STATIC
 VOID
 ReportNmiBlocking()
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(NMI_CALLBACK_FAILURE));
+    NTSTATUS              status = STATUS_UNSUCCESSFUL;
+    UINT32                len    = 0;
+    PNMI_CALLBACK_FAILURE report = NULL;
 
-    PNMI_CALLBACK_FAILURE report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len    = CryptRequestRequiredBufferLength(sizeof(NMI_CALLBACK_FAILURE));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -596,7 +637,7 @@ ReportNmiBlocking()
     report->invalid_rip        = NULL;
     report->were_nmis_disabled = TRUE;
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -604,22 +645,19 @@ ReportNmiBlocking()
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 STATIC
 VOID
 ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
 {
-    DEBUG_WARNING("Thread: %llx was not found in the pspcid table.",
-                  Context->kthread);
+    NTSTATUS                     status = STATUS_UNSUCCESSFUL;
+    UINT32                       len    = 0;
+    PHIDDEN_SYSTEM_THREAD_REPORT report = NULL;
 
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
-
-    PHIDDEN_SYSTEM_THREAD_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len = CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -633,7 +671,7 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
 
     RtlCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -641,7 +679,7 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 STATIC
@@ -649,12 +687,12 @@ VOID
 ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context,
                                _In_ UINT32       ReportSubCode)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    NTSTATUS              status = STATUS_UNSUCCESSFUL;
+    UINT32                len    = 0;
+    PNMI_CALLBACK_FAILURE report = NULL;
 
-    PNMI_CALLBACK_FAILURE report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len = CryptRequestRequiredBufferLength(sizeof(HIDDEN_SYSTEM_THREAD_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -665,7 +703,7 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context,
     report->invalid_rip        = Context->interrupted_rip;
     report->were_nmis_disabled = FALSE;
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -673,7 +711,7 @@ ReportInvalidRipFoundDuringNmi(_In_ PNMI_CONTEXT Context,
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 #define INSTRUCTION_UD2_BYTE_1  0x0F
@@ -709,7 +747,8 @@ DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
     if (opcodes[0] == INSTRUCTION_INT3_BYTE_1)
         return TRUE;
 
-    DEBUG_VERBOSE("Ret address instruction doesnt unconditionally throw exception");
+    DEBUG_VERBOSE(
+        "Ret address instruction doesnt unconditionally throw exception");
     return FALSE;
 }
 
@@ -719,19 +758,22 @@ DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
  */
 STATIC
 NTSTATUS
-AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
+AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES Modules)
 {
     PAGED_CODE();
 
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    BOOLEAN  flag   = FALSE;
+    NTSTATUS     status  = STATUS_UNSUCCESSFUL;
+    BOOLEAN      flag    = FALSE;
+    PNMI_CONTEXT context = NULL;
 
-    if (!NmiContext || !SystemModules)
+    if (!NmiContext || !Modules)
         return STATUS_INVALID_PARAMETER;
 
-    for (INT core = 0; core < ImpKeQueryActiveProcessorCount(0); core++) {
+    for (UINT32 core = 0; core < ImpKeQueryActiveProcessorCount(0); core++) {
+        context = &NmiContext[core];
+
         /* Make sure our NMIs were run  */
-        if (!NmiContext[core].callback_count) {
+        if (!context->callback_count) {
             ReportNmiBlocking();
             return STATUS_SUCCESS;
         }
@@ -739,7 +781,7 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
         DEBUG_VERBOSE(
             "Analysing Nmi Data for: cpu number: %i callback count: %lx",
             core,
-            NmiContext[core].callback_count);
+            context->callback_count);
 
         /*
          * Our NMI callback allows us to interrupt every running thread
@@ -764,19 +806,20 @@ AnalyseNmiData(_In_ PNMI_CONTEXT NmiContext, _In_ PSYSTEM_MODULES SystemModules)
          * PsGetNextProcess ?
          */
 
-        if (!DoesThreadHaveValidCidEntry(NmiContext[core].kthread))
-            ReportMissingCidTableEntry(&NmiContext[core]);
+        if (!DoesThreadHaveValidCidEntry(context->kthread))
+            ReportMissingCidTableEntry(context);
 
-        if (NmiContext[core].user_thread)
+        if (IsInstructionPointerInInvalidRegion(context->interrupted_rip,
+                                                Modules))
+            ReportInvalidRipFoundDuringNmi(context, 0);
+
+        if (context->user_thread)
             continue;
 
-        if (DoesRetInstructionCauseException(NmiContext[core].interrupted_rip))
+        if (DoesRetInstructionCauseException(context->interrupted_rip))
             ReportInvalidRipFoundDuringNmi(
-                &NmiContext[core], REPORT_SUBTYPE_EXCEPTION_THROWING_RET);
-
-        if (IsInstructionPointerInInvalidRegion(
-                NmiContext[core].interrupted_rip, SystemModules))
-            ReportInvalidRipFoundDuringNmi(&NmiContext[core], 0);
+                context,
+                REPORT_SUBTYPE_EXCEPTION_THROWING_RET);
     }
 
     return STATUS_SUCCESS;
@@ -836,12 +879,6 @@ NmiCallback(_Inout_opt_ PVOID Context, _In_ BOOLEAN Handled)
     context->kthread         = PsGetCurrentThread();
     context->callback_count++;
 
-    DEBUG_VERBOSE(
-        "[NMI CALLBACK]: Core Number: %lx, Interrupted RIP: %llx, Interrupted RSP: %llx",
-        core,
-        machine_frame->rip,
-        machine_frame->rsp);
-
     return TRUE;
 }
 
@@ -853,13 +890,16 @@ LaunchNonMaskableInterrupt()
 {
     PAGED_CODE();
 
-    PKAFFINITY_EX affinity = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(KAFFINITY_EX), PROC_AFFINITY_POOL);
+    PKAFFINITY_EX affinity = NULL;
+    LARGE_INTEGER delay    = {0};
+
+    affinity = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                  sizeof(KAFFINITY_EX),
+                                  PROC_AFFINITY_POOL);
 
     if (!affinity)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
-    LARGE_INTEGER delay = {0};
     delay.QuadPart -= NMI_DELAY_TIME;
 
     for (ULONG core = 0; core < ImpKeQueryActiveProcessorCount(0); core++) {
@@ -889,9 +929,11 @@ HandleNmiIOCTL()
     PVOID          handle  = NULL;
     SYSTEM_MODULES modules = {0};
     PNMI_CONTEXT   context = NULL;
+    UINT32         size    = 0;
 
-    UINT32 size = ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT);
+    size = ImpKeQueryActiveProcessorCount(0) * sizeof(NMI_CONTEXT);
 
+    /* Ensure we don't continue if another NMI operation is in progress */
     if (IsNmiInProgress())
         return STATUS_ALREADY_COMMITTED;
 
@@ -974,12 +1016,12 @@ STATIC
 VOID
 ReportApcStackwalkViolation(_In_ UINT64 Rip)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(APC_STACKWALK_REPORT));
+    NTSTATUS              status = STATUS_UNSUCCESSFUL;
+    UINT32                len    = 0;
+    PAPC_STACKWALK_REPORT report = NULL;
 
-    PAPC_STACKWALK_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len    = CryptRequestRequiredBufferLength(sizeof(APC_STACKWALK_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -990,7 +1032,7 @@ ReportApcStackwalkViolation(_In_ UINT64 Rip)
     report->invalid_rip     = Rip;
     // report->driver ?? todo!
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -998,7 +1040,7 @@ ReportApcStackwalkViolation(_In_ UINT64 Rip)
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 /*
@@ -1015,45 +1057,47 @@ ApcKernelRoutine(_In_ PRKAPC                                     Apc,
 {
     PAGED_CODE();
 
-    NTSTATUS               status            = STATUS_UNSUCCESSFUL;
-    PVOID                  buffer            = NULL;
-    INT                    frames_captured   = 0;
-    PUINT64                frames            = 0;
-    BOOLEAN                flag              = FALSE;
-    PAPC_STACKWALK_CONTEXT context           = NULL;
-    PTHREAD_LIST_ENTRY     thread_list_entry = NULL;
+    NTSTATUS               status          = STATUS_UNSUCCESSFUL;
+    PVOID                  buffer          = NULL;
+    INT                    frames_captured = 0;
+    UINT64                 frame           = 0;
+    PAPC_STACKWALK_CONTEXT context         = NULL;
+    PTHREAD_LIST_ENTRY     entry           = NULL;
 
     context = (PAPC_STACKWALK_CONTEXT)Apc->NormalContext;
 
-    FindThreadListEntryByThreadAddress(KeGetCurrentThread(),
-                                       &thread_list_entry);
+    FindThreadListEntryByThreadAddress(KeGetCurrentThread(), &entry);
 
-    if (!thread_list_entry)
+    if (!entry)
         return;
 
-    buffer = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, STACK_FRAME_POOL_SIZE, POOL_TAG_APC);
+    buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                STACK_FRAME_POOL_SIZE,
+                                POOL_TAG_APC);
 
     if (!buffer)
         goto free;
 
-    frames_captured = ImpRtlCaptureStackBackTrace(
-        NULL, STACK_FRAME_POOL_SIZE / sizeof(UINT64), buffer, NULL);
+    frames_captured =
+        ImpRtlCaptureStackBackTrace(NULL,
+                                    STACK_FRAME_POOL_SIZE / sizeof(UINT64),
+                                    buffer,
+                                    NULL);
 
     if (!frames_captured)
         goto free;
 
-    for (INT index = 0; index < frames_captured; index++) {
-        frames = (PUINT64)buffer;
+    for (UINT32 index = 0; index < frames_captured; index++) {
+        frame = ((PUINT64)buffer)[index];
 
         /*
          * Apc->NormalContext holds the address of our context data
          * structure that we passed into KeInitializeApc as the last
          * argument.
          */
-        if (IsInstructionPointerInInvalidRegion(frames[index],
-                                                context->modules))
-            ReportApcStackwalkViolation(frames[index]);
+        if (IsInstructionPointerInInvalidRegion(frame, context->modules)) {
+            ReportApcStackwalkViolation(frame);
+        }
     }
 
 free:
@@ -1063,8 +1107,8 @@ free:
 
     FreeApcAndDecrementApcCount(Apc, APC_CONTEXT_ID_STACKWALK);
 
-    thread_list_entry->apc        = NULL;
-    thread_list_entry->apc_queued = FALSE;
+    entry->apc        = NULL;
+    entry->apc_queued = FALSE;
 }
 
 /*
@@ -1085,25 +1129,25 @@ ApcNormalRoutine(_In_opt_ PVOID NormalContext,
 
 STATIC
 VOID
-ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
+ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY Entry,
                                    _Inout_opt_ PVOID       Context)
 {
     PAGED_CODE();
 
     PKAPC                  apc           = NULL;
-    BOOLEAN                apc_status    = FALSE;
     PLONG                  flags         = NULL;
-    PCHAR                  previous_mode = NULL;
+    PCHAR                  prev_mode     = NULL;
     PUCHAR                 state         = NULL;
     BOOLEAN                apc_queueable = FALSE;
-    LPCSTR                 process_name  = NULL;
-    PAPC_STACKWALK_CONTEXT context       = (PAPC_STACKWALK_CONTEXT)Context;
+    LPCSTR                 proc_name     = NULL;
+    PAPC_STACKWALK_CONTEXT context       = NULL;
+
+    context = (PAPC_STACKWALK_CONTEXT)Context;
 
     if (!ARGUMENT_PRESENT(Context))
         return;
 
-    process_name =
-        ImpPsGetProcessImageFileName(ThreadListEntry->owning_process);
+    proc_name = ImpPsGetProcessImageFileName(Entry->owning_process);
 
     /*
      * Its possible to set the KThread->ApcQueueable flag to false ensuring
@@ -1112,40 +1156,36 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
      * before before queueing ours. Since we filter out any system threads
      * this should be fine... c:
      */
-    flags =
-        (PLONG)((UINT64)ThreadListEntry->thread + KTHREAD_MISC_FLAGS_OFFSET);
-    previous_mode =
-        (PCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_PREVIOUS_MODE_OFFSET);
-    state = (PUCHAR)((UINT64)ThreadListEntry->thread + KTHREAD_STATE_OFFSET);
+    flags     = RVA(PLONG, Entry->thread, KTHREAD_MISC_FLAGS_OFFSET);
+    prev_mode = RVA(PCHAR, Entry->thread, KTHREAD_PREVIOUS_MODE_OFFSET);
+    state     = RVA(PUCHAR, Entry->thread, KTHREAD_STATE_OFFSET);
 
     /*
      * For now, lets only check for system threads. However, we also want to
      * check for threads executing in kernel mode, i.e KTHREAD->PreviousMode
      * == UserMode.
      */
-    if (ThreadListEntry->owning_process != PsInitialSystemProcess)
+    if (Entry->owning_process != PsInitialSystemProcess)
         return;
 
-    if (ThreadListEntry->thread == KeGetCurrentThread() ||
-        !ThreadListEntry->thread)
+    if (Entry->thread == KeGetCurrentThread() || !Entry->thread)
         return;
 
     DEBUG_VERBOSE(
         "Validating thread: %llx, process name: %s via kernel APC stackwalk.",
-        ThreadListEntry->thread,
-        process_name);
+        Entry->thread,
+        proc_name);
 
     SetFlag(*flags, KTHREAD_MISC_FLAGS_ALERTABLE);
     SetFlag(*flags, KTHREAD_MISC_FLAGS_APC_QUEUEABLE);
 
-    apc = (PKAPC)ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
+    apc = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(KAPC), POOL_TAG_APC);
 
     if (!apc)
         return;
 
     ImpKeInitializeApc(apc,
-                       ThreadListEntry->thread,
+                       Entry->thread,
                        OriginalApcEnvironment,
                        ApcKernelRoutine,
                        ApcRundownRoutine,
@@ -1153,16 +1193,14 @@ ValidateThreadViaKernelApcCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
                        KernelMode,
                        Context);
 
-    apc_status = ImpKeInsertQueueApc(apc, NULL, NULL, IO_NO_INCREMENT);
-
-    if (!apc_status) {
+    if (!ImpKeInsertQueueApc(apc, NULL, NULL, IO_NO_INCREMENT)) {
         DEBUG_ERROR("KeInsertQueueApc failed with no status.");
         ImpExFreePoolWithTag(apc, POOL_TAG_APC);
         return;
     }
 
-    ThreadListEntry->apc        = apc;
-    ThreadListEntry->apc_queued = TRUE;
+    Entry->apc        = apc;
+    Entry->apc_queued = TRUE;
 
     IncrementApcCount(APC_CONTEXT_ID_STACKWALK);
 }
@@ -1206,15 +1244,17 @@ ValidateThreadsViaKernelApc()
         return STATUS_SUCCESS;
     }
 
-    context = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(APC_STACKWALK_CONTEXT), POOL_TAG_APC);
+    context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                 sizeof(APC_STACKWALK_CONTEXT),
+                                 POOL_TAG_APC);
 
     if (!context)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
     context->header.context_id = APC_CONTEXT_ID_STACKWALK;
-    context->modules           = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(SYSTEM_MODULES), POOL_TAG_APC);
+    context->modules           = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                          sizeof(SYSTEM_MODULES),
+                                          POOL_TAG_APC);
 
     if (!context->modules) {
         ImpExFreePoolWithTag(context, POOL_TAG_APC);
@@ -1233,8 +1273,7 @@ ValidateThreadsViaKernelApc()
     InsertApcContext(context);
 
     SetApcAllocationInProgress(context);
-    RtlRbTreeEnumerate(
-        GetThreadTree(), ValidateThreadViaKernelApcCallback, context);
+    ENUMERATE_THREADS(ValidateThreadViaKernelApcCallback, context);
     UnsetApcAllocationInProgress(context);
     return status;
 }
@@ -1248,18 +1287,6 @@ FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context)
         ImpExFreePoolWithTag(Context->modules, POOL_TAG_APC);
 }
 
-#define DPC_STACKWALK_STACKFRAME_COUNT 10
-
-/* the first 3 frames are isr handlers which we dont care about */
-#define DPC_STACKWALK_FRAMES_TO_SKIP 3
-
-typedef struct _DPC_CONTEXT {
-    UINT64           stack_frame[DPC_STACKWALK_STACKFRAME_COUNT];
-    UINT16           frames_captured;
-    volatile BOOLEAN executed;
-
-} DPC_CONTEXT, *PDPC_CONTEXT;
-
 VOID
 DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
                             _In_opt_ PVOID DeferredContext,
@@ -1269,17 +1296,19 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument2);
 
+    PDPC_CONTEXT context = NULL;
+
     if (!ARGUMENT_PRESENT(DeferredContext))
         return;
 
-    PDPC_CONTEXT context =
-        &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
+    context = &((PDPC_CONTEXT)DeferredContext)[KeGetCurrentProcessorNumber()];
 
     context->frames_captured =
         ImpRtlCaptureStackBackTrace(DPC_STACKWALK_FRAMES_TO_SKIP,
                                     DPC_STACKWALK_STACKFRAME_COUNT,
                                     &context->stack_frame,
                                     NULL);
+
     InterlockedExchange(&context->executed, TRUE);
 
 #pragma warning(push)
@@ -1293,30 +1322,17 @@ DpcStackwalkCallbackRoutine(_In_ PKDPC     Dpc,
 }
 
 STATIC
-BOOLEAN
-CheckForDpcCompletion(_In_ PDPC_CONTEXT Context)
-{
-    for (UINT32 index = 0; index < ImpKeQueryActiveProcessorCount(0); index++) {
-        if (!InterlockedExchange(&Context[index].executed,
-                                 Context[index].executed))
-            return FALSE;
-    }
-
-    return TRUE;
-}
-
-STATIC
 VOID
 ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context,
                             _In_ UINT64       Frame,
                             _In_ UINT32       ReportSubtype)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(DPC_STACKWALK_REPORT));
+    NTSTATUS              status = STATUS_UNSUCCESSFUL;
+    UINT32                len    = 0;
+    PDPC_STACKWALK_REPORT report = NULL;
 
-    PDPC_STACKWALK_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len    = CryptRequestRequiredBufferLength(sizeof(DPC_STACKWALK_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -1331,7 +1347,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context,
     //               - 0x50,
     //               APC_STACKWALK_BUFFER_SIZE);
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -1339,7 +1355,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context,
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 STATIC
@@ -1348,6 +1364,7 @@ ValidateDpcStackFrame(_In_ PDPC_CONTEXT Context, _In_ PSYSTEM_MODULES Modules)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     BOOLEAN  flag   = FALSE;
+    UINT64   rip    = 0;
 
     /* With regards to this, lets only check the interrupted rip */
     if (DoesRetInstructionCauseException(Context->stack_frame[0]))
@@ -1356,7 +1373,7 @@ ValidateDpcStackFrame(_In_ PDPC_CONTEXT Context, _In_ PSYSTEM_MODULES Modules)
                                     REPORT_SUBTYPE_EXCEPTION_THROWING_RET);
 
     for (UINT32 frame = 0; frame < Context->frames_captured; frame++) {
-        UINT64 rip = Context->stack_frame[frame];
+        rip = Context->stack_frame[frame];
 
         if (IsInstructionPointerInInvalidRegion(rip, Modules))
             ReportDpcStackwalkViolation(Context, rip, 0);
@@ -1368,11 +1385,17 @@ VOID
 ValidateDpcCapturedStack(_In_ PSYSTEM_MODULES Modules,
                          _In_ PDPC_CONTEXT    Context)
 {
-    BOOLEAN               flag   = FALSE;
-    PDPC_STACKWALK_REPORT report = NULL;
-    UINT32                count  = ImpKeQueryActiveProcessorCount(0);
+    BOOLEAN      flag    = FALSE;
+    PDPC_CONTEXT context = NULL;
+    UINT32       count   = ImpKeQueryActiveProcessorCount(0);
 
     for (UINT32 core = 0; core < count; core++) {
+        context = &Context[core];
+
+        if (!context->executed)
+            DEBUG_WARNING("DPC Stackwalk routine not executed. Core: %lx",
+                          core);
+
         ValidateDpcStackFrame(&Context[core], Modules);
     }
 }
@@ -1390,8 +1413,9 @@ DispatchStackwalkToEachCpuViaDpc()
     NTSTATUS       status  = STATUS_UNSUCCESSFUL;
     PDPC_CONTEXT   context = NULL;
     SYSTEM_MODULES modules = {0};
-    UINT32 size = ImpKeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT);
+    UINT32         size    = 0;
 
+    size    = ImpKeQueryActiveProcessorCount(0) * sizeof(DPC_CONTEXT);
     context = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, size, POOL_TAG_DPC);
 
     if (!context)
@@ -1409,12 +1433,11 @@ DispatchStackwalkToEachCpuViaDpc()
      * the DPC queue and executed immediately.*/
     ImpKeGenericCallDpc(DpcStackwalkCallbackRoutine, context);
 
-    while (!CheckForDpcCompletion(context))
-        YieldProcessor();
+    /* Flush all DPC's in the system to ensure ours have run */
+    KeFlushQueuedDpcs();
 
     ValidateDpcCapturedStack(&modules, context);
 
-    DEBUG_VERBOSE("Finished validating cores via dpc");
 end:
 
     if (modules.address)
@@ -1615,12 +1638,12 @@ STATIC
 VOID
 ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+    NTSTATUS                   status = STATUS_UNSUCCESSFUL;
+    UINT32                     len    = 0;
+    PDATA_TABLE_ROUTINE_REPORT report = NULL;
 
-    PDATA_TABLE_ROUTINE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len = CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -1634,9 +1657,10 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
     report->address  = Address;
     report->table_id = TableId;
     report->index    = 0;
+
     RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -1644,7 +1668,7 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 NTSTATUS
@@ -1693,19 +1717,25 @@ NTSTATUS
 GetDriverObjectByDriverName(_In_ PUNICODE_STRING  DriverName,
                             _Out_ PDRIVER_OBJECT* DriverObject)
 {
-    HANDLE            handle           = NULL;
-    OBJECT_ATTRIBUTES attributes       = {0};
-    PVOID             directory        = {0};
-    UNICODE_STRING    directory_name   = {0};
-    NTSTATUS          status           = STATUS_UNSUCCESSFUL;
-    POBJECT_DIRECTORY directory_object = NULL;
+    HANDLE                  handle     = NULL;
+    OBJECT_ATTRIBUTES       attributes = {0};
+    PVOID                   dir        = {0};
+    UNICODE_STRING          dir_name   = {0};
+    NTSTATUS                status     = STATUS_UNSUCCESSFUL;
+    POBJECT_DIRECTORY       dir_object = NULL;
+    POBJECT_DIRECTORY_ENTRY entry      = NULL;
+    POBJECT_DIRECTORY_ENTRY sub_entry  = NULL;
+    PDRIVER_OBJECT          driver     = NULL;
 
     *DriverObject = NULL;
 
-    ImpRtlInitUnicodeString(&directory_name, L"\\Driver");
+    ImpRtlInitUnicodeString(&dir_name, L"\\Driver");
 
-    InitializeObjectAttributes(
-        &attributes, &directory_name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    InitializeObjectAttributes(&attributes,
+                               &dir_name,
+                               OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
 
     status =
         ImpZwOpenDirectoryObject(&handle, DIRECTORY_ALL_ACCESS, &attributes);
@@ -1715,8 +1745,12 @@ GetDriverObjectByDriverName(_In_ PUNICODE_STRING  DriverName,
         return status;
     }
 
-    status = ImpObReferenceObjectByHandle(
-        handle, DIRECTORY_ALL_ACCESS, NULL, KernelMode, &directory, NULL);
+    status = ImpObReferenceObjectByHandle(handle,
+                                          DIRECTORY_ALL_ACCESS,
+                                          NULL,
+                                          KernelMode,
+                                          &dir,
+                                          NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ObReferenceObjectByHandle failed with status %x", status);
@@ -1724,34 +1758,35 @@ GetDriverObjectByDriverName(_In_ PUNICODE_STRING  DriverName,
         return status;
     }
 
-    directory_object = (POBJECT_DIRECTORY)directory;
+    dir_object = (POBJECT_DIRECTORY)dir;
 
-    ImpExAcquirePushLockExclusiveEx(&directory_object->Lock, NULL);
+    ImpExAcquirePushLockExclusiveEx(&dir_object->Lock, NULL);
 
-    for (INT index = 0; index < NUMBER_HASH_BUCKETS; index++) {
-        POBJECT_DIRECTORY_ENTRY entry = directory_object->HashBuckets[index];
+    for (UINT32 index = 0; index < NUMBER_HASH_BUCKETS; index++) {
+        entry = dir_object->HashBuckets[index];
 
         if (!entry)
             continue;
 
-        POBJECT_DIRECTORY_ENTRY sub_entry = entry;
+        sub_entry = entry;
 
         while (sub_entry) {
-            PDRIVER_OBJECT current_driver = sub_entry->Object;
+            driver = GetObjectFromDirectory(sub_entry);
 
-            if (!RtlCompareUnicodeString(
-                    DriverName, &current_driver->DriverName, FALSE)) {
-                *DriverObject = current_driver;
+            if (!RtlCompareUnicodeString(DriverName,
+                                         &driver->DriverName,
+                                         FALSE)) {
+                *DriverObject = driver;
                 goto end;
             }
 
-            sub_entry = sub_entry->ChainLink;
+            sub_entry = GetNextObject(sub_entry);
         }
     }
 
 end:
-    ImpExReleasePushLockExclusiveEx(&directory_object->Lock, 0);
-    ImpObDereferenceObject(directory);
+    ImpExReleasePushLockExclusiveEx(&dir_object->Lock, 0);
+    ImpObDereferenceObject(dir);
     ImpZwClose(handle);
     return STATUS_SUCCESS;
 }
@@ -1759,13 +1794,13 @@ end:
 PVOID
 FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
 {
-    PKLDR_DATA_TABLE_ENTRY first =
-        (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
+    PKLDR_DATA_TABLE_ENTRY first = NULL;
+    PKLDR_DATA_TABLE_ENTRY entry = NULL;
 
     /* first entry contains invalid data, 2nd entry is the kernel */
-    PKLDR_DATA_TABLE_ENTRY entry =
-        ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)
-            ->InLoadOrderLinks.Flink->Flink;
+    first = (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
+    entry = ((PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection)
+                ->InLoadOrderLinks.Flink->Flink;
 
     while (entry->InLoadOrderLinks.Flink != first) {
         /* todo: write our own unicode string comparison function, since
@@ -1781,7 +1816,6 @@ FindDriverBaseNoApi(_In_ PDRIVER_OBJECT DriverObject, _In_ PWCH Name)
     return NULL;
 }
 
-STATIC
 VOID
 ValidateDispatchTableRoutines(_In_ PVOID* Table, _In_ UINT32 Entries)
 {
@@ -1952,12 +1986,12 @@ VOID
 ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
                                        _In_ UINT64 Address)
 {
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size =
-        CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+    NTSTATUS                   status = STATUS_UNSUCCESSFUL;
+    UINT32                     len    = 0;
+    PDATA_TABLE_ROUTINE_REPORT report = NULL;
 
-    PDATA_TABLE_ROUTINE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len = CryptRequestRequiredBufferLength(sizeof(DATA_TABLE_ROUTINE_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -1970,7 +2004,7 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
     // todo! report->routine = ??
     // todo: maybe get routine by name from index ?
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
@@ -1978,7 +2012,7 @@ ReportWin32kBase_DxgInterfaceViolation(_In_ UINT32 TableIndex,
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 STATIC
@@ -1992,6 +2026,7 @@ ValidateWin32kBase_gDxgInterface()
     KAPC_STATE                apc           = {0};
     PKPROCESS                 winlogon      = NULL;
     PVOID*                    dxg_interface = NULL;
+    PVOID                     entry         = NULL;
 
     status = GetSystemModuleInformation(&modules);
 
@@ -2036,7 +2071,7 @@ ValidateWin32kBase_gDxgInterface()
         if (!dxg_interface[index])
             continue;
 
-        PVOID entry = FindChainedPointerEnding(dxg_interface[index]);
+        entry = FindChainedPointerEnding(dxg_interface[index]);
 
 #if DEBUG
         DEBUG_INFO("chain entry test: %p", entry);

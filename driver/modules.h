@@ -55,7 +55,7 @@ VOID
 FreeApcStackwalkApcContextInformation(_Inout_ PAPC_STACKWALK_CONTEXT Context);
 
 BOOLEAN
-IsInstructionPointerInInvalidRegion(_In_ UINT64          RIP,
+IsInstructionPointerInInvalidRegion(_In_ UINT64          Rip,
                                     _In_ PSYSTEM_MODULES SystemModules);
 
 PVOID

@@ -53,8 +53,10 @@
 
 #define MAX_MODULE_PATH 260
 
-#define CONVERT_RELATIVE_ADDRESS(Cast, Base, Rel) \
+#define RVA(Cast, Base, Rel) \
     ((Cast)((DWORD_PTR)(Base) + (DWORD_PTR)(Rel)))
+
+#define ARRAYLEN(len, type) ((len) / sizeof(type))
 
 /*
  * Interlocked intrinsics are only atomic with respect to other InterlockedXxx

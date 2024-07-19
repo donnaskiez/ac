@@ -11,7 +11,7 @@ PeGetNtHeaderSafe(_In_ PVOID Image)
     if (dos->e_magic != IMAGE_DOS_SIGNATURE)
         return NULL;
 
-    return CONVERT_RELATIVE_ADDRESS(PNT_HEADER_64, Image, dos->e_lfanew);
+    return RVA(PNT_HEADER_64, Image, dos->e_lfanew);
 }
 
 PNT_HEADER_64
@@ -22,7 +22,7 @@ PeGetNtHeader(_In_ PVOID Image)
     if (dos->e_magic != IMAGE_DOS_SIGNATURE)
         return NULL;
 
-    return CONVERT_RELATIVE_ADDRESS(PNT_HEADER_64, Image, dos->e_lfanew);
+    return RVA(PNT_HEADER_64, Image, dos->e_lfanew);
 }
 
 PIMAGE_DATA_DIRECTORY
@@ -59,7 +59,7 @@ PeGetExportDirectory(_In_ PVOID                 Image,
     if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
         return NULL;
 
-    return CONVERT_RELATIVE_ADDRESS(
+    return RVA(
         PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
 }
 
@@ -73,7 +73,7 @@ PeGetExportDirectorySafe(_In_ PVOID                 Image,
     if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
         return NULL;
 
-    return CONVERT_RELATIVE_ADDRESS(
+    return RVA(
         PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
 }
 
@@ -118,16 +118,16 @@ PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
         return NULL;
 
     PUINT32 functions =
-        CONVERT_RELATIVE_ADDRESS(PUINT32, Image, export->AddressOfFunctions);
+        RVA(PUINT32, Image, export->AddressOfFunctions);
     PUINT32 names =
-        CONVERT_RELATIVE_ADDRESS(PUINT32, Image, export->AddressOfNames);
+        RVA(PUINT32, Image, export->AddressOfNames);
     PUINT16 ordinals =
-        CONVERT_RELATIVE_ADDRESS(PUINT16, Image, export->AddressOfNameOrdinals);
+        RVA(PUINT16, Image, export->AddressOfNameOrdinals);
 
     for (UINT32 index = 0; index < export->NumberOfNames; index++) {
-        PCHAR export = CONVERT_RELATIVE_ADDRESS(PCHAR, Image, names[index]);
+        PCHAR export = RVA(PCHAR, Image, names[index]);
         if (!strcmp(Name, export))
-            return CONVERT_RELATIVE_ADDRESS(
+            return RVA(
                 PVOID, Image, functions[ordinals[index]]);
     }
 

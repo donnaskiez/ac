@@ -69,4 +69,10 @@ CryptDecryptPointer64(_Inout_ PUINT64 Pointer, _In_ UINT64 Key);
 UINT64
 CryptDecryptPointerOutOfPlace64(_In_ PUINT64 Pointer, _In_ UINT64 Key);
 
+NTSTATUS
+CryptHashBuffer_sha256(_In_ PVOID   Buffer,
+                       _In_ ULONG   BufferSize,
+                       _Out_ PVOID* HashResult,
+                       _Out_ PULONG HashResultSize);
+
 #endif

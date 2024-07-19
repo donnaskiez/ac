@@ -58,14 +58,16 @@ CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries)
         __m256i load_block    = {0};
         __m256i xored_block   = {0};
 
-        RtlCopyMemory(
-            &current_block, &Array[block_index * block_size], sizeof(__m256i));
+        RtlCopyMemory(&current_block,
+                      &Array[block_index * block_size],
+                      sizeof(__m256i));
 
         load_block  = _mm256_loadu_si256(&current_block);
         xored_block = _mm256_xor_si256(load_block, *imports_key);
 
-        RtlCopyMemory(
-            &Array[block_index * block_size], &xored_block, sizeof(__m256i));
+        RtlCopyMemory(&Array[block_index * block_size],
+                      &xored_block,
+                      sizeof(__m256i));
     }
 }
 
@@ -78,8 +80,9 @@ CryptDecryptImportBlock(_In_ PUINT64 Array, _In_ UINT32 BlockIndex)
     __m256i* imports_key = GetDriverImportsKey();
     UINT32   block_size  = sizeof(__m256i) / sizeof(UINT64);
 
-    RtlCopyMemory(
-        &load_block, &Array[BlockIndex * block_size], sizeof(__m256i));
+    RtlCopyMemory(&load_block,
+                  &Array[BlockIndex * block_size],
+                  sizeof(__m256i));
 
     return _mm256_xor_si256(load_block, *imports_key);
 }
@@ -128,8 +131,10 @@ CryptDecryptImportsArrayEntry(_In_ PUINT64 Array,
     UINT32  block_sub_index        = 0;
     UINT64  pointer                = 0;
 
-    CryptFindContainingBlockForArrayIndex(
-        EntryIndex, block_size, &containing_block_index, &block_sub_index);
+    CryptFindContainingBlockForArrayIndex(EntryIndex,
+                                          block_size,
+                                          &containing_block_index,
+                                          &block_sub_index);
 
     original_block = CryptDecryptImportBlock(Array, containing_block_index);
 
@@ -281,8 +286,9 @@ CryptInitialiseSessionCryptObjects()
         goto end;
     }
 
-    session->key_object = ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, session->key_object_length, POOL_TAG_CRYPT);
+    session->key_object = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                          session->key_object_length,
+                                          POOL_TAG_CRYPT);
 
     if (!session->key_object) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -323,8 +329,10 @@ CryptInitialiseProvider()
     NTSTATUS           status = STATUS_UNSUCCESSFUL;
     BCRYPT_ALG_HANDLE* handle = GetCryptHandle_AES();
 
-    status = BCryptOpenAlgorithmProvider(
-        handle, BCRYPT_AES_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
+    status = BCryptOpenAlgorithmProvider(handle,
+                                         BCRYPT_AES_ALGORITHM,
+                                         NULL,
+                                         BCRYPT_PROV_DISPATCH);
 
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("BCryptOpenAlgorithmProvider: %x", status);
@@ -498,5 +506,133 @@ TpmExtractEndorsementKey()
     }
 
     DEBUG_INFO("TPM2.0 PTP Interface Type: %x", (UINT32)type);
+    return status;
+}
+
+NTSTATUS
+CryptHashBuffer_sha256(_In_ PVOID   Buffer,
+                       _In_ ULONG   BufferSize,
+                       _Out_ PVOID* HashResult,
+                       _Out_ PULONG HashResultSize)
+{
+    PAGED_CODE();
+
+    NTSTATUS           status              = STATUS_UNSUCCESSFUL;
+    BCRYPT_ALG_HANDLE* algo_handle         = GetCryptHandle_Sha256();
+    BCRYPT_HASH_HANDLE hash_handle         = NULL;
+    ULONG              bytes_copied        = 0;
+    ULONG              resulting_hash_size = 0;
+    ULONG              hash_object_size    = 0;
+    PCHAR              hash_object         = NULL;
+    PCHAR              resulting_hash      = NULL;
+
+    *HashResult     = NULL;
+    *HashResultSize = 0;
+
+    /*
+     * Request the size of the hash object buffer, this is different then
+     * the buffer that will store the resulting hash, instead this will be
+     * used to store the hash object used to create the hash.
+     */
+    status = BCryptGetProperty(*algo_handle,
+                               BCRYPT_OBJECT_LENGTH,
+                               (PCHAR)&hash_object_size,
+                               sizeof(ULONG),
+                               &bytes_copied,
+                               NULL);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
+        goto end;
+    }
+
+    hash_object = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                     hash_object_size,
+                                     POOL_TAG_INTEGRITY);
+
+    if (!hash_object) {
+        status = STATUS_MEMORY_NOT_ALLOCATED;
+        goto end;
+    }
+
+    /*
+     * This call gets the size of the resulting hash, which we will use to
+     * allocate the resulting hash buffer.
+     */
+    status = BCryptGetProperty(*algo_handle,
+                               BCRYPT_HASH_LENGTH,
+                               (PCHAR)&resulting_hash_size,
+                               sizeof(ULONG),
+                               &bytes_copied,
+                               NULL);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
+        goto end;
+    }
+
+    resulting_hash = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                        resulting_hash_size,
+                                        POOL_TAG_INTEGRITY);
+
+    if (!resulting_hash) {
+        status = STATUS_MEMORY_NOT_ALLOCATED;
+        goto end;
+    }
+
+    /*
+     * Here we create our hash object and store it in the hash_object
+     * buffer.
+     */
+    status = BCryptCreateHash(*algo_handle,
+                              &hash_handle,
+                              hash_object,
+                              hash_object_size,
+                              NULL,
+                              NULL,
+                              NULL);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptCreateHash failed with status %x", status);
+        goto end;
+    }
+
+    /*
+     * This function hashes the buffer, but does NOT store it in our
+     * resulting buffer yet, we need to call BCryptFinishHash to retrieve
+     * the final hash.
+     */
+    status = BCryptHashData(hash_handle, Buffer, BufferSize, NULL);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptHashData failed with status %x", status);
+        goto end;
+    }
+
+    /*
+     * As said in the previous comment, this is where we retrieve the final
+     * hash and store it in our output buffer.
+     */
+    status = BCryptFinishHash(hash_handle,
+                              resulting_hash,
+                              resulting_hash_size,
+                              NULL);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("BCryptFinishHash failed with status %x", status);
+        goto end;
+    }
+
+    *HashResult     = resulting_hash;
+    *HashResultSize = resulting_hash_size;
+
+end:
+
+    if (hash_handle)
+        BCryptDestroyHash(hash_handle);
+
+    if (hash_object)
+        ImpExFreePoolWithTag(hash_object, POOL_TAG_INTEGRITY);
+
     return status;
 }

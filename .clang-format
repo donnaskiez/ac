@@ -12,11 +12,10 @@ AlignOperands: true
 
 AlignTrailingComments: true
 
-AllowAllArgumentsOnNextLine: true
+AllowAllArgumentsOnNextLine: false
 
 AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterReturnType: TopLevel
@@ -26,8 +25,9 @@ AlwaysBreakTemplateDeclarations: true #false
 
 BinPackArguments: false
 BinPackParameters: false
-
+AllowShortFunctionsOnASingleLine: false
 AllowAllParametersOfDeclarationOnNextLine: true
+PenaltyBreakBeforeFirstCallParameter: 0
 
 BreakBeforeBraces: Stroustrup
 BraceWrapping:

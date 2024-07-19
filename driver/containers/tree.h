@@ -3,8 +3,8 @@
 
 #include "../common.h"
 
-#define RB_TREE_EQUAL 0
-#define RB_TREE_LESS_THAN 1
+#define RB_TREE_EQUAL        0
+#define RB_TREE_LESS_THAN    1
 #define RB_TREE_GREATER_THAN 2
 
 typedef enum _COLOUR { red, black } COLOUR;
@@ -54,6 +54,9 @@ VOID
 RtlRbTreeEnumerate(_In_ PRB_TREE         Tree,
                    _In_ RB_ENUM_CALLBACK Callback,
                    _In_opt_ PVOID        Context);
+
+#define ENUMERATE_THREADS(callback, context) \
+    RtlRbTreeEnumerate(GetThreadTree(), callback, context)
 
 VOID
 RtlRbTreeDeleteTree(_In_ PRB_TREE Tree);

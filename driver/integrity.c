@@ -15,9 +15,11 @@
 #include <initguid.h>
 #include <devpkey.h>
 
+/* Header for a buffer that contains an array of sections copied from a module
+ */
 typedef struct _INTEGRITY_CHECK_HEADER {
-    INT  executable_section_count;
-    LONG total_packet_size;
+    UINT32 section_count;
+    UINT32 total_size;
 
 } INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
 
@@ -28,10 +30,21 @@ typedef struct _PROCESS_MODULE_INFORMATION {
 
 } PROCESS_MODULE_INFORMATION, *PPROCESS_MODULE_INFORMATION;
 
+/* Structure representing the data passed back to user-mode after validating a
+ * process module sections*/
 typedef struct _PROCESS_MODULE_VALIDATION_RESULT {
-    INT is_module_valid;
+    UINT32 is_module_valid;
 
 } PROCESS_MODULE_VALIDATION_RESULT, *PPROCESS_MODULE_VALIDATION_RESULT;
+
+typedef struct _VAL_INTEGRITY_HEADER {
+    INTEGRITY_CHECK_HEADER integrity_check_header;
+    IMAGE_SECTION_HEADER   section_header;
+    CHAR                   section_base[];
+
+} VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
+
+// clang-format off
 
 STATIC
 NTSTATUS
@@ -39,61 +52,67 @@ InitiateEptFunctionAddressArrays();
 
 STATIC
 NTSTATUS
-GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
-                           _In_ LPCSTR                     ModuleName);
+GetModuleInformationByName(
+    _Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
+    _In_  LPCSTR                    ModuleName);
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
-                                     _In_ PVOID    ModuleBase,
-                                     _In_ SIZE_T   ModuleSize,
-                                     _Out_ PSIZE_T BytesWritten,
-                                     _In_ BOOLEAN  IsModulex86);
+StoreModuleExecutableRegionsInBuffer(
+    _Out_ PVOID*   Buffer,
+    _In_  PVOID    ModuleBase,
+    _In_  SIZE_T   ModuleSize,
+    _Out_ PSIZE_T  BytesWritten,
+    _In_  BOOLEAN  IsModulex86
+);
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
-                                    _Out_ PVOID*         Section,
-                                    _In_ PUNICODE_STRING Path,
-                                    _Out_ PSIZE_T        Size);
-
-STATIC
-NTSTATUS
-ComputeHashOfBuffer(_In_ PVOID   Buffer,
-                    _In_ ULONG   BufferSize,
-                    _Out_ PVOID* HashResult,
-                    _Out_ PULONG HashResultSize);
+MapDiskImageIntoVirtualAddressSpace(
+    _Inout_ PHANDLE         SectionHandle,
+    _Out_   PVOID*          Section,
+    _In_    PUNICODE_STRING Path,
+    _Out_   PSIZE_T         Size
+);
 
 STATIC
 VOID
-GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure);
+GetNextSMBIOSStructureInTable(
+    _Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure
+);
 
 STATIC
 NTSTATUS
-GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
-                                _In_ INT                  Index,
-                                _In_ PVOID                Buffer,
-                                _In_ SIZE_T               BufferSize);
+GetStringAtIndexFromSMBIOSTable(
+    _In_ PSMBIOS_TABLE_HEADER Table,
+    _In_ UINT32               Index,
+    _In_ PVOID                Buffer,
+    _In_ SIZE_T               BufferSize
+);
 
 STATIC
 NTSTATUS
-GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
-                            _Out_ PUINT64 AverageTime);
+GetAverageReadTimeAtRoutine(
+    _In_  PVOID   RoutineAddress,                     
+    _Out_ PUINT64 AverageTime
+);
 
 STATIC
 VOID
-HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
-                    _In_opt_ PVOID DeferredContext,
-                    _In_opt_ PVOID SystemArgument1,
-                    _In_opt_ PVOID SystemArgument2);
+HeartbeatDpcRoutine(
+    _In_     PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,                    
+    _In_opt_ PVOID SystemArgument2
+);
+
+// clang-format on
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, GetDriverImageSize)
 #    pragma alloc_text(PAGE, GetModuleInformationByName)
 #    pragma alloc_text(PAGE, StoreModuleExecutableRegionsInBuffer)
 #    pragma alloc_text(PAGE, MapDiskImageIntoVirtualAddressSpace)
-#    pragma alloc_text(PAGE, ComputeHashOfBuffer)
-// #        pragma alloc_text(PAGE, VerifyInMemoryImageVsDiskImage)
 #    pragma alloc_text(PAGE, RetrieveInMemoryModuleExecutableSections)
 #    pragma alloc_text(PAGE, GetNextSMBIOSStructureInTable)
 #    pragma alloc_text(PAGE, GetStringAtIndexFromSMBIOSTable)
@@ -103,7 +122,6 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
 #    pragma alloc_text(PAGE, ScanForSignature)
 #    pragma alloc_text(PAGE, InitiateEptFunctionAddressArrays)
 #    pragma alloc_text(PAGE, DetectEptHooksInKeyFunctions)
-// #pragma alloc_text(PAGE, DetermineIfTestSigningIsEnabled)
 #endif
 
 /*
@@ -144,6 +162,7 @@ GetDriverImageSize(_Inout_ PIRP Irp)
     }
 
     Irp->IoStatus.Information = sizeof(ULONG);
+
     RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
                   &driver_info->ImageSize,
                   sizeof(ULONG));
@@ -232,8 +251,8 @@ InitIntegrityCheckHeader(_Out_ PINTEGRITY_CHECK_HEADER Header,
                          _In_ UINT32                   SectionCount,
                          _In_ UINT32                   TotalSize)
 {
-    Header->executable_section_count = SectionCount;
-    Header->total_packet_size = TotalSize + sizeof(INTEGRITY_CHECK_HEADER);
+    Header->section_count = SectionCount;
+    Header->total_size    = TotalSize + sizeof(INTEGRITY_CHECK_HEADER);
 }
 
 STATIC
@@ -246,20 +265,16 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 {
     PAGED_CODE();
 
+    UINT32                 total_packet_size       = 0;
+    UINT32                 num_sections            = 0;
+    UINT32                 num_executable_sections = 0;
+    UINT64                 buffer_base             = 0;
+    UINT32                 bytes_returned          = 0;
     NTSTATUS               status                  = STATUS_UNSUCCESSFUL;
     PNT_HEADER_64          nt_header               = NULL;
     PIMAGE_SECTION_HEADER  section                 = NULL;
-    ULONG                  total_packet_size       = 0;
-    ULONG                  num_sections            = 0;
-    ULONG                  num_executable_sections = 0;
-    UINT64                 buffer_base             = 0;
-    ULONG                  bytes_returned          = 0;
     MM_COPY_ADDRESS        address                 = {0};
     INTEGRITY_CHECK_HEADER header                  = {0};
-
-    // DEBUG_VERBOSE("Storing x regions -> x86 module: %lx",
-    // (UINT32)IsModulex86); DEBUG_VERBOSE("MmIsAddressValid: %lx",
-    // MmIsAddressValid(ModuleBase));
 
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
@@ -300,7 +315,7 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
     section     = IMAGE_FIRST_SECTION(nt_header);
     buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
 
-    for (ULONG index = 0; index < num_sections - 1; index++) {
+    for (UINT32 index = 0; index < num_sections - 1; index++) {
         if (!IsSectionExecutable(section)) {
             section++;
             continue;
@@ -338,8 +353,9 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
         section++;
     }
 
-    InitIntegrityCheckHeader(
-        &header, num_executable_sections, total_packet_size);
+    InitIntegrityCheckHeader(&header,
+                             num_executable_sections,
+                             total_packet_size);
 
     RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
     *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
@@ -355,29 +371,27 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
 {
     PAGED_CODE();
 
-    NTSTATUS          status            = STATUS_UNSUCCESSFUL;
-    HANDLE            file_handle       = NULL;
-    OBJECT_ATTRIBUTES object_attributes = {0};
-    PIO_STATUS_BLOCK  pio_block         = NULL;
-    UNICODE_STRING    path              = {0};
+    NTSTATUS          status = STATUS_UNSUCCESSFUL;
+    HANDLE            handle = NULL;
+    OBJECT_ATTRIBUTES oa     = {0};
+    PIO_STATUS_BLOCK  io     = NULL;
+    UNICODE_STRING    path   = {0};
 
     *Section = NULL;
     *Size    = 0;
 
     ImpRtlInitUnicodeString(&path, Path->Buffer);
 
-    InitializeObjectAttributes(
-        &object_attributes, &path, OBJ_KERNEL_HANDLE, NULL, NULL);
+    InitializeObjectAttributes(&oa, &path, OBJ_KERNEL_HANDLE, NULL, NULL);
 
-    status = ImpZwOpenFile(
-        &file_handle, GENERIC_READ, &object_attributes, &pio_block, NULL, NULL);
+    status = ImpZwOpenFile(&handle, GENERIC_READ, &oa, &io, NULL, NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwOpenFile failed with status %x", status);
         return status;
     }
 
-    object_attributes.ObjectName = NULL;
+    oa.ObjectName = NULL;
 
     /*
      * Its important that we set the SEC_IMAGE flag with the PAGE_READONLY
@@ -385,15 +399,15 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
      */
     status = ImpZwCreateSection(SectionHandle,
                                 SECTION_ALL_ACCESS,
-                                &object_attributes,
+                                &oa,
                                 NULL,
                                 PAGE_READONLY,
                                 SEC_IMAGE,
-                                file_handle);
+                                handle);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwCreateSection failed with status %x", status);
-        ImpZwClose(file_handle);
+        ImpZwClose(handle);
         *SectionHandle = NULL;
         return status;
     }
@@ -422,138 +436,13 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
-        ImpZwClose(file_handle);
+        ImpZwClose(handle);
         ImpZwClose(*SectionHandle);
         *SectionHandle = NULL;
         return status;
     }
 
-    ImpZwClose(file_handle);
-    return status;
-}
-
-STATIC
-NTSTATUS
-ComputeHashOfBuffer(_In_ PVOID   Buffer,
-                    _In_ ULONG   BufferSize,
-                    _Out_ PVOID* HashResult,
-                    _Out_ PULONG HashResultSize)
-{
-    PAGED_CODE();
-
-    NTSTATUS           status              = STATUS_UNSUCCESSFUL;
-    BCRYPT_ALG_HANDLE* algo_handle         = GetCryptHandle_Sha256();
-    BCRYPT_HASH_HANDLE hash_handle         = NULL;
-    ULONG              bytes_copied        = 0;
-    ULONG              resulting_hash_size = 0;
-    ULONG              hash_object_size    = 0;
-    PCHAR              hash_object         = NULL;
-    PCHAR              resulting_hash      = NULL;
-
-    *HashResult     = NULL;
-    *HashResultSize = 0;
-
-    /*
-     * Request the size of the hash object buffer, this is different then
-     * the buffer that will store the resulting hash, instead this will be
-     * used to store the hash object used to create the hash.
-     */
-    status = BCryptGetProperty(*algo_handle,
-                               BCRYPT_OBJECT_LENGTH,
-                               (PCHAR)&hash_object_size,
-                               sizeof(ULONG),
-                               &bytes_copied,
-                               NULL);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
-        goto end;
-    }
-
-    hash_object = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, hash_object_size, POOL_TAG_INTEGRITY);
-
-    if (!hash_object) {
-        status = STATUS_MEMORY_NOT_ALLOCATED;
-        goto end;
-    }
-
-    /*
-     * This call gets the size of the resulting hash, which we will use to
-     * allocate the resulting hash buffer.
-     */
-    status = BCryptGetProperty(*algo_handle,
-                               BCRYPT_HASH_LENGTH,
-                               (PCHAR)&resulting_hash_size,
-                               sizeof(ULONG),
-                               &bytes_copied,
-                               NULL);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptGetProperty failed with status %x", status);
-        goto end;
-    }
-
-    resulting_hash = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, resulting_hash_size, POOL_TAG_INTEGRITY);
-
-    if (!resulting_hash) {
-        status = STATUS_MEMORY_NOT_ALLOCATED;
-        goto end;
-    }
-
-    /*
-     * Here we create our hash object and store it in the hash_object
-     * buffer.
-     */
-    status = BCryptCreateHash(*algo_handle,
-                              &hash_handle,
-                              hash_object,
-                              hash_object_size,
-                              NULL,
-                              NULL,
-                              NULL);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptCreateHash failed with status %x", status);
-        goto end;
-    }
-
-    /*
-     * This function hashes the buffer, but does NOT store it in our
-     * resulting buffer yet, we need to call BCryptFinishHash to retrieve
-     * the final hash.
-     */
-    status = BCryptHashData(hash_handle, Buffer, BufferSize, NULL);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptHashData failed with status %x", status);
-        goto end;
-    }
-
-    /*
-     * As said in the previous comment, this is where we retrieve the final
-     * hash and store it in our output buffer.
-     */
-    status = BCryptFinishHash(
-        hash_handle, resulting_hash, resulting_hash_size, NULL);
-
-    if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("BCryptFinishHash failed with status %x", status);
-        goto end;
-    }
-
-    *HashResult     = resulting_hash;
-    *HashResultSize = resulting_hash_size;
-
-end:
-
-    if (hash_handle)
-        BCryptDestroyHash(hash_handle);
-
-    if (hash_object)
-        ImpExFreePoolWithTag(hash_object, POOL_TAG_INTEGRITY);
-
+    ImpZwClose(handle);
     return status;
 }
 
@@ -663,16 +552,16 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
 STATIC
 NTSTATUS
 GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
-                                _In_ INT                  Index,
+                                _In_ UINT32               Index,
                                 _In_ PVOID                Buffer,
                                 _In_ SIZE_T               BufferSize)
 {
     PAGED_CODE();
 
-    INT   current_string_char_index = 0;
-    INT   string_count              = 0;
-    PCHAR current_string_char       = (PCHAR)((UINT64)Table + Table->Length);
-    PCHAR next_string_char          = current_string_char + 1;
+    UINT32 current_string_char_index = 0;
+    UINT32 string_count              = 0;
+    PCHAR  current_string_char       = (PCHAR)((UINT64)Table + Table->Length);
+    PCHAR  next_string_char          = current_string_char + 1;
 
     for (;;) {
         if (*current_string_char == NULL_TERMINATOR &&
@@ -730,16 +619,16 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
 {
     PAGED_CODE();
 
-    NTSTATUS             status                       = STATUS_UNSUCCESSFUL;
-    PVOID                firmware_table_buffer        = NULL;
-    ULONG                firmware_table_buffer_size   = 0;
-    ULONG                bytes_returned               = 0;
-    PRAW_SMBIOS_DATA     smbios_data                  = NULL;
-    PSMBIOS_TABLE_HEADER smbios_table_header          = NULL;
-    PRAW_SMBIOS_TABLE_01 smbios_baseboard_information = NULL;
+    NTSTATUS             status       = STATUS_UNSUCCESSFUL;
+    PVOID                buffer       = NULL;
+    ULONG                buffer_size  = 0;
+    ULONG                bytes_copied = 0;
+    PRAW_SMBIOS_DATA     smbios_data  = NULL;
+    PSMBIOS_TABLE_HEADER header       = NULL;
+    PRAW_SMBIOS_TABLE_01 baseboard    = NULL;
 
-    status = ImpExGetSystemFirmwareTable(
-        SMBIOS_TABLE, 0, NULL, 0, &firmware_table_buffer_size);
+    status =
+        ImpExGetSystemFirmwareTable(SMBIOS_TABLE, 0, NULL, 0, &buffer_size);
 
     /*
      * Because we pass a null buffer here, the NTSTATUS result will be a
@@ -747,23 +636,24 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
      * the return bytes returned (which indicate required buffer size) is
      * above 0.
      */
-    if (firmware_table_buffer_size == NULL) {
+    if (buffer_size == NULL) {
         DEBUG_ERROR(
             "ExGetSystemFirmwareTable call 1 failed to get required buffer size.");
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    firmware_table_buffer = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, firmware_table_buffer_size, POOL_TAG_INTEGRITY);
+    buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                buffer_size,
+                                POOL_TAG_INTEGRITY);
 
-    if (!firmware_table_buffer)
+    if (!buffer)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
     status = ImpExGetSystemFirmwareTable(SMBIOS_TABLE,
                                          NULL,
-                                         firmware_table_buffer,
-                                         firmware_table_buffer_size,
-                                         &bytes_returned);
+                                         buffer,
+                                         buffer_size,
+                                         &bytes_copied);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ExGetSystemFirmwareTable call 2 failed with status %x",
@@ -771,8 +661,8 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
         goto end;
     }
 
-    smbios_data         = GetRawSmbiosData(firmware_table_buffer);
-    smbios_table_header = GetSmbiosTableHeader(smbios_data);
+    smbios_data = GetRawSmbiosData(buffer);
+    header      = GetSmbiosTableHeader(smbios_data);
 
     /*
      * The System Information table is equal to Type == 2 and contains the
@@ -783,11 +673,13 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
      * https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.1.pdf
      * line 823
      */
-    while (smbios_table_header->Type != TableIndex)
-        GetNextSMBIOSStructureInTable(&smbios_table_header);
+    while (header->Type != TableIndex)
+        GetNextSMBIOSStructureInTable(&header);
 
-    status = GetStringAtIndexFromSMBIOSTable(
-        smbios_table_header, TableSubIndex, Buffer, BufferSize);
+    status = GetStringAtIndexFromSMBIOSTable(header,
+                                             TableSubIndex,
+                                             Buffer,
+                                             BufferSize);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("GetStringAtIndexFromSMBIOSTable failed with status %x",
@@ -797,8 +689,8 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
 
 end:
 
-    if (firmware_table_buffer)
-        ImpExFreePoolWithTag(firmware_table_buffer, POOL_TAG_INTEGRITY);
+    if (buffer)
+        ImpExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
 
     return status;
 }
@@ -819,25 +711,25 @@ ComputeHashOfSections(_In_ PIMAGE_SECTION_HEADER DiskSection,
         return STATUS_INVALID_BUFFER_SIZE;
     }
 
-    status =
-        ComputeHashOfBuffer((UINT64)DiskSection + sizeof(IMAGE_SECTION_HEADER),
-                            DiskSection->SizeOfRawData,
-                            DiskHash,
-                            DiskHashSize);
+    status = CryptHashBuffer_sha256(
+        (UINT64)DiskSection + sizeof(IMAGE_SECTION_HEADER),
+        DiskSection->SizeOfRawData,
+        DiskHash,
+        DiskHashSize);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+        DEBUG_ERROR("CryptHashBuffer_sha256 failed with status %x", status);
         return status;
     }
 
-    status = ComputeHashOfBuffer((UINT64)MemorySection +
-                                     sizeof(IMAGE_SECTION_HEADER),
-                                 MemorySection->SizeOfRawData,
-                                 MemoryHash,
-                                 MemoryHashSize);
+    status = CryptHashBuffer_sha256(
+        (UINT64)MemorySection + sizeof(IMAGE_SECTION_HEADER),
+        MemorySection->SizeOfRawData,
+        MemoryHash,
+        MemoryHashSize);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ComputeHashOfBuffer 2 failed with status %x", status);
+        DEBUG_ERROR("CryptHashBuffer_sha256 2 failed with status %x", status);
         return status;
     }
 
@@ -852,23 +744,18 @@ CompareHashes(_In_ PVOID Hash1, _In_ PVOID Hash2, _In_ UINT32 Length)
     return RtlCompareMemory(Hash1, Hash2, Length) == Length ? TRUE : FALSE;
 }
 
-typedef struct _VAL_INTEGRITY_HEADER {
-    INTEGRITY_CHECK_HEADER integrity_check_header;
-    IMAGE_SECTION_HEADER   section_header;
-    CHAR                   section_base[];
-
-} VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
-
 STATIC
 VOID
 ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
 {
-    NTSTATUS status      = STATUS_UNSUCCESSFUL;
-    UINT32   report_size = CryptRequestRequiredBufferLength(
+    NTSTATUS                          status = STATUS_UNSUCCESSFUL;
+    UINT32                            len    = 0;
+    PPROCESS_MODULE_VALIDATION_REPORT report = NULL;
+
+    len = CryptRequestRequiredBufferLength(
         sizeof(PROCESS_MODULE_VALIDATION_REPORT));
 
-    PPROCESS_MODULE_VALIDATION_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, report_size, REPORT_POOL_TAG);
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -877,18 +764,20 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
 
     report->image_base = Module->module_base;
     report->image_size = Module->module_size;
-    RtlCopyMemory(
-        report->module_path, Module->module_path, sizeof(report->module_path));
 
-    status = CryptEncryptBuffer(report, report_size);
+    RtlCopyMemory(report->module_path,
+                  Module->module_path,
+                  sizeof(report->module_path));
+
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
-        ImpExFreePoolWithTag(report, report_size);
+        ImpExFreePoolWithTag(report, len);
         return;
     }
 
-    IrpQueueSchedulePacket(report, report_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 /*
@@ -966,8 +855,10 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         goto end;
     }
 
-    status = MapDiskImageIntoVirtualAddressSpace(
-        &section_handle, &section, &module_path, &section_size);
+    status = MapDiskImageIntoVirtualAddressSpace(&section_handle,
+                                                 &section,
+                                                 &module_path,
+                                                 &section_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
@@ -975,8 +866,11 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         goto end;
     }
 
-    status = StoreModuleExecutableRegionsInBuffer(
-        &disk_buffer, section, section_size, &bytes_written, FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(&disk_buffer,
+                                                  section,
+                                                  section_size,
+                                                  &bytes_written,
+                                                  FALSE);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR(
@@ -1043,8 +937,11 @@ HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
      */
     ImpKeStackAttachProcess(session->process, &apc_state);
 
-    status = StoreModuleExecutableRegionsInBuffer(
-        &memory_buffer, Entry->base, Entry->size, &bytes_written, FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
+                                                  Entry->base,
+                                                  Entry->size,
+                                                  &bytes_written,
+                                                  FALSE);
 
     ImpKeUnstackDetachProcess(&apc_state);
 
@@ -1055,13 +952,13 @@ HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
         goto end;
     }
 
-    status = ComputeHashOfBuffer(memory_buffer->section_base,
-                                 memory_buffer->section_header.SizeOfRawData,
-                                 &memory_hash,
-                                 &memory_hash_size);
+    status = CryptHashBuffer_sha256(memory_buffer->section_base,
+                                    memory_buffer->section_header.SizeOfRawData,
+                                    &memory_hash,
+                                    &memory_hash_size);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ComputeHashOfBuffer failed with status %x", status);
+        DEBUG_ERROR("CryptHashBuffer_sha256 failed with status %x", status);
         goto end;
     }
 
@@ -1120,32 +1017,35 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
 {
     PAGED_CODE();
 
-    NTSTATUS                   status                    = STATUS_UNSUCCESSFUL;
-    HANDLE                     handle                    = NULL;
-    OBJECT_ATTRIBUTES          attributes                = {0};
-    IO_STATUS_BLOCK            status_block              = {0};
-    STORAGE_PROPERTY_QUERY     query                     = {0};
-    STORAGE_DESCRIPTOR_HEADER  storage_descriptor_header = {0};
-    PSTORAGE_DEVICE_DESCRIPTOR device_descriptor         = NULL;
-    UNICODE_STRING             physical_drive_path       = {0};
-    PCHAR                      serial_number             = NULL;
-    SIZE_T                     serial_length             = 0;
+    NTSTATUS                   status        = STATUS_UNSUCCESSFUL;
+    HANDLE                     handle        = NULL;
+    OBJECT_ATTRIBUTES          attributes    = {0};
+    IO_STATUS_BLOCK            status_block  = {0};
+    STORAGE_PROPERTY_QUERY     query         = {0};
+    STORAGE_DESCRIPTOR_HEADER  header        = {0};
+    PSTORAGE_DEVICE_DESCRIPTOR descriptor    = NULL;
+    UNICODE_STRING             path          = {0};
+    PCHAR                      serial_number = NULL;
+    SIZE_T                     serial_length = 0;
 
-    ImpRtlInitUnicodeString(&physical_drive_path,
-                            L"\\DosDevices\\PhysicalDrive0");
+    ImpRtlInitUnicodeString(&path, L"\\DosDevices\\PhysicalDrive0");
 
     /*
      * No need to use the flag OBJ_FORCE_ACCESS_CHECK since we arent passing
      * a handle given to us from usermode.
      */
     InitializeObjectAttributes(&attributes,
-                               &physical_drive_path,
+                               &path,
                                OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
                                NULL,
                                NULL);
 
-    status = ImpZwOpenFile(
-        &handle, GENERIC_READ, &attributes, &status_block, NULL, NULL);
+    status = ImpZwOpenFile(&handle,
+                           GENERIC_READ,
+                           &attributes,
+                           &status_block,
+                           NULL,
+                           NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwOpenFile on PhysicalDrive0 failed with status %x",
@@ -1163,7 +1063,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
                                       IOCTL_STORAGE_QUERY_PROPERTY,
                                       &query,
                                       sizeof(STORAGE_PROPERTY_QUERY),
-                                      &storage_descriptor_header,
+                                      &header,
                                       sizeof(STORAGE_DESCRIPTOR_HEADER));
 
     if (!NT_SUCCESS(status)) {
@@ -1172,11 +1072,11 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
         goto end;
     }
 
-    device_descriptor = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                           storage_descriptor_header.Size,
-                                           POOL_TAG_INTEGRITY);
+    descriptor = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                    header.Size,
+                                    POOL_TAG_INTEGRITY);
 
-    if (!device_descriptor) {
+    if (!descriptor) {
         status = STATUS_MEMORY_NOT_ALLOCATED;
         goto end;
     }
@@ -1189,8 +1089,8 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
                                       IOCTL_STORAGE_QUERY_PROPERTY,
                                       &query,
                                       sizeof(STORAGE_PROPERTY_QUERY),
-                                      device_descriptor,
-                                      storage_descriptor_header.Size);
+                                      descriptor,
+                                      header.Size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwDeviceIoControlFile second call failed with status %x",
@@ -1198,10 +1098,10 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
         goto end;
     }
 
-    if (!device_descriptor->SerialNumberOffset)
+    if (!descriptor->SerialNumberOffset)
         goto end;
 
-    serial_number = GetStorageDescriptorSerialNumber(device_descriptor);
+    serial_number = GetStorageDescriptorSerialNumber(descriptor);
     serial_length = GetStorageDescriptorSerialLength(serial_number);
 
     if (serial_length > ConfigDrive0MaxSize) {
@@ -1216,8 +1116,8 @@ end:
     if (handle)
         ImpZwClose(handle);
 
-    if (device_descriptor)
-        ImpExFreePoolWithTag(device_descriptor, POOL_TAG_INTEGRITY);
+    if (descriptor)
+        ImpExFreePoolWithTag(descriptor, POOL_TAG_INTEGRITY);
 
     return status;
 }
@@ -1276,7 +1176,7 @@ MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
     KeRaiseIrql(HIGH_LEVEL, &irql);
     _disable();
 
-    for (ULONG iteration = 0; iteration < Count; iteration++)
+    for (UINT32 iteration = 0; iteration < Count; iteration++)
         read_average += MeasureInstructionRead(Address);
 
     _enable();
@@ -1375,9 +1275,9 @@ InitiateEptFunctionAddressArrays()
 {
     PAGED_CODE();
 
-    UNICODE_STRING current_function;
+    UNICODE_STRING current_function = {0};
 
-    for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
+    for (UINT32 index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
         ImpRtlInitUnicodeString(&current_function, CONTROL_FUNCTIONS[index]);
         CONTROL_FUNCTION_ADDRESSES[index] =
             ImpMmGetSystemRoutineAddress(&current_function);
@@ -1386,7 +1286,7 @@ InitiateEptFunctionAddressArrays()
             return STATUS_UNSUCCESSFUL;
     }
 
-    for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
+    for (UINT32 index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
         ImpRtlInitUnicodeString(&current_function, PROTECTED_FUNCTIONS[index]);
         PROTECTED_FUNCTION_ADDRESSES[index] =
             ImpMmGetSystemRoutineAddress(&current_function);
@@ -1419,7 +1319,7 @@ DetectEptHooksInKeyFunctions()
         return status;
     }
 
-    for (INT index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
+    for (UINT32 index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
         status = GetAverageReadTimeAtRoutine(CONTROL_FUNCTION_ADDRESSES[index],
                                              &instruction_time);
 
@@ -1442,9 +1342,10 @@ DetectEptHooksInKeyFunctions()
     if (control_average == 0)
         return STATUS_UNSUCCESSFUL;
 
-    for (INT index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
-        status = GetAverageReadTimeAtRoutine(
-            PROTECTED_FUNCTION_ADDRESSES[index], &instruction_time);
+    for (UINT32 index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
+        status =
+            GetAverageReadTimeAtRoutine(PROTECTED_FUNCTION_ADDRESSES[index],
+                                        &instruction_time);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x",
@@ -1500,8 +1401,11 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
 
     ImpKeStackAttachProcess(process, &apc_state);
 
-    status = StoreModuleExecutableRegionsInBuffer(
-        Buffer, Module->ImageBase, Module->ImageSize, BufferSize, TRUE);
+    status = StoreModuleExecutableRegionsInBuffer(Buffer,
+                                                  Module->ImageBase,
+                                                  Module->ImageSize,
+                                                  BufferSize,
+                                                  TRUE);
 
     ImpKeUnstackDetachProcess(&apc_state);
 
@@ -1528,46 +1432,45 @@ DeferredModuleHashingCallback(_In_ PDEVICE_OBJECT DeviceObject,
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(DeviceObject);
 
-    NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
-    RTL_MODULE_EXTENDED_INFO module        = {0};
-    PDRIVER_LIST_HEAD        driver_list   = GetDriverList();
-    PLIST_ENTRY              deferred_head = &GetDriverList()->deferred_list;
-    PLIST_ENTRY              list_entry    = NULL;
-    PDRIVER_LIST_ENTRY       entry         = NULL;
+    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
+    RTL_MODULE_EXTENDED_INFO module = {0};
+    PDRIVER_LIST_HEAD        list   = GetDriverList();
+    PLIST_ENTRY              head   = &GetDriverList()->deferred_list;
+    PLIST_ENTRY              entry  = NULL;
+    PDRIVER_LIST_ENTRY       driver = NULL;
 
-    Enablex86Hashing(driver_list);
+    Enablex86Hashing(list);
 
-    list_entry = RemoveHeadList(deferred_head);
+    entry = RemoveHeadList(head);
 
-    if (list_entry == deferred_head)
+    if (entry == head)
         goto end;
 
-    while (list_entry != deferred_head) {
-        entry =
-            CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, deferred_entry);
+    while (entry != head) {
+        driver = CONTAINING_RECORD(entry, DRIVER_LIST_ENTRY, deferred_entry);
 
-        DriverListEntryToExtendedModuleInfo(entry, &module);
+        DriverListEntryToExtendedModuleInfo(driver, &module);
 
         DEBUG_VERBOSE("Hashing Deferred Module: %s", module.FullPathName);
 
-        status = HashModule(&module, &entry->text_hash);
+        status = HashModule(&module, &driver->text_hash);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("HashModule-x86 failed with status %x", status);
-            entry->hashed = FALSE;
-            list_entry    = RemoveHeadList(deferred_head);
+            driver->hashed = FALSE;
+            entry          = RemoveHeadList(head);
             continue;
         }
 
-        entry->hashed = TRUE;
-        list_entry    = RemoveHeadList(deferred_head);
+        driver->hashed = TRUE;
+        entry          = RemoveHeadList(head);
     }
 
 end:
 
     DEBUG_VERBOSE("All deferred modules hashed.");
-    ImpIoFreeWorkItem(driver_list->work_item);
-    driver_list->work_item = NULL;
+    ImpIoFreeWorkItem(list->work_item);
+    list->work_item = NULL;
 }
 
 NTSTATUS
@@ -1620,8 +1523,9 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
          * Once the WinLogon process has started, we can then hash new
          * x86 modules.
          */
-        status = StoreModuleExecutableRegionsx86(
-            Module, (PVOID)&memory_buffer, &memory_buffer_size);
+        status = StoreModuleExecutableRegionsx86(Module,
+                                                 (PVOID)&memory_buffer,
+                                                 &memory_buffer_size);
     }
     else {
         status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
@@ -1638,10 +1542,10 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
         goto end;
     }
 
-    status = ComputeHashOfBuffer(memory_buffer->section_base,
-                                 memory_buffer->section_header.SizeOfRawData,
-                                 &memory_hash,
-                                 &memory_hash_size);
+    status = CryptHashBuffer_sha256(memory_buffer->section_base,
+                                    memory_buffer->section_header.SizeOfRawData,
+                                    &memory_hash,
+                                    &memory_hash_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_VERBOSE("ComputeHashOfSections failed with status %x", status);
@@ -1673,12 +1577,14 @@ STATIC
 VOID
 ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
-    NTSTATUS status      = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size = CryptRequestRequiredBufferLength(
+    NTSTATUS                              status = STATUS_UNSUCCESSFUL;
+    UINT32                                len    = 0;
+    PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT report = NULL;
+
+    len = CryptRequestRequiredBufferLength(
         sizeof(SYSTEM_MODULE_INTEGRITY_CHECK_REPORT));
 
-    PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -1688,18 +1594,19 @@ ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     report->image_base = Module->ImageBase;
     report->image_size = Module->ImageSize;
 
-    RtlCopyMemory(
-        report->path_name, Module->FullPathName, sizeof(report->path_name));
+    RtlCopyMemory(report->path_name,
+                  Module->FullPathName,
+                  sizeof(report->path_name));
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
-        ImpExFreePoolWithTag(report, packet_size);
+        ImpExFreePoolWithTag(report, len);
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 VOID
@@ -1709,8 +1616,9 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     PDRIVER_LIST_ENTRY entry  = NULL;
     PVOID              hash   = NULL;
 
-    hash = ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
+    hash = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                           SHA_256_HASH_LENGTH,
+                           POOL_TAG_INTEGRITY);
 
     if (!hash)
         return;
@@ -1764,33 +1672,36 @@ STATIC
 VOID
 ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
-    NTSTATUS status      = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size = CryptRequestRequiredBufferLength(
+    NTSTATUS                            status = STATUS_UNSUCCESSFUL;
+    UINT32                              len    = 0;
+    PDRIVER_SELF_INTEGRITY_CHECK_REPORT packet = NULL;
+
+    len = CryptRequestRequiredBufferLength(
         sizeof(DRIVER_SELF_INTEGRITY_CHECK_REPORT));
 
-    PDRIVER_SELF_INTEGRITY_CHECK_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    packet = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
-    if (!report)
+    if (!packet)
         return;
 
-    INIT_REPORT_PACKET(report, REPORT_SELF_DRIVER_PATCHED, 0);
+    INIT_REPORT_PACKET(packet, REPORT_SELF_DRIVER_PATCHED, 0);
 
-    report->image_base = Module->ImageBase;
-    report->image_size = Module->ImageSize;
+    packet->image_base = Module->ImageBase;
+    packet->image_size = Module->ImageSize;
 
-    RtlCopyMemory(
-        report->path_name, Module->FullPathName, sizeof(report->path_name));
+    RtlCopyMemory(packet->path_name,
+                  Module->FullPathName,
+                  sizeof(packet->path_name));
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(packet, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
-        ImpExFreePoolWithTag(report, packet_size);
+        ImpExFreePoolWithTag(packet, len);
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(packet, len);
 }
 
 NTSTATUS
@@ -1819,8 +1730,9 @@ ValidateOurDriverImage()
         goto end;
     }
 
-    memory_hash = ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, SHA_256_HASH_LENGTH, POOL_TAG_INTEGRITY);
+    memory_hash = ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                  SHA_256_HASH_LENGTH,
+                                  POOL_TAG_INTEGRITY);
 
     if (!memory_hash)
         goto end;
@@ -1926,9 +1838,12 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
+    UINT32 count = 0;
+    UINT32 max   = 0;
+
     IncrementActiveThreadCount(Context);
 
-    UINT32 count = GetCurrentVerificationIndex(Context);
+    count = GetCurrentVerificationIndex(Context);
 
     /*
      * theres a race condition here, where if the max is taken after a thread
@@ -1937,11 +1852,13 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
      * will be off by one. To fix just need to calculate the block max before
      * threads are dispatched. todo!
      */
-    UINT32 max = GetCurrentVerificationMaxIndex(Context, count);
+    max = GetCurrentVerificationMaxIndex(Context, count);
 
     for (; count < max && count < Context->total_count; count++) {
         if (!InterlockedCompareExchange(
-                &Context->dispatcher_info[count].validated, TRUE, FALSE)) {
+                &Context->dispatcher_info[count].validated,
+                TRUE,
+                FALSE)) {
             ValidateSystemModule(&Context->module_info[count]);
         }
     }
@@ -1992,6 +1909,7 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
     NTSTATUS                  status     = STATUS_UNSUCCESSFUL;
     SYSTEM_MODULES            modules    = {0};
     PMODULE_DISPATCHER_HEADER dispatcher = NULL;
+    UINT32                    count      = 0;
 
     status = GetSystemModuleInformation(&modules);
 
@@ -2002,10 +1920,10 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 
     DEBUG_VERBOSE("driver count: %lx", modules.module_count);
 
-    dispatcher = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                    modules.module_count *
-                                        sizeof(MODULE_DISPATCHER_HEADER),
-                                    POOL_TAG_INTEGRITY);
+    count = modules.module_count * sizeof(MODULE_DISPATCHER_HEADER);
+
+    dispatcher =
+        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, count, POOL_TAG_INTEGRITY);
 
     if (!dispatcher) {
         ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -2060,7 +1978,7 @@ STATIC
 VOID
 DispatchVerificationWorkerThreads(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-    for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
+    for (UINT32 index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
         Context->work_items[index] =
             ImpIoAllocateWorkItem(GetDriverDeviceObject());
 
@@ -2084,8 +2002,10 @@ SystemModuleVerificationDispatcher()
     if (context->complete) {
         DEBUG_VERBOSE(
             "System modules integrity check complete. Freeing items.");
+
         context->active   = FALSE;
         context->complete = FALSE;
+
         FreeModuleVerificationItems(context);
         FreeWorkItems(context);
         return STATUS_SUCCESS;
@@ -2212,14 +2132,16 @@ STATIC
 NTSTATUS
 AllocateHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
 {
-    Configuration->dpc = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(KDPC), POOL_TAG_HEARTBEAT);
+    Configuration->dpc = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                            sizeof(KDPC),
+                                            POOL_TAG_HEARTBEAT);
 
     if (!Configuration->dpc)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Configuration->timer = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(KTIMER), POOL_TAG_HEARTBEAT);
+    Configuration->timer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                              sizeof(KTIMER),
+                                              POOL_TAG_HEARTBEAT);
 
     if (!Configuration->timer) {
         ImpExFreePoolWithTag(Configuration->dpc, POOL_TAG_HEARTBEAT);
@@ -2242,27 +2164,28 @@ STATIC
 LARGE_INTEGER
 GenerateHeartbeatDueTime()
 {
-    LARGE_INTEGER ticks = {0};
+    UINT64        interval = 0;
+    LARGE_INTEGER ticks    = {0};
+    LARGE_INTEGER due_time = {0};
+
     KeQueryTickCount(&ticks);
 
-    UINT64 interval =
-        HEARTBEAT_NANOSECONDS_LOW +
-        (TICKS_TO_100_NS_INTERVALS(ticks.QuadPart) %
-         (HEARTBEAT_NANOSECONDS_HIGH - HEARTBEAT_NANOSECONDS_LOW));
+    interval = HEARTBEAT_NANOSECONDS_LOW +
+               (TICKS_TO_100_NS_INTERVALS(ticks.QuadPart) %
+                (HEARTBEAT_NANOSECONDS_HIGH - HEARTBEAT_NANOSECONDS_LOW));
 
-    LARGE_INTEGER due_time = {.QuadPart = -interval};
+    due_time.QuadPart = -interval;
     return due_time;
 }
 
 FORCEINLINE
 STATIC
 VOID
-InitialiseHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
+InitialiseHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Config)
 {
-    KeInitializeDpc(Configuration->dpc, HeartbeatDpcRoutine, Configuration);
-    KeInitializeTimer(Configuration->timer);
-    KeSetTimer(
-        Configuration->timer, GenerateHeartbeatDueTime(), Configuration->dpc);
+    KeInitializeDpc(Config->dpc, HeartbeatDpcRoutine, Config);
+    KeInitializeTimer(Config->timer);
+    KeSetTimer(Config->timer, GenerateHeartbeatDueTime(), Config->dpc);
 }
 
 FORCEINLINE
@@ -2302,12 +2225,12 @@ IncrementHeartbeatCounter(_In_ PHEARTBEAT_CONFIGURATION Configuration)
 FORCEINLINE
 STATIC
 PHEARTBEAT_PACKET
-BuildHeartbeatPacket(_In_ UINT32 PacketSize)
+BuildHeartbeatPacket(_In_ UINT32 Size)
 {
-    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+    PIRP_QUEUE_HEAD   queue  = GetIrpQueueHead();
+    PHEARTBEAT_PACKET packet = NULL;
 
-    PHEARTBEAT_PACKET packet =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, PacketSize, POOL_TAG_HEARTBEAT);
+    packet = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, Size, POOL_TAG_HEARTBEAT);
 
     if (!packet)
         return NULL;
@@ -2324,6 +2247,7 @@ BuildHeartbeatPacket(_In_ UINT32 PacketSize)
     packet->total_heartbeats_completed = queue->total_heartbeats_completed;
     packet->total_irps_completed       = queue->total_irps_completed;
     packet->total_reports_completed    = queue->total_reports_completed;
+
     KeReleaseGuardedMutex(&queue->lock);
 
     return packet;
@@ -2395,8 +2319,10 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
 
     PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
 
-    IoQueueWorkItem(
-        config->work_item, HeartbeatWorkItem, NormalWorkQueue, config);
+    IoQueueWorkItem(config->work_item,
+                    HeartbeatWorkItem,
+                    NormalWorkQueue,
+                    config);
 }
 
 /*
