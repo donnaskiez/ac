@@ -661,7 +661,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         return;
 
     if (Create) {
-        entry = RtlHashmapEntryInsert(map, ProcessId);
+        entry = RtlHashmapEntryInsert(map, index);
 
         if (!entry)
             goto end;
@@ -697,7 +697,7 @@ ProcessCreateNotifyRoutine(_In_ HANDLE  ParentId,
         ImpObDereferenceObject(entry->process);
 
         FreeProcessEntryModuleList(entry, NULL);
-        RtlHashmapEntryDelete(map, ProcessId, &ProcessId);
+        RtlHashmapEntryDelete(map, index, &ProcessId);
     }
 
 end:
