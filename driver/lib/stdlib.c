@@ -38,9 +38,8 @@ IntCompareMemory(_In_ PVOID Source1, _In_ PVOID Source2, _In_ SIZE_T Length)
 PCHAR
 IntFindSubstring(_In_ PCHAR String1, _In_ PCHAR String2)
 {
-    if (*String2 == '\0') {
+    if (*String2 == '\0')
         return String1;
-    }
 
     for (PCHAR s1 = String1; *s1 != '\0'; s1++) {
         PCHAR p1 = s1;
