@@ -16,6 +16,7 @@
 #define REPORT_PATCHED_SYSTEM_MODULE      150
 #define REPORT_SELF_DRIVER_PATCHED        160
 #define REPORT_BLACKLISTED_PCIE_DEVICE    170
+#define REPORT_EPT_HOOK                   180
 
 #define REPORT_SUBTYPE_NO_BACKING_MODULE      0x0
 #define REPORT_SUBTYPE_INVALID_DISPATCH       0x1
@@ -200,6 +201,13 @@ typedef struct _SYSTEM_MODULE_INTEGRITY_CHECK_REPORT {
     CHAR                 path_name[0x100];
 
 } SYSTEM_MODULE_INTEGRITY_CHECK_REPORT, *PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT;
+
+typedef struct _EPT_HOOK_REPORT {
+    REPORT_PACKET_HEADER header;
+    UINT64               control_average;
+    UINT64               read_average;
+    CHAR                 function_name[128];
+} EPT_HOOK_REPORT, *PEPT_HOOK_REPORT;
 
 typedef struct _DRIVER_SELF_INTEGRITY_CHECK_REPORT {
     REPORT_PACKET_HEADER header;

@@ -4,6 +4,8 @@
 #include "crypt.h"
 #include "util.h"
 
+#include "lib/stdlib.h"
+
 NTSTATUS
 SessionInitialiseStructure()
 {
@@ -152,13 +154,13 @@ SessionInitialise(_In_ PIRP Irp)
     session->process   = process;
     session->cookie    = initiation->cookie;
 
-    RtlCopyMemory(session->aes_key, initiation->aes_key, AES_256_KEY_SIZE);
-    RtlCopyMemory(session->iv, initiation->aes_iv, AES_256_IV_SIZE);
+    IntCopyMemory(session->aes_key, initiation->aes_key, AES_256_KEY_SIZE);
+    IntCopyMemory(session->iv, initiation->aes_iv, AES_256_IV_SIZE);
 
     session->module.base_address = initiation->module_info.base_address;
     session->module.size         = initiation->module_info.size;
 
-    RtlCopyMemory(
+    IntCopyMemory(
         session->module.path, initiation->module_info.path, MAX_MODULE_PATH);
 
     DEBUG_VERBOSE("Module base: %llx", session->module.base_address);

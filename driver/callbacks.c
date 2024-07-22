@@ -10,6 +10,8 @@
 #include "crypt.h"
 #include "util.h"
 
+#include "lib/stdlib.h"
+
 #include "containers/tree.h"
 #include "containers/map.h"
 
@@ -117,7 +119,7 @@ DriverListEntryToExtendedModuleInfo(_In_ PDRIVER_LIST_ENTRY         Entry,
 {
     Extended->ImageBase = Entry->ImageBase;
     Extended->ImageSize = Entry->ImageSize;
-    RtlCopyMemory(
+    IntCopyMemory(
         Extended->FullPathName, Entry->path, sizeof(Extended->FullPathName));
 }
 
@@ -167,7 +169,7 @@ InitialiseDriverList()
         entry->ImageBase = module_entry->ImageBase;
         entry->ImageSize = module_entry->ImageSize;
 
-        RtlCopyMemory(entry->path,
+        IntCopyMemory(entry->path,
                       module_entry->FullPathName,
                       sizeof(module_entry->FullPathName));
 
@@ -355,7 +357,7 @@ ImageLoadNotifyRoutineCallback(_In_opt_ PUNICODE_STRING FullImageName,
     if (FullImageName) {
         UnicodeToCharBufString(
             FullImageName, module.FullPathName, sizeof(module.FullPathName));
-        RtlCopyMemory(
+        IntCopyMemory(
             entry->path, module.FullPathName, sizeof(module.FullPathName));
     }
 
@@ -602,7 +604,7 @@ STATIC
 BOOLEAN
 CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
 {
-    return !strcmp(ProcessName, "winlogon.exe") && Head->work_item ? TRUE
+    return !IntCompareString(ProcessName, "winlogon.exe") && Head->work_item ? TRUE
                                                                    : FALSE;
 }
 
@@ -793,7 +795,7 @@ IsWhitelistedHandleOpenProcess(_In_ LPCSTR ProcessName)
 {
     for (UINT32 index = 0; index < PROCESS_HANDLE_OPEN_WHITELIST_COUNT;
          index++) {
-        if (!strcmp(ProcessName, PROCESS_HANDLE_OPEN_WHITELIST[index]))
+        if (!IntCompareString(ProcessName, PROCESS_HANDLE_OPEN_WHITELIST[index]))
             return TRUE;
     }
 
@@ -806,7 +808,7 @@ IsDowngradeHandleOpenProcess(_In_ LPCSTR ProcessName)
 {
     for (UINT32 index = 0; index < PROCESS_HANDLE_OPEN_DOWNGRADE_COUNT;
          index++) {
-        if (!strcmp(ProcessName, PROCESS_HANDLE_OPEN_DOWNGRADE[index]))
+        if (!IntCompareString(ProcessName, PROCESS_HANDLE_OPEN_DOWNGRADE[index]))
             return TRUE;
     }
 
@@ -868,7 +870,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
     if (!protected_process_name || !target_process_name)
         goto end;
 
-    if (strcmp(protected_process_name, target_process_name))
+    if (IntCompareString(protected_process_name, target_process_name))
         goto end;
     /*
      * WerFault is some windows 11 application that cries when it
@@ -879,7 +881,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
      * perhapds check some certificate or something.
      */
     if (IsDowngradeHandleOpenProcess(process_creator_name) ||
-        !strcmp(process_creator_name, target_process_name)) {
+        !IntCompareString(process_creator_name, target_process_name)) {
         /* We will downgrade these handles later */
         // DEBUG_LOG("Handles created by CSRSS, LSASS and
         // WerFault are allowed for now...");
@@ -921,7 +923,7 @@ ObPreOpCallbackRoutine(_In_ PVOID                         RegistrationContext,
         report->access           = OperationInformation->Parameters
                              ->CreateHandleInformation.DesiredAccess;
 
-        RtlCopyMemory(report->process_name,
+        IntCopyMemory(report->process_name,
                       process_creator_name,
                       HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
@@ -1012,7 +1014,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
 
     protected_process_name = ImpPsGetProcessImageFileName(protected_process);
 
-    if (strcmp(process_name, protected_process_name))
+    if (IntCompareString(process_name, protected_process_name))
         goto end;
 
     DEBUG_VERBOSE(
@@ -1053,8 +1055,8 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
         DEBUG_VERBOSE("Stripped PROCESS_VM_READ");
     }
 
-    if (!strcmp(process_name, "csrss.exe") ||
-        !strcmp(process_name, "lsass.exe")) {
+    if (!IntCompareString(process_name, "csrss.exe") ||
+        !IntCompareString(process_name, "lsass.exe")) {
         DEBUG_VERBOSE(
             "Required system process allowed, only stripping some permissions");
         goto end;
@@ -1116,7 +1118,7 @@ EnumHandleCallback(_In_ PHANDLE_TABLE       HandleTable,
     report->thread_id        = 0;
     report->access           = handle_access_mask;
 
-    RtlCopyMemory(&report->process_name,
+    IntCopyMemory(&report->process_name,
                   process_name,
                   HANDLE_REPORT_PROCESS_NAME_MAX_LENGTH);
 
@@ -1190,7 +1192,7 @@ TimerObjectValidateProcessModuleCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
         return;
     }
 
-    if (RtlCompareMemory(hash, session->module.module_hash, sizeof(hash)) !=
+    if (IntCompareMemory(hash, session->module.module_hash, sizeof(hash)) !=
         sizeof(hash)) {
         DEBUG_ERROR("User module hash not matching!! MODIFIED!");
         return;

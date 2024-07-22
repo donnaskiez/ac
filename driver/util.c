@@ -1,5 +1,7 @@
 #include "common.h"
 
+#include "lib/stdlib.h"
+
 LARGE_INTEGER
 GenerateRandSeed()
 {
@@ -62,7 +64,7 @@ UnicodeToCharBufString(_In_ PUNICODE_STRING UnicodeString,
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    RtlCopyMemory(OutBuffer, string.Buffer, string.Length);
+    IntCopyMemory(OutBuffer, string.Buffer, string.Length);
     RtlFreeAnsiString(&string);
 
     return STATUS_SUCCESS;

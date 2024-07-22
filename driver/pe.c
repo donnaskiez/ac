@@ -1,5 +1,7 @@
 #include "pe.h"
 
+#include "lib/stdlib.h"
+
 PNT_HEADER_64
 PeGetNtHeaderSafe(_In_ PVOID Image)
 {
@@ -126,7 +128,7 @@ PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
 
     for (UINT32 index = 0; index < export->NumberOfNames; index++) {
         PCHAR export = RVA(PCHAR, Image, names[index]);
-        if (!strcmp(Name, export))
+        if (!IntCompareString(Name, export))
             return RVA(
                 PVOID, Image, functions[ordinals[index]]);
     }

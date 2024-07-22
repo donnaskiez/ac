@@ -8,6 +8,8 @@
 #include "types/tpm20.h"
 #include "types/tpmptp.h"
 
+#include "lib/stdlib.h"
+
 #include <immintrin.h>
 #include <bcrypt.h>
 
@@ -58,14 +60,14 @@ CryptEncryptImportsArray(_In_ PUINT64 Array, _In_ UINT32 Entries)
         __m256i load_block    = {0};
         __m256i xored_block   = {0};
 
-        RtlCopyMemory(&current_block,
+        IntCopyMemory(&current_block,
                       &Array[block_index * block_size],
                       sizeof(__m256i));
 
         load_block  = _mm256_loadu_si256(&current_block);
         xored_block = _mm256_xor_si256(load_block, *imports_key);
 
-        RtlCopyMemory(&Array[block_index * block_size],
+        IntCopyMemory(&Array[block_index * block_size],
                       &xored_block,
                       sizeof(__m256i));
     }
@@ -80,7 +82,7 @@ CryptDecryptImportBlock(_In_ PUINT64 Array, _In_ UINT32 BlockIndex)
     __m256i* imports_key = GetDriverImportsKey();
     UINT32   block_size  = sizeof(__m256i) / sizeof(UINT64);
 
-    RtlCopyMemory(&load_block,
+    IntCopyMemory(&load_block,
                   &Array[BlockIndex * block_size],
                   sizeof(__m256i));
 
@@ -174,7 +176,7 @@ CryptBuildBlobForKeyImport(_In_ PACTIVE_SESSION Session)
     blob->dwVersion = BCRYPT_KEY_DATA_BLOB_VERSION1;
     blob->cbKeyData = AES_256_KEY_SIZE;
 
-    RtlCopyMemory((UINT64)blob + sizeof(BCRYPT_KEY_DATA_BLOB_HEADER),
+    IntCopyMemory((UINT64)blob + sizeof(BCRYPT_KEY_DATA_BLOB_HEADER),
                   Session->aes_key,
                   AES_256_KEY_SIZE);
 
@@ -218,7 +220,7 @@ CryptEncryptBuffer(_In_ PVOID Buffer, _In_ UINT32 BufferLength)
 
     /* The IV is consumed during every encrypt / decrypt procedure, so to ensure
      * we have access to the iv we need to create a local copy.*/
-    RtlCopyMemory(local_iv, session->iv, sizeof(session->iv));
+    IntCopyMemory(local_iv, session->iv, sizeof(session->iv));
 
     /* We arent encrypting the first 16 bytes */
     buffer = buffer + AES_256_BLOCK_SIZE;

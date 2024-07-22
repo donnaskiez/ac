@@ -11,6 +11,8 @@
 #include "containers/tree.h"
 #include "crypt.h"
 
+#include "lib/stdlib.h"
+
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, DetectThreadsAttachedToProtectedProcess)
 #    pragma alloc_text(PAGE, DoesThreadHaveValidCidEntry)

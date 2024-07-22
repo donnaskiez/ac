@@ -8,6 +8,8 @@
 #include "imports.h"
 #include "crypt.h"
 
+#include "lib/stdlib.h"
+
 #define PAGE_BASE_SIZE 0x1000
 #define POOL_TAG_SIZE  0x004
 
@@ -127,7 +129,7 @@ GetGlobalDebuggerData()
     if (!debugger_data)
         goto end;
 
-    RtlCopyMemory(debugger_data,
+    IntCopyMemory(debugger_data,
                   dump_header->KdDebuggerDataBlock,
                   sizeof(KDDEBUGGER_DATA64));
 
@@ -732,7 +734,7 @@ FindUnlinkedProcesses()
 
         INIT_REPORT_PACKET(report, REPORT_INVALID_PROCESS_ALLOCATION, 0);
 
-        RtlCopyMemory(
+        IntCopyMemory(
             report->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
         status = CryptEncryptBuffer(report, packet_size);

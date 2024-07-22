@@ -11,6 +11,8 @@
 #include "pe.h"
 #include "thread.h"
 
+#include "lib/stdlib.h"
+
 #define WHITELISTED_MODULE_TAG 'whte'
 
 #define NMI_DELAY 200 * 10000
@@ -170,7 +172,7 @@ FindSystemModuleByName(_In_ LPCSTR          ModuleName,
         (PRTL_MODULE_EXTENDED_INFO)SystemModules->address;
 
     for (INT index = 0; index < SystemModules->module_count; index++) {
-        if (strstr(modules[index].FullPathName, ModuleName)) {
+        if (IntFindSubstring(modules[index].FullPathName, ModuleName)) {
             return &modules[index];
         }
     }
@@ -669,7 +671,7 @@ ReportMissingCidTableEntry(_In_ PNMI_CONTEXT Context)
     report->thread_id            = ImpPsGetThreadId(Context->kthread);
     report->thread_address       = Context->kthread;
 
-    RtlCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
+    IntCopyMemory(report->thread, Context->kthread, sizeof(report->thread));
 
     status = CryptEncryptBuffer(report, len);
 
@@ -734,7 +736,7 @@ DoesRetInstructionCauseException(_In_ UINT64 ReturnAddress)
 
     /* Shoudln't really ever occur */
     __try {
-        RtlCopyMemory(&opcodes, ReturnAddress, sizeof(opcodes));
+        IntCopyMemory(&opcodes, ReturnAddress, sizeof(opcodes));
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         return FALSE;
@@ -1342,7 +1344,7 @@ ReportDpcStackwalkViolation(_In_ PDPC_CONTEXT Context,
     report->kthread_address = PsGetCurrentThread();
     report->invalid_rip     = Frame;
 
-    // RtlCopyMemory(report->driver,
+    // IntCopyMemory(report->driver,
     //               (UINT64)Context[core].stack_frame[frame]
     //               - 0x50,
     //               APC_STACKWALK_BUFFER_SIZE);
@@ -1658,7 +1660,7 @@ ReportDataTableInvalidRoutine(_In_ TABLE_ID TableId, _In_ UINT64 Address)
     report->table_id = TableId;
     report->index    = 0;
 
-    RtlCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
+    IntCopyMemory(report->routine, Address, DATA_TABLE_ROUTINE_BUF_SIZE);
 
     status = CryptEncryptBuffer(report, len);
 
@@ -1827,7 +1829,7 @@ FindModuleByName(_In_ PSYSTEM_MODULES Modules, _In_ PCHAR ModuleName)
     for (UINT32 index = 0; index < Modules->module_count; index++) {
         PRTL_MODULE_EXTENDED_INFO entry =
             &((PRTL_MODULE_EXTENDED_INFO)(Modules->address))[index];
-        if (strstr(entry->FullPathName, ModuleName))
+        if (IntFindSubstring(entry->FullPathName, ModuleName))
             return entry;
     }
 

@@ -11,6 +11,8 @@
 #include "pe.h"
 #include "crypt.h"
 
+#include "lib/stdlib.h"
+
 #include <bcrypt.h>
 #include <initguid.h>
 #include <devpkey.h>
@@ -163,7 +165,7 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 
     Irp->IoStatus.Information = sizeof(ULONG);
 
-    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
+    IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
                   &driver_info->ImageSize,
                   sizeof(ULONG));
 
@@ -208,7 +210,7 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
     ModuleInfo->ImageBase      = driver_info->ImageBase;
     ModuleInfo->ImageSize      = driver_info->ImageSize;
 
-    RtlCopyMemory(ModuleInfo->FullPathName,
+    IntCopyMemory(ModuleInfo->FullPathName,
                   driver_info->FullPathName,
                   sizeof(ModuleInfo->FullPathName));
 
@@ -357,7 +359,7 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
                              num_executable_sections,
                              total_packet_size);
 
-    RtlCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
+    IntCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
     *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
     return status;
 }
@@ -484,7 +486,7 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
     }
 
     Irp->IoStatus.Information = bytes_written;
-    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, buffer, bytes_written);
+    IntCopyMemory(Irp->AssociatedIrp.SystemBuffer, buffer, bytes_written);
 
 end:
     if (buffer)
@@ -577,7 +579,7 @@ GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
 
             UINT64 dest = (UINT64)Buffer + current_string_char_index;
 
-            RtlCopyMemory(dest, current_string_char, sizeof(CHAR));
+            IntCopyMemory(dest, current_string_char, sizeof(CHAR));
             current_string_char_index++;
             goto increment;
         }
@@ -741,7 +743,7 @@ STATIC
 BOOLEAN
 CompareHashes(_In_ PVOID Hash1, _In_ PVOID Hash2, _In_ UINT32 Length)
 {
-    return RtlCompareMemory(Hash1, Hash2, Length) == Length ? TRUE : FALSE;
+    return IntCompareMemory(Hash1, Hash2, Length) == Length ? TRUE : FALSE;
 }
 
 STATIC
@@ -765,7 +767,7 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
     report->image_base = Module->module_base;
     report->image_size = Module->module_size;
 
-    RtlCopyMemory(report->module_path,
+    IntCopyMemory(report->module_path,
                   Module->module_path,
                   sizeof(report->module_path));
 
@@ -967,7 +969,7 @@ HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
         goto end;
     }
 
-    RtlCopyMemory(OutBuffer, memory_hash, memory_hash_size);
+    IntCopyMemory(OutBuffer, memory_hash, memory_hash_size);
 
 end:
 
@@ -993,7 +995,7 @@ STATIC
 SIZE_T
 GetStorageDescriptorSerialLength(_In_ PCHAR SerialNumber)
 {
-    return strnlen_s(SerialNumber, DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) + 1;
+    return IntStringLength(SerialNumber, DEVICE_DRIVE_0_SERIAL_CODE_LENGTH) + 1;
 }
 
 FORCEINLINE
@@ -1109,7 +1111,7 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
         goto end;
     }
 
-    RtlCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
+    IntCopyMemory(ConfigDrive0Serial, serial_number, serial_length);
 
 end:
 
@@ -1298,6 +1300,48 @@ InitiateEptFunctionAddressArrays()
     return STATUS_SUCCESS;
 }
 
+STATIC
+VOID
+ReportEptHook(_In_ UINT64 ControlAverage,
+              _In_ UINT64 ReadAverage,
+              _In_ WCHAR  FunctionName)
+{
+    NTSTATUS         status = STATUS_UNSUCCESSFUL;
+    UINT32           len    = 0;
+    PEPT_HOOK_REPORT report = NULL;
+    UNICODE_STRING   string = {0};
+
+    len    = CryptRequestRequiredBufferLength(sizeof(EPT_HOOK_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
+
+    if (!report)
+        return;
+
+    INIT_REPORT_PACKET(report, REPORT_EPT_HOOK, 0);
+
+    report->control_average = ControlAverage;
+    report->read_average    = ReadAverage;
+
+    RtlInitUnicodeString(&string, FunctionName);
+
+    status = UnicodeToCharBufString(&string,
+                                    report->function_name,
+                                    sizeof(report->function_name));
+
+    if (!NT_SUCCESS(status))
+        DEBUG_ERROR("UnicodeToCharBufString: %x", status);
+
+    status = CryptEncryptBuffer(report, len);
+
+    if (!NT_SUCCESS(status)) {
+        DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
+        ImpExFreePoolWithTag(report, len);
+        return;
+    }
+
+    IrpQueueSchedulePacket(report, len);
+}
+
 NTSTATUS
 DetectEptHooksInKeyFunctions()
 {
@@ -1361,8 +1405,9 @@ DetectEptHooksInKeyFunctions()
                 "EPT hook detected at function: %llx with execution time of: %llx",
                 PROTECTED_FUNCTION_ADDRESSES[index],
                 instruction_time);
-
-            /* close game etc. */
+            ReportEptHook(control_average,
+                          instruction_time,
+                          PROTECTED_FUNCTION_ADDRESSES[index]);
         }
     }
 
@@ -1380,7 +1425,7 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 
     process_name = ImpPsGetProcessImageFileName(Node->process);
 
-    if (!strcmp(process_name, "winlogon.exe"))
+    if (!IntCompareString(process_name, "winlogon.exe"))
         *process = Node->process;
 }
 
@@ -1552,7 +1597,7 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
         goto end;
     }
 
-    RtlCopyMemory(Hash, memory_hash, memory_hash_size);
+    IntCopyMemory(Hash, memory_hash, memory_hash_size);
 
 end:
 
@@ -1594,7 +1639,7 @@ ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     report->image_base = Module->ImageBase;
     report->image_size = Module->ImageSize;
 
-    RtlCopyMemory(report->path_name,
+    IntCopyMemory(report->path_name,
                   Module->FullPathName,
                   sizeof(report->path_name));
 
@@ -1689,7 +1734,7 @@ ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     packet->image_base = Module->ImageBase;
     packet->image_size = Module->ImageSize;
 
-    RtlCopyMemory(packet->path_name,
+    IntCopyMemory(packet->path_name,
                   Module->FullPathName,
                   sizeof(packet->path_name));
 
@@ -2057,7 +2102,7 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
     VersionInfo->dwOSVersionInfoSize = info.dwOSVersionInfoSize;
     VersionInfo->dwPlatformId        = info.dwPlatformId;
 
-    RtlCopyMemory(VersionInfo->szCSDVersion,
+    IntCopyMemory(VersionInfo->szCSDVersion,
                   info.szCSDVersion,
                   sizeof(VersionInfo->szCSDVersion));
 

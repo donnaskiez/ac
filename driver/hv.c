@@ -5,6 +5,8 @@
 #include "common.h"
 #include "io.h"
 
+#include "lib/stdlib.h"
+
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, PerformVirtualizationDetection)
 #endif
@@ -101,7 +103,7 @@ PerformVirtualizationDetection(_Inout_ PIRP Irp)
 
     Irp->IoStatus.Information = sizeof(HYPERVISOR_DETECTION_REPORT);
 
-    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
+    IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
                   &report,
                   sizeof(HYPERVISOR_DETECTION_REPORT));
 

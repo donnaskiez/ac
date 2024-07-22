@@ -3,7 +3,6 @@
 #include "common.h"
 #include "io.h"
 #include "callbacks.h"
-
 #include "hv.h"
 #include "pool.h"
 #include "thread.h"
@@ -14,6 +13,8 @@
 #include "crypt.h"
 #include "session.h"
 #include "hw.h"
+
+#include "lib/stdlib.h"
 
 #include <immintrin.h>
 
@@ -140,7 +141,8 @@ PDRIVER_CONFIG
 GetDecryptedDriverConfig()
 {
     return (PDRIVER_CONFIG)CryptDecryptPointerOutOfPlace64(
-        (PUINT64)&g_DriverConfig, g_DeviceExtensionKey);
+        (PUINT64)&g_DriverConfig,
+        g_DeviceExtensionKey);
 }
 
 #define POOL_TAG_CONFIG 'conf'
@@ -220,8 +222,9 @@ BOOLEAN
 IsNmiInProgress()
 {
     PAGED_CODE();
-    return InterlockedCompareExchange(
-               &GetDecryptedDriverConfig()->nmi_status, TRUE, FALSE) != 0;
+    return InterlockedCompareExchange(&GetDecryptedDriverConfig()->nmi_status,
+                                      TRUE,
+                                      FALSE) != 0;
 }
 
 PSHARED_MAPPING
@@ -597,7 +600,7 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
         if (!temp_buffer)
             return STATUS_MEMORY_NOT_ALLOCATED;
 
-        RtlCopyMemory(temp_buffer, ValueData, ValueLength);
+        IntCopyMemory(temp_buffer, ValueData, ValueLength);
 
         cfg->driver_path.Buffer        = (PWCH)temp_buffer;
         cfg->driver_path.Length        = ValueLength;
@@ -606,14 +609,16 @@ RegistryPathQueryCallbackRoutine(IN PWSTR ValueName,
 
     if (ImpRtlCompareUnicodeString(&value_name, &display_name, FALSE) ==
         FALSE) {
-        temp_buffer = ImpExAllocatePool2(
-            POOL_FLAG_PAGED, ValueLength + 20, POOL_TAG_STRINGS);
+        temp_buffer = ImpExAllocatePool2(POOL_FLAG_PAGED,
+                                         ValueLength + 20,
+                                         POOL_TAG_STRINGS);
 
         if (!temp_buffer)
             return STATUS_MEMORY_NOT_ALLOCATED;
 
-        RtlCopyMemory(temp_buffer, ValueData, ValueLength);
-        wcscpy((PWCH)((UINT64)temp_buffer + ValueLength - 2), L".sys");
+        IntCopyMemory(temp_buffer, ValueData, ValueLength);
+        IntWideStringCopy((PWCH)((UINT64)temp_buffer + ValueLength - 2),
+                          L".sys");
 
         cfg->unicode_driver_name.Buffer        = (PWCH)temp_buffer;
         cfg->unicode_driver_name.Length        = ValueLength + 20;
@@ -647,8 +652,10 @@ GetSystemProcessorType()
 
     __cpuid(cpuid, 0);
 
-    DEBUG_VERBOSE(
-        "Cpuid: EBX: %lx, ECX: %lx, EDX: %lx", cpuid[1], cpuid[2], cpuid[3]);
+    DEBUG_VERBOSE("Cpuid: EBX: %lx, ECX: %lx, EDX: %lx",
+                  cpuid[1],
+                  cpuid[2],
+                  cpuid[3]);
 
     if (cpuid[EBX_REGISTER] == CPUID_AUTHENTIC_AMD_EBX &&
         cpuid[ECX_REGISTER] == CPUID_AUTHENTIC_AMD_ECX &&
@@ -690,9 +697,9 @@ ParseSmbiosForGivenSystemEnvironment()
         return status;
     }
 
-    if (strstr(&cfg->system_information.vendor, "VMware, Inc"))
+    if (IntFindSubstring(&cfg->system_information.vendor, "VMware, Inc"))
         cfg->system_information.environment = Vmware;
-    else if (strstr(&cfg->system_information.vendor, "innotek GmbH"))
+    else if (IntFindSubstring(&cfg->system_information.vendor, "innotek GmbH"))
         cfg->system_information.environment = VirtualBox;
     else
         cfg->system_information.environment = NativeWindows;
@@ -807,8 +814,11 @@ DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
     query[1].EntryContext  = NULL;
     query[1].QueryRoutine  = RegistryPathQueryCallbackRoutine;
 
-    status = RtlxQueryRegistryValues(
-        RTL_REGISTRY_ABSOLUTE, RegistryPath->Buffer, &query, NULL, NULL);
+    status = RtlxQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
+                                     RegistryPath->Buffer,
+                                     &query,
+                                     NULL,
+                                     NULL);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlxQueryRegistryValues failed with status %x", status);
@@ -821,8 +831,9 @@ DrvLoadRetrieveDriverNameFromRegistry(_In_ PUNICODE_STRING RegistryPath)
      * name since we need the .sys extension when querying the system
      * modules for our driver.
      */
-    status = ImpRtlUnicodeStringToAnsiString(
-        &cfg->ansi_driver_name, &cfg->unicode_driver_name, TRUE);
+    status = ImpRtlUnicodeStringToAnsiString(&cfg->ansi_driver_name,
+                                             &cfg->unicode_driver_name,
+                                             TRUE);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlUnicodeStringToAnsiString failed with status %x",
@@ -895,8 +906,10 @@ InitialiseHashingAlgorithmProvider()
     NTSTATUS           status = STATUS_UNSUCCESSFUL;
     BCRYPT_ALG_HANDLE* handle = GetCryptHandle_Sha256();
 
-    status = BCryptOpenAlgorithmProvider(
-        handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_PROV_DISPATCH);
+    status = BCryptOpenAlgorithmProvider(handle,
+                                         BCRYPT_SHA256_ALGORITHM,
+                                         NULL,
+                                         BCRYPT_PROV_DISPATCH);
 
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("BCryptOpenAlgorithmProvider: %x", status);

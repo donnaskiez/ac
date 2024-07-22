@@ -27,7 +27,8 @@ enum report_id {
   report_invalid_process_module = 140,
   report_patched_system_module = 150,
   report_self_driver_patched = 160,
-  report_blacklisted_pcie_device = 170
+  report_blacklisted_pcie_device = 170,
+  report_ept_hook = 180
 };
 
 #define AES_256_BLOCK_SIZE 16
@@ -76,6 +77,13 @@ struct module_validation_failure {
   uint64_t driver_base_address;
   uint64_t driver_size;
   char driver_name[128];
+};
+
+struct ept_hook_failure {
+    report_header report_header;
+    uint64_t      control_average;
+    uint64_t      read_average;
+    char          function_name[128];
 };
 
 enum table_id { hal_dispatch = 0, hal_private_dispatch };

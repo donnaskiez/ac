@@ -1,5 +1,7 @@
 #include "tree.h"
 
+#include "../lib/stdlib.h"
+
 /*
  * Basic red-black tree implementation. Currently, the enumeration routines are
  * recursive, which may not be the best idea given the environment this is meant

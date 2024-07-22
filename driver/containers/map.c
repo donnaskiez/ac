@@ -1,5 +1,7 @@
 #include "map.h"
 
+#include "../lib/stdlib.h"
+
 VOID
 RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap)
 {

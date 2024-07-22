@@ -4,6 +4,8 @@
 #include "crypt.h"
 #include "imports.h"
 
+#include "lib/stdlib.h"
+
 #define PCI_VENDOR_ID_OFFSET 0x00
 #define PCI_DEVICE_ID_OFFSET 0x02
 

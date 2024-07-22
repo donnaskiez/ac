@@ -75,6 +75,9 @@
     <ClCompile Include="containers\tree.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="lib\stdlib.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -144,6 +147,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="containers\tree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lib\stdlib.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

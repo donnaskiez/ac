@@ -3,6 +3,8 @@
 #include "driver.h"
 #include "imports.h"
 
+#include "lib/stdlib.h"
+
 VOID
 GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
 {

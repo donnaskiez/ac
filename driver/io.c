@@ -14,6 +14,8 @@
 #include "hw.h"
 #include "containers/map.h"
 
+#include "lib/stdlib.h"
+
 STATIC
 NTSTATUS
 DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation);
@@ -178,7 +180,7 @@ IrpQueueCompleteDeferredPacket(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 
     IncrementPacketMetics(queue, type);
 
-    RtlCopyMemory(
+    IntCopyMemory(
         Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
 
     Irp->IoStatus.Status      = STATUS_SUCCESS;
@@ -331,7 +333,7 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 
     irp->IoStatus.Status      = STATUS_SUCCESS;
     irp->IoStatus.Information = BufferSize;
-    RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
+    IntCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
     ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
     ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
     return status;
@@ -1022,7 +1024,7 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         Irp->IoStatus.Information = sizeof(SYSTEM_INFORMATION);
 
-        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
+        IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
                       system_information,
                       sizeof(SYSTEM_INFORMATION));
 

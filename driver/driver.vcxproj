@@ -253,6 +253,7 @@
     <ClCompile Include="integrity.c" />
     <ClCompile Include="io.c" />
     <ClCompile Include="containers\map.c" />
+    <ClCompile Include="lib\stdlib.c" />
     <ClCompile Include="modules.c" />
     <ClCompile Include="hw.c" />
     <ClCompile Include="pe.c" />
@@ -275,6 +276,7 @@
     <ClInclude Include="integrity.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="containers\map.h" />
+    <ClInclude Include="lib\stdlib.h" />
     <ClInclude Include="modules.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="pool.h" />

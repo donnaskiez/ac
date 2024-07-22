@@ -5,6 +5,8 @@
 #include "crypt.h"
 #include <stdarg.h>
 
+#include "lib/stdlib.h"
+
 PVOID
 ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
 {
@@ -52,7 +54,7 @@ ImpResolveNtImport(PDRIVER_OBJECT DriverObject, PCZPSTR ExportName)
     for (INT index = 0; index < export_dir->NumberOfNames; index++) {
         name = (PCHAR)((UINT64)image_base + export_name_table[index]);
 
-        if (strcmp(name, ExportName))
+        if (IntCompareString(name, ExportName))
             continue;
 
         ordinal              = ordinals_table[index];

@@ -201,6 +201,15 @@ print_report_packet(void* buffer)
         LOG_INFO("********************************");
         break;
     }
+    case kernel_interface::report_id::report_ept_hook: {
+        kernel_interface::ept_hook_failure* r14 =
+            reinterpret_cast<kernel_interface::ept_hook_failure*>(buffer);
+        LOG_INFO("control_average: %llx", r14->control_average);
+        LOG_INFO("read_average: %llx", r14->read_average);
+        LOG_INFO("function_name: %s", r14->function_name);
+        LOG_INFO("********************************");
+        break;
+    }
     default: LOG_INFO("Invalid report type."); break;
     }
 }
