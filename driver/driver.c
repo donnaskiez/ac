@@ -79,7 +79,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
 #endif
 
 typedef struct _DRIVER_CONFIG {
-    volatile LONG          nmi_status;
+    volatile UINT32        nmi_status;
     UNICODE_STRING         unicode_driver_name;
     ANSI_STRING            ansi_driver_name;
     PUNICODE_STRING        device_name;
@@ -94,19 +94,15 @@ typedef struct _DRIVER_CONFIG {
     KGUARDED_MUTEX         lock;
     SYS_MODULE_VAL_CONTEXT sys_val_context;
     IRP_QUEUE_HEAD         irp_queue;
-
-    /* terrible name..lol what is tis timer for ?? */
-    TIMER_OBJECT timer;
-
-    ACTIVE_SESSION   session_information;
-    RB_TREE          thread_tree;
-    DRIVER_LIST_HEAD driver_list;
-    RTL_HASHMAP      process_hashmap;
-    SHARED_MAPPING   mapping;
-    BOOLEAN          has_driver_loaded;
-
-    BCRYPT_ALG_HANDLE aes_hash;
-    BCRYPT_ALG_HANDLE sha256_hash;
+    TIMER_OBJECT           integrity_check_timer;
+    ACTIVE_SESSION         session_information;
+    RB_TREE                thread_tree;
+    DRIVER_LIST_HEAD       driver_list;
+    RTL_HASHMAP            process_hashmap;
+    SHARED_MAPPING         mapping;
+    BOOLEAN                has_driver_loaded;
+    BCRYPT_ALG_HANDLE      aes_hash;
+    BCRYPT_ALG_HANDLE      sha256_hash;
 } DRIVER_CONFIG, *PDRIVER_CONFIG;
 
 UNICODE_STRING g_DeviceName         = RTL_CONSTANT_STRING(L"\\Device\\DonnaAC");
@@ -419,7 +415,8 @@ VOID
 DrvUnloadFreeTimerObject()
 {
     PAGED_CODE();
-    CleanupDriverTimerObjects(&GetDecryptedDriverConfig()->timer);
+    CleanupDriverTimerObjects(
+        &GetDecryptedDriverConfig()->integrity_check_timer);
 }
 
 STATIC
@@ -881,7 +878,7 @@ DrvLoadInitialiseDriverConfig(_In_ PDRIVER_OBJECT  DriverObject,
         return status;
     }
 
-    status = InitialiseTimerObject(&cfg->timer);
+    status = InitialiseTimerObject(&cfg->integrity_check_timer);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("InitialiseTimerObject failed with status %x", status);
