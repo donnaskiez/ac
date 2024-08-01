@@ -4,7 +4,7 @@ VOID
 IntCopyMemory(_In_ PVOID Destination, _In_ PVOID Source, _In_ SIZE_T Length)
 {
     PUCHAR dest = (PUCHAR)Destination;
-    PUCHAR src  = (PUCHAR)Source;
+    PUCHAR src = (PUCHAR)Source;
 
     for (SIZE_T index = 0; index < Length; index++)
         dest[index] = src[index];

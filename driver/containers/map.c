@@ -11,29 +11,33 @@ RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap)
 }
 
 NTSTATUS
-RtlHashmapCreate(_In_ UINT32           BucketCount,
-                 _In_ UINT32           EntryObjectSize,
-                 _In_ HASH_FUNCTION    HashFunction,
-                 _In_ COMPARE_FUNCTION CompareFunction,
-                 _In_opt_ PVOID        Context,
-                 _Out_ PRTL_HASHMAP    Hashmap)
+RtlHashmapCreate(
+    _In_ UINT32 BucketCount,
+    _In_ UINT32 EntryObjectSize,
+    _In_ HASH_FUNCTION HashFunction,
+    _In_ COMPARE_FUNCTION CompareFunction,
+    _In_opt_ PVOID Context,
+    _Out_ PRTL_HASHMAP Hashmap)
 {
-    NTSTATUS           status     = STATUS_UNSUCCESSFUL;
-    UINT32             entry_size = sizeof(RTL_HASHMAP_ENTRY) + EntryObjectSize;
-    PRTL_HASHMAP_ENTRY entry      = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 entry_size = sizeof(RTL_HASHMAP_ENTRY) + EntryObjectSize;
+    PRTL_HASHMAP_ENTRY entry = NULL;
 
     if (!CompareFunction || !HashFunction)
         return STATUS_INVALID_PARAMETER;
 
     Hashmap->buckets = ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, BucketCount * entry_size, POOL_TAG_HASHMAP);
+        POOL_FLAG_NON_PAGED,
+        BucketCount * entry_size,
+        POOL_TAG_HASHMAP);
 
     if (!Hashmap->buckets)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Hashmap->locks = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                     sizeof(KGUARDED_MUTEX) * BucketCount,
-                                     POOL_TAG_HASHMAP);
+    Hashmap->locks = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        sizeof(KGUARDED_MUTEX) * BucketCount,
+        POOL_TAG_HASHMAP);
 
     if (!Hashmap->locks) {
         ExFreePoolWithTag(Hashmap->buckets, POOL_TAG_HASHMAP);
@@ -41,20 +45,21 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
     }
 
     for (UINT32 index = 0; index < BucketCount; index++) {
-        entry         = &Hashmap->buckets[index];
+        entry = &Hashmap->buckets[index];
         entry->in_use = FALSE;
         InitializeListHead(&entry->entry);
         KeInitializeGuardedMutex(&Hashmap->locks[index]);
     }
 
-    status = ExInitializeLookasideListEx(&Hashmap->pool,
-                                         NULL,
-                                         NULL,
-                                         NonPagedPoolNx,
-                                         0,
-                                         entry_size,
-                                         POOL_TAG_HASHMAP,
-                                         0);
+    status = ExInitializeLookasideListEx(
+        &Hashmap->pool,
+        NULL,
+        NULL,
+        NonPagedPoolNx,
+        0,
+        entry_size,
+        POOL_TAG_HASHMAP,
+        0);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ExInitializeLookasideListEx: %x", status);
@@ -63,12 +68,12 @@ RtlHashmapCreate(_In_ UINT32           BucketCount,
         return status;
     }
 
-    Hashmap->bucket_count     = BucketCount;
-    Hashmap->hash_function    = HashFunction;
+    Hashmap->bucket_count = BucketCount;
+    Hashmap->hash_function = HashFunction;
     Hashmap->compare_function = CompareFunction;
-    Hashmap->object_size      = EntryObjectSize;
-    Hashmap->active           = TRUE;
-    Hashmap->context          = Context;
+    Hashmap->object_size = EntryObjectSize;
+    Hashmap->active = TRUE;
+    Hashmap->context = Context;
 
     return STATUS_SUCCESS;
 }
@@ -78,8 +83,8 @@ STATIC
 PRTL_HASHMAP_ENTRY
 RtlpHashmapFindUnusedEntry(_In_ PLIST_ENTRY Head)
 {
-    PRTL_HASHMAP_ENTRY entry      = NULL;
-    PLIST_ENTRY        list_entry = Head->Flink;
+    PRTL_HASHMAP_ENTRY entry = NULL;
+    PLIST_ENTRY list_entry = Head->Flink;
 
     while (list_entry != Head) {
         entry = CONTAINING_RECORD(list_entry, RTL_HASHMAP_ENTRY, entry);
@@ -141,16 +146,16 @@ RtlHashmapReleaseBucket(_Inout_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
 PVOID
 RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
 {
-    UINT32             index     = 0;
-    PLIST_ENTRY        list_head = NULL;
-    PRTL_HASHMAP_ENTRY entry     = NULL;
+    UINT32 index = 0;
+    PLIST_ENTRY list_head = NULL;
+    PRTL_HASHMAP_ENTRY entry = NULL;
     PRTL_HASHMAP_ENTRY new_entry = NULL;
 
     if (!Hashmap->active)
         return NULL;
 
     list_head = &(&Hashmap->buckets[index])->entry;
-    entry     = RtlpHashmapFindUnusedEntry(list_head);
+    entry = RtlpHashmapFindUnusedEntry(list_head);
 
     if (entry)
         return entry;
@@ -172,11 +177,10 @@ RtlHashmapEntryInsert(_In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index)
  * Also assumes lock is held.
  */
 PVOID
-RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT32       Index,
-                      _In_ PVOID        Compare)
+RtlHashmapEntryLookup(
+    _In_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index, _In_ PVOID Compare)
 {
-    UINT32             index = 0;
+    UINT32 index = 0;
     PRTL_HASHMAP_ENTRY entry = NULL;
 
     if (!Hashmap->active)
@@ -201,19 +205,18 @@ RtlHashmapEntryLookup(_In_ PRTL_HASHMAP Hashmap,
 
 /* Assumes lock is held */
 BOOLEAN
-RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
-                      _In_ UINT32          Index,
-                      _In_ PVOID           Compare)
+RtlHashmapEntryDelete(
+    _Inout_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index, _In_ PVOID Compare)
 {
-    UINT32             index      = 0;
-    PLIST_ENTRY        list_head  = NULL;
-    PLIST_ENTRY        list_entry = NULL;
-    PRTL_HASHMAP_ENTRY entry      = NULL;
+    UINT32 index = 0;
+    PLIST_ENTRY list_head = NULL;
+    PLIST_ENTRY list_entry = NULL;
+    PRTL_HASHMAP_ENTRY entry = NULL;
 
     if (!Hashmap->active)
         return FALSE;
 
-    list_head  = &(&Hashmap->buckets[index])->entry;
+    list_head = &(&Hashmap->buckets[index])->entry;
     list_entry = list_head->Flink;
 
     while (list_entry != list_head) {
@@ -240,18 +243,19 @@ RtlHashmapEntryDelete(_Inout_ PRTL_HASHMAP Hashmap,
 
 /* assumes lock is held */
 VOID
-RtlHashmapEnumerate(_In_ PRTL_HASHMAP      Hashmap,
-                    _In_ ENUMERATE_HASHMAP EnumerationCallback,
-                    _In_opt_ PVOID         Context)
+RtlHashmapEnumerate(
+    _In_ PRTL_HASHMAP Hashmap,
+    _In_ ENUMERATE_HASHMAP EnumerationCallback,
+    _In_opt_ PVOID Context)
 {
-    PLIST_ENTRY        list_head  = NULL;
-    PLIST_ENTRY        list_entry = NULL;
-    PRTL_HASHMAP_ENTRY entry      = NULL;
+    PLIST_ENTRY list_head = NULL;
+    PLIST_ENTRY list_entry = NULL;
+    PRTL_HASHMAP_ENTRY entry = NULL;
 
     for (UINT32 index = 0; index < Hashmap->bucket_count; index++) {
         KeAcquireGuardedMutex(&Hashmap->locks[index]);
 
-        list_head  = &Hashmap->buckets[index];
+        list_head = &Hashmap->buckets[index];
         list_entry = list_head->Flink;
 
         while (list_entry != list_head) {

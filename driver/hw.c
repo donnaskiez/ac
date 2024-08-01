@@ -1,8 +1,8 @@
 #include "hw.h"
 
-#include "modules.h"
 #include "crypt.h"
 #include "imports.h"
+#include "modules.h"
 
 #include "lib/stdlib.h"
 
@@ -15,8 +15,8 @@ USHORT FLAGGED_DEVICE_IDS[FLAGGED_DEVICE_ID_COUNT] = {
     0x0666, // default PCIe Squirrel DeviceID (used by PCI Leech)
     0xffff};
 
-typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject,
-                                        _In_opt_ PVOID      Context);
+typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(
+    _In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context);
 
 /*
  * Every PCI device has a set of registers commonly referred to as the PCI
@@ -66,15 +66,16 @@ typedef NTSTATUS (*PCI_DEVICE_CALLBACK)(_In_ PDEVICE_OBJECT DeviceObject,
  */
 STATIC
 NTSTATUS
-QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
-                                 _In_ UINT32         Offset,
-                                 _Out_opt_ PVOID     Buffer,
-                                 _In_ UINT32         BufferLength)
+QueryPciDeviceConfigurationSpace(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ UINT32 Offset,
+    _Out_opt_ PVOID Buffer,
+    _In_ UINT32 BufferLength)
 {
-    NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    KEVENT             event  = {0};
-    IO_STATUS_BLOCK    io     = {0};
-    PIRP               irp    = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    KEVENT event = {0};
+    IO_STATUS_BLOCK io = {0};
+    PIRP irp = NULL;
     PIO_STACK_LOCATION packet = NULL;
 
     if (BufferLength == 0)
@@ -87,19 +88,25 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
      * request is completed
      */
     irp = IoBuildSynchronousFsdRequest(
-        IRP_MJ_PNP, DeviceObject, NULL, 0, NULL, &event, &io);
+        IRP_MJ_PNP,
+        DeviceObject,
+        NULL,
+        0,
+        NULL,
+        &event,
+        &io);
 
     if (!irp) {
         DEBUG_ERROR("IoBuildSynchronousFsdRequest failed with no status.");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    packet                = IoGetNextIrpStackLocation(irp);
+    packet = IoGetNextIrpStackLocation(irp);
     packet->MinorFunction = IRP_MN_READ_CONFIG;
     packet->Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
-    packet->Parameters.ReadWriteConfig.Offset     = Offset;
-    packet->Parameters.ReadWriteConfig.Buffer     = Buffer;
-    packet->Parameters.ReadWriteConfig.Length     = BufferLength;
+    packet->Parameters.ReadWriteConfig.Offset = Offset;
+    packet->Parameters.ReadWriteConfig.Buffer = Buffer;
+    packet->Parameters.ReadWriteConfig.Length = BufferLength;
 
     status = IoCallDriver(DeviceObject, irp);
 
@@ -109,8 +116,9 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
     }
 
     if (!NT_SUCCESS(status))
-        DEBUG_ERROR("Failed to read configuration space with status %x",
-                    status);
+        DEBUG_ERROR(
+            "Failed to read configuration space with status %x",
+            status);
 
     return status;
 }
@@ -120,23 +128,25 @@ QueryPciDeviceConfigurationSpace(_In_ PDEVICE_OBJECT DeviceObject,
  */
 STATIC
 NTSTATUS
-EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
-                                   _Out_ PDEVICE_OBJECT** DeviceObjectArray,
-                                   _Out_ PUINT32          ArrayEntries)
+EnumerateDriverObjectDeviceObjects(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _Out_ PDEVICE_OBJECT** DeviceObjectArray,
+    _Out_ PUINT32 ArrayEntries)
 {
-    NTSTATUS        status       = STATUS_UNSUCCESSFUL;
-    UINT32          object_count = 0;
-    PDEVICE_OBJECT* buffer       = NULL;
-    UINT32          buffer_size  = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 object_count = 0;
+    PDEVICE_OBJECT* buffer = NULL;
+    UINT32 buffer_size = 0;
 
     *DeviceObjectArray = NULL;
-    *ArrayEntries      = 0;
+    *ArrayEntries = 0;
 
     status = IoEnumerateDeviceObjectList(DriverObject, NULL, 0, &object_count);
 
     if (status != STATUS_BUFFER_TOO_SMALL) {
-        DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "IoEnumerateDeviceObjectList failed with status %x",
+            status);
         return status;
     }
 
@@ -147,20 +157,25 @@ EnumerateDriverObjectDeviceObjects(_In_ PDRIVER_OBJECT    DriverObject,
         return STATUS_INSUFFICIENT_RESOURCES;
 
     status = IoEnumerateDeviceObjectList(
-        DriverObject, buffer, buffer_size, &object_count);
+        DriverObject,
+        buffer,
+        buffer_size,
+        &object_count);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("IoEnumerateDeviceObjectList failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "IoEnumerateDeviceObjectList failed with status %x",
+            status);
         ExFreePoolWithTag(buffer, POOL_TAG_HW);
         return status;
     }
 
-    DEBUG_VERBOSE("EnumerateDriverObjectDeviceObjects: Object Count: %lx",
-                  object_count);
+    DEBUG_VERBOSE(
+        "EnumerateDriverObjectDeviceObjects: Object Count: %lx",
+        object_count);
 
     *DeviceObjectArray = buffer;
-    *ArrayEntries      = object_count;
+    *ArrayEntries = object_count;
 
     return status;
 }
@@ -195,30 +210,34 @@ IsDeviceObjectValidPdo(_In_ PDEVICE_OBJECT DeviceObject)
  * given the PCI FDO which is called pci.sys.
  */
 NTSTATUS
-EnumeratePciDeviceObjects(_In_ PCI_DEVICE_CALLBACK CallbackRoutine,
-                          _In_opt_ PVOID           Context)
+EnumeratePciDeviceObjects(
+    _In_ PCI_DEVICE_CALLBACK CallbackRoutine, _In_opt_ PVOID Context)
 {
-    NTSTATUS        status             = STATUS_UNSUCCESSFUL;
-    UNICODE_STRING  pci                = RTL_CONSTANT_STRING(L"\\Driver\\pci");
-    PDRIVER_OBJECT  pci_driver_object  = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UNICODE_STRING pci = RTL_CONSTANT_STRING(L"\\Driver\\pci");
+    PDRIVER_OBJECT pci_driver_object = NULL;
     PDEVICE_OBJECT* pci_device_objects = NULL;
-    PDEVICE_OBJECT  current_device     = NULL;
-    UINT32          pci_device_objects_count = 0;
+    PDEVICE_OBJECT current_device = NULL;
+    UINT32 pci_device_objects_count = 0;
 
     status = GetDriverObjectByDriverName(&pci, &pci_driver_object);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("GetDriverObjectByDriverName failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "GetDriverObjectByDriverName failed with status %x",
+            status);
         return status;
     }
 
     status = EnumerateDriverObjectDeviceObjects(
-        pci_driver_object, &pci_device_objects, &pci_device_objects_count);
+        pci_driver_object,
+        &pci_device_objects,
+        &pci_device_objects_count);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("EnumerateDriverObjectDeviceObjects failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "EnumerateDriverObjectDeviceObjects failed with status %x",
+            status);
         return status;
     }
 
@@ -260,11 +279,11 @@ IsPciConfigurationSpaceFlagged(_In_ PPCI_COMMON_HEADER Configuration)
 
 STATIC
 VOID
-ReportBlacklistedPcieDevice(_In_ PDEVICE_OBJECT     DeviceObject,
-                            _In_ PPCI_COMMON_HEADER Header)
+ReportBlacklistedPcieDevice(
+    _In_ PDEVICE_OBJECT DeviceObject, _In_ PPCI_COMMON_HEADER Header)
 {
-    NTSTATUS status      = STATUS_UNSUCCESSFUL;
-    UINT32   packet_size = CryptRequestRequiredBufferLength(
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 packet_size = CryptRequestRequiredBufferLength(
         sizeof(BLACKLISTED_PCIE_DEVICE_REPORT));
 
     PBLACKLISTED_PCIE_DEVICE_REPORT report =
@@ -276,8 +295,8 @@ ReportBlacklistedPcieDevice(_In_ PDEVICE_OBJECT     DeviceObject,
     INIT_REPORT_PACKET(report, REPORT_BLACKLISTED_PCIE_DEVICE, 0);
 
     report->device_object = (UINT64)DeviceObject;
-    report->device_id     = Header->DeviceID;
-    report->vendor_id     = Header->VendorID;
+    report->device_id = Header->DeviceID;
+    report->vendor_id = Header->VendorID;
 
     status = CryptEncryptBuffer(report, packet_size);
 
@@ -296,29 +315,35 @@ PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
 
-    NTSTATUS          status = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     PCI_COMMON_HEADER header = {0};
 
     status = QueryPciDeviceConfigurationSpace(
-        DeviceObject, PCI_VENDOR_ID_OFFSET, &header, sizeof(PCI_COMMON_HEADER));
+        DeviceObject,
+        PCI_VENDOR_ID_OFFSET,
+        &header,
+        sizeof(PCI_COMMON_HEADER));
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("QueryPciDeviceConfigurationSpace failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "QueryPciDeviceConfigurationSpace failed with status %x",
+            status);
         return status;
     }
 
     if (IsPciConfigurationSpaceFlagged(&header)) {
-        DEBUG_VERBOSE("Flagged DeviceID found. Device: %llx, DeviceId: %lx",
-                      (UINT64)DeviceObject,
-                      header.DeviceID);
+        DEBUG_VERBOSE(
+            "Flagged DeviceID found. Device: %llx, DeviceId: %lx",
+            (UINT64)DeviceObject,
+            header.DeviceID);
         ReportBlacklistedPcieDevice(DeviceObject, &header);
     }
     else {
-        DEBUG_VERBOSE("Device: %llx, DeviceID: %lx, VendorID: %lx",
-                      DeviceObject,
-                      header.DeviceID,
-                      header.VendorID);
+        DEBUG_VERBOSE(
+            "Device: %llx, DeviceID: %lx, VendorID: %lx",
+            DeviceObject,
+            header.DeviceID,
+            header.VendorID);
     }
 
     return status;

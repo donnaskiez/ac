@@ -6,8 +6,8 @@ LARGE_INTEGER
 GenerateRandSeed()
 {
     LARGE_INTEGER system_time = {0};
-    LARGE_INTEGER up_time     = {0};
-    LARGE_INTEGER seed        = {0};
+    LARGE_INTEGER up_time = {0};
+    LARGE_INTEGER seed = {0};
 
     KeQuerySystemTime(&system_time);
     KeQueryTickCount(&up_time);
@@ -17,12 +17,13 @@ GenerateRandSeed()
 }
 
 NTSTATUS
-MapAndReadPhysical(_In_ UINT64 PhysicalAddress,
-                   _In_ UINT32 ReadLength,
-                   _Out_ PVOID OutputBuffer,
-                   _In_ UINT32 OutputBufferLength)
+MapAndReadPhysical(
+    _In_ UINT64 PhysicalAddress,
+    _In_ UINT32 ReadLength,
+    _Out_ PVOID OutputBuffer,
+    _In_ UINT32 OutputBufferLength)
 {
-    PVOID            va = NULL;
+    PVOID va = NULL;
     PHYSICAL_ADDRESS pa = {.QuadPart = PhysicalAddress};
 
     if (ReadLength > OutputBufferLength)
@@ -45,12 +46,13 @@ MapAndReadPhysical(_In_ UINT64 PhysicalAddress,
 }
 
 NTSTATUS
-UnicodeToCharBufString(_In_ PUNICODE_STRING UnicodeString,
-                       _Out_ PVOID          OutBuffer,
-                       _In_ UINT32          OutBufferSize)
+UnicodeToCharBufString(
+    _In_ PUNICODE_STRING UnicodeString,
+    _Out_ PVOID OutBuffer,
+    _In_ UINT32 OutBufferSize)
 {
     ANSI_STRING string = {0};
-    NTSTATUS    status = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
 
     status = RtlUnicodeStringToAnsiString(&string, UnicodeString, TRUE);
 

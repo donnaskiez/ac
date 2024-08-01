@@ -1,21 +1,21 @@
 #include "integrity.h"
 
-#include "common.h"
-#include "driver.h"
-#include "modules.h"
 #include "callbacks.h"
-#include "io.h"
+#include "common.h"
+#include "crypt.h"
+#include "driver.h"
 #include "imports.h"
+#include "io.h"
+#include "modules.h"
+#include "pe.h"
 #include "session.h"
 #include "util.h"
-#include "pe.h"
-#include "crypt.h"
 
 #include "lib/stdlib.h"
 
 #include <bcrypt.h>
-#include <initguid.h>
 #include <devpkey.h>
+#include <initguid.h>
 
 /* Header for a buffer that contains an array of sections copied from a module
  */
@@ -26,9 +26,9 @@ typedef struct _INTEGRITY_CHECK_HEADER {
 } INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
 
 typedef struct _PROCESS_MODULE_INFORMATION {
-    PVOID  module_base;
+    PVOID module_base;
     SIZE_T module_size;
-    WCHAR  module_path[MAX_MODULE_PATH];
+    WCHAR module_path[MAX_MODULE_PATH];
 
 } PROCESS_MODULE_INFORMATION, *PPROCESS_MODULE_INFORMATION;
 
@@ -41,8 +41,8 @@ typedef struct _PROCESS_MODULE_VALIDATION_RESULT {
 
 typedef struct _VAL_INTEGRITY_HEADER {
     INTEGRITY_CHECK_HEADER integrity_check_header;
-    IMAGE_SECTION_HEADER   section_header;
-    CHAR                   section_base[];
+    IMAGE_SECTION_HEADER section_header;
+    CHAR section_base[];
 
 } VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
 
@@ -136,9 +136,9 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
-    NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
-    LPCSTR                    driver_name = GetDriverName();
-    SYSTEM_MODULES            modules     = {0};
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    LPCSTR driver_name = GetDriverName();
+    SYSTEM_MODULES modules = {0};
     PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
 
     status = GetSystemModuleInformation(&modules);
@@ -165,9 +165,10 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 
     Irp->IoStatus.Information = sizeof(ULONG);
 
-    IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                  &driver_info->ImageSize,
-                  sizeof(ULONG));
+    IntCopyMemory(
+        Irp->AssociatedIrp.SystemBuffer,
+        &driver_info->ImageSize,
+        sizeof(ULONG));
 
 end:
 
@@ -179,14 +180,14 @@ end:
 
 STATIC
 NTSTATUS
-GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
-                           _In_ LPCSTR                     ModuleName)
+GetModuleInformationByName(
+    _Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCSTR ModuleName)
 {
     PAGED_CODE();
 
-    NTSTATUS                  status      = STATUS_UNSUCCESSFUL;
-    LPCSTR                    driver_name = GetDriverName();
-    SYSTEM_MODULES            modules     = {0};
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    LPCSTR driver_name = GetDriverName();
+    SYSTEM_MODULES modules = {0};
     PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
 
     status = GetSystemModuleInformation(&modules);
@@ -207,12 +208,13 @@ GetModuleInformationByName(_Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo,
     }
 
     ModuleInfo->FileNameOffset = driver_info->FileNameOffset;
-    ModuleInfo->ImageBase      = driver_info->ImageBase;
-    ModuleInfo->ImageSize      = driver_info->ImageSize;
+    ModuleInfo->ImageBase = driver_info->ImageBase;
+    ModuleInfo->ImageSize = driver_info->ImageSize;
 
-    IntCopyMemory(ModuleInfo->FullPathName,
-                  driver_info->FullPathName,
-                  sizeof(ModuleInfo->FullPathName));
+    IntCopyMemory(
+        ModuleInfo->FullPathName,
+        driver_info->FullPathName,
+        sizeof(ModuleInfo->FullPathName));
 
     if (modules.address)
         ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
@@ -249,34 +251,36 @@ GetSectionTotalPacketSize(_In_ PIMAGE_SECTION_HEADER Section)
 FORCEINLINE
 STATIC
 VOID
-InitIntegrityCheckHeader(_Out_ PINTEGRITY_CHECK_HEADER Header,
-                         _In_ UINT32                   SectionCount,
-                         _In_ UINT32                   TotalSize)
+InitIntegrityCheckHeader(
+    _Out_ PINTEGRITY_CHECK_HEADER Header,
+    _In_ UINT32 SectionCount,
+    _In_ UINT32 TotalSize)
 {
     Header->section_count = SectionCount;
-    Header->total_size    = TotalSize + sizeof(INTEGRITY_CHECK_HEADER);
+    Header->total_size = TotalSize + sizeof(INTEGRITY_CHECK_HEADER);
 }
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
-                                     _In_ PVOID    ModuleBase,
-                                     _In_ SIZE_T   ModuleSize,
-                                     _Out_ PSIZE_T BytesWritten,
-                                     _In_ BOOLEAN  IsModulex86)
+StoreModuleExecutableRegionsInBuffer(
+    _Out_ PVOID* Buffer,
+    _In_ PVOID ModuleBase,
+    _In_ SIZE_T ModuleSize,
+    _Out_ PSIZE_T BytesWritten,
+    _In_ BOOLEAN IsModulex86)
 {
     PAGED_CODE();
 
-    UINT32                 total_packet_size       = 0;
-    UINT32                 num_sections            = 0;
-    UINT32                 num_executable_sections = 0;
-    UINT64                 buffer_base             = 0;
-    UINT32                 bytes_returned          = 0;
-    NTSTATUS               status                  = STATUS_UNSUCCESSFUL;
-    PNT_HEADER_64          nt_header               = NULL;
-    PIMAGE_SECTION_HEADER  section                 = NULL;
-    MM_COPY_ADDRESS        address                 = {0};
-    INTEGRITY_CHECK_HEADER header                  = {0};
+    UINT32 total_packet_size = 0;
+    UINT32 num_sections = 0;
+    UINT32 num_executable_sections = 0;
+    UINT64 buffer_base = 0;
+    UINT32 bytes_returned = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PNT_HEADER_64 nt_header = NULL;
+    PIMAGE_SECTION_HEADER section = NULL;
+    MM_COPY_ADDRESS address = {0};
+    INTEGRITY_CHECK_HEADER header = {0};
 
     if (!ModuleBase || !ModuleSize)
         return STATUS_INVALID_PARAMETER;
@@ -292,9 +296,10 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
      * the file.
      */
     *BytesWritten = 0;
-    *Buffer       = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                 ModuleSize + sizeof(INTEGRITY_CHECK_HEADER),
-                                 POOL_TAG_INTEGRITY);
+    *Buffer = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        ModuleSize + sizeof(INTEGRITY_CHECK_HEADER),
+        POOL_TAG_INTEGRITY);
 
     if (*Buffer == NULL)
         return STATUS_MEMORY_NOT_ALLOCATED;
@@ -307,14 +312,14 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
      * The IMAGE_DOS_HEADER.e_lfanew stores the offset of the
      * IMAGE_NT_HEADER from the base of the image.
      */
-    nt_header    = PeGetNtHeader(ModuleBase);
+    nt_header = PeGetNtHeader(ModuleBase);
     num_sections = GetSectionCount(nt_header);
 
     /*
      * The IMAGE_FIRST_SECTION macro takes in an IMAGE_NT_HEADER and returns
      * the address of the first section of the PE file.
      */
-    section     = IMAGE_FIRST_SECTION(nt_header);
+    section = IMAGE_FIRST_SECTION(nt_header);
     buffer_base = (UINT64)*Buffer + sizeof(INTEGRITY_CHECK_HEADER);
 
     for (UINT32 index = 0; index < num_sections - 1; index++) {
@@ -324,11 +329,12 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
         }
 
         address.VirtualAddress = section;
-        status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size,
-                                 address,
-                                 sizeof(IMAGE_SECTION_HEADER),
-                                 MM_COPY_MEMORY_VIRTUAL,
-                                 &bytes_returned);
+        status = ImpMmCopyMemory(
+            (UINT64)buffer_base + total_packet_size,
+            address,
+            sizeof(IMAGE_SECTION_HEADER),
+            MM_COPY_MEMORY_VIRTUAL,
+            &bytes_returned);
 
         if (!NT_SUCCESS(status)) {
             ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
@@ -337,12 +343,13 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
         }
 
         address.VirtualAddress = (UINT64)ModuleBase + section->PointerToRawData;
-        status = ImpMmCopyMemory((UINT64)buffer_base + total_packet_size +
-                                     sizeof(IMAGE_SECTION_HEADER),
-                                 address,
-                                 section->SizeOfRawData,
-                                 MM_COPY_MEMORY_VIRTUAL,
-                                 &bytes_returned);
+        status = ImpMmCopyMemory(
+            (UINT64)buffer_base + total_packet_size +
+                sizeof(IMAGE_SECTION_HEADER),
+            address,
+            section->SizeOfRawData,
+            MM_COPY_MEMORY_VIRTUAL,
+            &bytes_returned);
 
         if (!NT_SUCCESS(status)) {
             ImpExFreePoolWithTag(*Buffer, POOL_TAG_INTEGRITY);
@@ -355,9 +362,10 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
         section++;
     }
 
-    InitIntegrityCheckHeader(&header,
-                             num_executable_sections,
-                             total_packet_size);
+    InitIntegrityCheckHeader(
+        &header,
+        num_executable_sections,
+        total_packet_size);
 
     IntCopyMemory(*Buffer, &header, sizeof(INTEGRITY_CHECK_HEADER));
     *BytesWritten = total_packet_size + sizeof(INTEGRITY_CHECK_HEADER);
@@ -366,21 +374,22 @@ StoreModuleExecutableRegionsInBuffer(_Out_ PVOID*  Buffer,
 
 STATIC
 NTSTATUS
-MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
-                                    _Out_ PVOID*         Section,
-                                    _In_ PUNICODE_STRING Path,
-                                    _Out_ PSIZE_T        Size)
+MapDiskImageIntoVirtualAddressSpace(
+    _Inout_ PHANDLE SectionHandle,
+    _Out_ PVOID* Section,
+    _In_ PUNICODE_STRING Path,
+    _Out_ PSIZE_T Size)
 {
     PAGED_CODE();
 
-    NTSTATUS          status = STATUS_UNSUCCESSFUL;
-    HANDLE            handle = NULL;
-    OBJECT_ATTRIBUTES oa     = {0};
-    PIO_STATUS_BLOCK  io     = NULL;
-    UNICODE_STRING    path   = {0};
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    HANDLE handle = NULL;
+    OBJECT_ATTRIBUTES oa = {0};
+    PIO_STATUS_BLOCK io = NULL;
+    UNICODE_STRING path = {0};
 
     *Section = NULL;
-    *Size    = 0;
+    *Size = 0;
 
     ImpRtlInitUnicodeString(&path, Path->Buffer);
 
@@ -399,13 +408,14 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
      * Its important that we set the SEC_IMAGE flag with the PAGE_READONLY
      * flag as we are mapping an executable image.
      */
-    status = ImpZwCreateSection(SectionHandle,
-                                SECTION_ALL_ACCESS,
-                                &oa,
-                                NULL,
-                                PAGE_READONLY,
-                                SEC_IMAGE,
-                                handle);
+    status = ImpZwCreateSection(
+        SectionHandle,
+        SECTION_ALL_ACCESS,
+        &oa,
+        NULL,
+        PAGE_READONLY,
+        SEC_IMAGE,
+        handle);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwCreateSection failed with status %x", status);
@@ -425,16 +435,17 @@ MapDiskImageIntoVirtualAddressSpace(_Inout_ PHANDLE      SectionHandle,
      * for us, meaning the mapped image will be identical to the in memory
      * image.
      */
-    status = ImpZwMapViewOfSection(*SectionHandle,
-                                   ZwCurrentProcess(),
-                                   Section,
-                                   NULL,
-                                   NULL,
-                                   NULL,
-                                   Size,
-                                   ViewUnmap,
-                                   MEM_TOP_DOWN,
-                                   PAGE_READONLY);
+    status = ImpZwMapViewOfSection(
+        *SectionHandle,
+        ZwCurrentProcess(),
+        Section,
+        NULL,
+        NULL,
+        NULL,
+        Size,
+        ViewUnmap,
+        MEM_TOP_DOWN,
+        PAGE_READONLY);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwMapViewOfSection failed with status %x", status);
@@ -453,11 +464,11 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
-    NTSTATUS                 status        = STATUS_UNSUCCESSFUL;
-    SIZE_T                   bytes_written = NULL;
-    PVOID                    buffer        = NULL;
-    RTL_MODULE_EXTENDED_INFO module_info   = {0};
-    LPCSTR                   driver_name   = GetDriverName();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    SIZE_T bytes_written = NULL;
+    PVOID buffer = NULL;
+    RTL_MODULE_EXTENDED_INFO module_info = {0};
+    LPCSTR driver_name = GetDriverName();
 
     status = GetModuleInformationByName(&module_info, driver_name);
 
@@ -466,15 +477,17 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
         return status;
     }
 
-    status = StoreModuleExecutableRegionsInBuffer(&buffer,
-                                                  module_info.ImageBase,
-                                                  module_info.ImageSize,
-                                                  &bytes_written,
-                                                  FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(
+        &buffer,
+        module_info.ImageBase,
+        module_info.ImageSize,
+        &bytes_written,
+        FALSE);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("StoreModuleExecutableRegionsInBuffe failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "StoreModuleExecutableRegionsInBuffe failed with status %x",
+            status);
         return status;
     }
 
@@ -523,7 +536,7 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
         (PCHAR)((UINT64)*CurrentStructure + (*CurrentStructure)->Length);
 
     PCHAR current_char_in_strings = string_section_start;
-    PCHAR next_char_in_strings    = string_section_start + 1;
+    PCHAR next_char_in_strings = string_section_start + 1;
 
     for (;;) {
         if (*current_char_in_strings == NULL_TERMINATOR &&
@@ -553,17 +566,18 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
  */
 STATIC
 NTSTATUS
-GetStringAtIndexFromSMBIOSTable(_In_ PSMBIOS_TABLE_HEADER Table,
-                                _In_ UINT32               Index,
-                                _In_ PVOID                Buffer,
-                                _In_ SIZE_T               BufferSize)
+GetStringAtIndexFromSMBIOSTable(
+    _In_ PSMBIOS_TABLE_HEADER Table,
+    _In_ UINT32 Index,
+    _In_ PVOID Buffer,
+    _In_ SIZE_T BufferSize)
 {
     PAGED_CODE();
 
     UINT32 current_string_char_index = 0;
-    UINT32 string_count              = 0;
-    PCHAR  current_string_char       = (PCHAR)((UINT64)Table + Table->Length);
-    PCHAR  next_string_char          = current_string_char + 1;
+    UINT32 string_count = 0;
+    PCHAR current_string_char = (PCHAR)((UINT64)Table + Table->Length);
+    PCHAR next_string_char = current_string_char + 1;
 
     for (;;) {
         if (*current_string_char == NULL_TERMINATOR &&
@@ -614,20 +628,21 @@ GetSmbiosTableHeader(_In_ PRAW_SMBIOS_DATA Data)
 }
 
 NTSTATUS
-ParseSMBIOSTable(_Out_ PVOID             Buffer,
-                 _In_ SIZE_T             BufferSize,
-                 _In_ SMBIOS_TABLE_INDEX TableIndex,
-                 _In_ ULONG              TableSubIndex)
+ParseSMBIOSTable(
+    _Out_ PVOID Buffer,
+    _In_ SIZE_T BufferSize,
+    _In_ SMBIOS_TABLE_INDEX TableIndex,
+    _In_ ULONG TableSubIndex)
 {
     PAGED_CODE();
 
-    NTSTATUS             status       = STATUS_UNSUCCESSFUL;
-    PVOID                buffer       = NULL;
-    ULONG                buffer_size  = 0;
-    ULONG                bytes_copied = 0;
-    PRAW_SMBIOS_DATA     smbios_data  = NULL;
-    PSMBIOS_TABLE_HEADER header       = NULL;
-    PRAW_SMBIOS_TABLE_01 baseboard    = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PVOID buffer = NULL;
+    ULONG buffer_size = 0;
+    ULONG bytes_copied = 0;
+    PRAW_SMBIOS_DATA smbios_data = NULL;
+    PSMBIOS_TABLE_HEADER header = NULL;
+    PRAW_SMBIOS_TABLE_01 baseboard = NULL;
 
     status =
         ImpExGetSystemFirmwareTable(SMBIOS_TABLE, 0, NULL, 0, &buffer_size);
@@ -644,27 +659,30 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    buffer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                buffer_size,
-                                POOL_TAG_INTEGRITY);
+    buffer = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        buffer_size,
+        POOL_TAG_INTEGRITY);
 
     if (!buffer)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
-    status = ImpExGetSystemFirmwareTable(SMBIOS_TABLE,
-                                         NULL,
-                                         buffer,
-                                         buffer_size,
-                                         &bytes_copied);
+    status = ImpExGetSystemFirmwareTable(
+        SMBIOS_TABLE,
+        NULL,
+        buffer,
+        buffer_size,
+        &bytes_copied);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ExGetSystemFirmwareTable call 2 failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "ExGetSystemFirmwareTable call 2 failed with status %x",
+            status);
         goto end;
     }
 
     smbios_data = GetRawSmbiosData(buffer);
-    header      = GetSmbiosTableHeader(smbios_data);
+    header = GetSmbiosTableHeader(smbios_data);
 
     /*
      * The System Information table is equal to Type == 2 and contains the
@@ -678,14 +696,16 @@ ParseSMBIOSTable(_Out_ PVOID             Buffer,
     while (header->Type != TableIndex)
         GetNextSMBIOSStructureInTable(&header);
 
-    status = GetStringAtIndexFromSMBIOSTable(header,
-                                             TableSubIndex,
-                                             Buffer,
-                                             BufferSize);
+    status = GetStringAtIndexFromSMBIOSTable(
+        header,
+        TableSubIndex,
+        Buffer,
+        BufferSize);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("GetStringAtIndexFromSMBIOSTable failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "GetStringAtIndexFromSMBIOSTable failed with status %x",
+            status);
         goto end;
     }
 
@@ -699,12 +719,13 @@ end:
 
 STATIC
 NTSTATUS
-ComputeHashOfSections(_In_ PIMAGE_SECTION_HEADER DiskSection,
-                      _In_ PIMAGE_SECTION_HEADER MemorySection,
-                      _Out_ PVOID*               DiskHash,
-                      _Out_ PULONG               DiskHashSize,
-                      _Out_ PVOID*               MemoryHash,
-                      _Out_ PULONG               MemoryHashSize)
+ComputeHashOfSections(
+    _In_ PIMAGE_SECTION_HEADER DiskSection,
+    _In_ PIMAGE_SECTION_HEADER MemorySection,
+    _Out_ PVOID* DiskHash,
+    _Out_ PULONG DiskHashSize,
+    _Out_ PVOID* MemoryHash,
+    _Out_ PULONG MemoryHashSize)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
@@ -750,8 +771,8 @@ STATIC
 VOID
 ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
 {
-    NTSTATUS                          status = STATUS_UNSUCCESSFUL;
-    UINT32                            len    = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 len = 0;
     PPROCESS_MODULE_VALIDATION_REPORT report = NULL;
 
     len = CryptRequestRequiredBufferLength(
@@ -767,9 +788,10 @@ ReportInvalidProcessModule(_In_ PPROCESS_MODULE_INFORMATION Module)
     report->image_base = Module->module_base;
     report->image_size = Module->module_size;
 
-    IntCopyMemory(report->module_path,
-                  Module->module_path,
-                  sizeof(report->module_path));
+    IntCopyMemory(
+        report->module_path,
+        Module->module_path,
+        sizeof(report->module_path));
 
     status = CryptEncryptBuffer(report, len);
 
@@ -808,22 +830,22 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
-    NTSTATUS                         status            = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     PROCESS_MODULE_VALIDATION_RESULT validation_result = {0};
-    PPROCESS_MODULE_INFORMATION      module_info       = NULL;
-    PKPROCESS                        process           = NULL;
-    KAPC_STATE                       apc_state         = {0};
-    PVAL_INTEGRITY_HEADER            memory_buffer     = NULL;
-    PVAL_INTEGRITY_HEADER            disk_buffer       = NULL;
-    PVOID                            memory_hash       = NULL;
-    PVOID                            disk_hash         = NULL;
-    ULONG                            memory_hash_size  = 0;
-    ULONG                            disk_hash_size    = 0;
-    SIZE_T                           bytes_written     = 0;
-    UNICODE_STRING                   module_path       = {0};
-    HANDLE                           section_handle    = NULL;
-    PVOID                            section           = NULL;
-    ULONG                            section_size      = 0;
+    PPROCESS_MODULE_INFORMATION module_info = NULL;
+    PKPROCESS process = NULL;
+    KAPC_STATE apc_state = {0};
+    PVAL_INTEGRITY_HEADER memory_buffer = NULL;
+    PVAL_INTEGRITY_HEADER disk_buffer = NULL;
+    PVOID memory_hash = NULL;
+    PVOID disk_hash = NULL;
+    ULONG memory_hash_size = 0;
+    ULONG disk_hash_size = 0;
+    SIZE_T bytes_written = 0;
+    UNICODE_STRING module_path = {0};
+    HANDLE section_handle = NULL;
+    PVOID section = NULL;
+    ULONG section_size = 0;
 
     status = ValidateIrpInputBuffer(Irp, sizeof(PROCESS_MODULE_INFORMATION));
 
@@ -842,11 +864,12 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
      */
     ImpKeStackAttachProcess(process, &apc_state);
 
-    status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-                                                  module_info->module_base,
-                                                  module_info->module_size,
-                                                  &bytes_written,
-                                                  FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(
+        &memory_buffer,
+        module_info->module_base,
+        module_info->module_size,
+        &bytes_written,
+        FALSE);
 
     ImpKeUnstackDetachProcess(&apc_state);
 
@@ -857,22 +880,25 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         goto end;
     }
 
-    status = MapDiskImageIntoVirtualAddressSpace(&section_handle,
-                                                 &section,
-                                                 &module_path,
-                                                 &section_size);
+    status = MapDiskImageIntoVirtualAddressSpace(
+        &section_handle,
+        &section,
+        &module_path,
+        &section_size);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("MapDiskImageIntoVirtualAddressSpace failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "MapDiskImageIntoVirtualAddressSpace failed with status %x",
+            status);
         goto end;
     }
 
-    status = StoreModuleExecutableRegionsInBuffer(&disk_buffer,
-                                                  section,
-                                                  section_size,
-                                                  &bytes_written,
-                                                  FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(
+        &disk_buffer,
+        section,
+        section_size,
+        &bytes_written,
+        FALSE);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR(
@@ -881,12 +907,13 @@ ValidateProcessLoadedModule(_Inout_ PIRP Irp)
         goto end;
     }
 
-    status = ComputeHashOfSections(&memory_buffer->section_header,
-                                   &disk_buffer->section_header,
-                                   &disk_hash,
-                                   &disk_hash_size,
-                                   &memory_hash,
-                                   &memory_hash_size);
+    status = ComputeHashOfSections(
+        &memory_buffer->section_header,
+        &disk_buffer->section_header,
+        &disk_hash,
+        &disk_hash_size,
+        &memory_hash,
+        &memory_hash_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ComputeHashOfSections failed with status %x", status);
@@ -920,30 +947,32 @@ end:
 }
 
 NTSTATUS
-HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
-               _Out_ PVOID                    OutBuffer,
-               _In_ UINT32                    OutBufferSize)
+HashUserModule(
+    _In_ PPROCESS_MAP_MODULE_ENTRY Entry,
+    _Out_ PVOID OutBuffer,
+    _In_ UINT32 OutBufferSize)
 {
     PAGED_CODE();
 
-    NTSTATUS              status           = STATUS_UNSUCCESSFUL;
-    KAPC_STATE            apc_state        = {0};
-    PVAL_INTEGRITY_HEADER memory_buffer    = NULL;
-    PVOID                 memory_hash      = NULL;
-    ULONG                 memory_hash_size = 0;
-    SIZE_T                bytes_written    = 0;
-    PACTIVE_SESSION       session          = GetActiveSession();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    KAPC_STATE apc_state = {0};
+    PVAL_INTEGRITY_HEADER memory_buffer = NULL;
+    PVOID memory_hash = NULL;
+    ULONG memory_hash_size = 0;
+    SIZE_T bytes_written = 0;
+    PACTIVE_SESSION session = GetActiveSession();
 
     /*
      * Attach because the offsets given are from the process' context.
      */
     ImpKeStackAttachProcess(session->process, &apc_state);
 
-    status = StoreModuleExecutableRegionsInBuffer(&memory_buffer,
-                                                  Entry->base,
-                                                  Entry->size,
-                                                  &bytes_written,
-                                                  FALSE);
+    status = StoreModuleExecutableRegionsInBuffer(
+        &memory_buffer,
+        Entry->base,
+        Entry->size,
+        &bytes_written,
+        FALSE);
 
     ImpKeUnstackDetachProcess(&apc_state);
 
@@ -954,10 +983,11 @@ HashUserModule(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
         goto end;
     }
 
-    status = CryptHashBuffer_sha256(memory_buffer->section_base,
-                                    memory_buffer->section_header.SizeOfRawData,
-                                    &memory_hash,
-                                    &memory_hash_size);
+    status = CryptHashBuffer_sha256(
+        memory_buffer->section_base,
+        memory_buffer->section_header.SizeOfRawData,
+        &memory_hash,
+        &memory_hash_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptHashBuffer_sha256 failed with status %x", status);
@@ -1001,12 +1031,13 @@ GetStorageDescriptorSerialLength(_In_ PCHAR SerialNumber)
 FORCEINLINE
 STATIC
 VOID
-InitStorageProperties(_Out_ PSTORAGE_PROPERTY_QUERY Query,
-                      _In_ STORAGE_PROPERTY_ID      PropertyId,
-                      _In_ STORAGE_QUERY_TYPE       QueryType)
+InitStorageProperties(
+    _Out_ PSTORAGE_PROPERTY_QUERY Query,
+    _In_ STORAGE_PROPERTY_ID PropertyId,
+    _In_ STORAGE_QUERY_TYPE QueryType)
 {
     Query->PropertyId = PropertyId;
-    Query->QueryType  = QueryType;
+    Query->QueryType = QueryType;
 }
 
 /*
@@ -1014,21 +1045,21 @@ InitStorageProperties(_Out_ PSTORAGE_PROPERTY_QUERY Query,
  * use the command "wmic diskdrive" check in console.
  */
 NTSTATUS
-GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
-                             _In_ SIZE_T   ConfigDrive0MaxSize)
+GetHardDiskDriveSerialNumber(
+    _Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T ConfigDrive0MaxSize)
 {
     PAGED_CODE();
 
-    NTSTATUS                   status        = STATUS_UNSUCCESSFUL;
-    HANDLE                     handle        = NULL;
-    OBJECT_ATTRIBUTES          attributes    = {0};
-    IO_STATUS_BLOCK            status_block  = {0};
-    STORAGE_PROPERTY_QUERY     query         = {0};
-    STORAGE_DESCRIPTOR_HEADER  header        = {0};
-    PSTORAGE_DEVICE_DESCRIPTOR descriptor    = NULL;
-    UNICODE_STRING             path          = {0};
-    PCHAR                      serial_number = NULL;
-    SIZE_T                     serial_length = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    HANDLE handle = NULL;
+    OBJECT_ATTRIBUTES attributes = {0};
+    IO_STATUS_BLOCK status_block = {0};
+    STORAGE_PROPERTY_QUERY query = {0};
+    STORAGE_DESCRIPTOR_HEADER header = {0};
+    PSTORAGE_DEVICE_DESCRIPTOR descriptor = NULL;
+    UNICODE_STRING path = {0};
+    PCHAR serial_number = NULL;
+    SIZE_T serial_length = 0;
 
     ImpRtlInitUnicodeString(&path, L"\\DosDevices\\PhysicalDrive0");
 
@@ -1036,67 +1067,75 @@ GetHardDiskDriveSerialNumber(_Inout_ PVOID ConfigDrive0Serial,
      * No need to use the flag OBJ_FORCE_ACCESS_CHECK since we arent passing
      * a handle given to us from usermode.
      */
-    InitializeObjectAttributes(&attributes,
-                               &path,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL,
-                               NULL);
+    InitializeObjectAttributes(
+        &attributes,
+        &path,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL);
 
-    status = ImpZwOpenFile(&handle,
-                           GENERIC_READ,
-                           &attributes,
-                           &status_block,
-                           NULL,
-                           NULL);
+    status = ImpZwOpenFile(
+        &handle,
+        GENERIC_READ,
+        &attributes,
+        &status_block,
+        NULL,
+        NULL);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ZwOpenFile on PhysicalDrive0 failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "ZwOpenFile on PhysicalDrive0 failed with status %x",
+            status);
         goto end;
     }
 
     InitStorageProperties(&query, StorageDeviceProperty, PropertyStandardQuery);
 
-    status = ImpZwDeviceIoControlFile(handle,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      &status_block,
-                                      IOCTL_STORAGE_QUERY_PROPERTY,
-                                      &query,
-                                      sizeof(STORAGE_PROPERTY_QUERY),
-                                      &header,
-                                      sizeof(STORAGE_DESCRIPTOR_HEADER));
+    status = ImpZwDeviceIoControlFile(
+        handle,
+        NULL,
+        NULL,
+        NULL,
+        &status_block,
+        IOCTL_STORAGE_QUERY_PROPERTY,
+        &query,
+        sizeof(STORAGE_PROPERTY_QUERY),
+        &header,
+        sizeof(STORAGE_DESCRIPTOR_HEADER));
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ZwDeviceIoControlFile first call failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "ZwDeviceIoControlFile first call failed with status %x",
+            status);
         goto end;
     }
 
-    descriptor = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                    header.Size,
-                                    POOL_TAG_INTEGRITY);
+    descriptor = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        header.Size,
+        POOL_TAG_INTEGRITY);
 
     if (!descriptor) {
         status = STATUS_MEMORY_NOT_ALLOCATED;
         goto end;
     }
 
-    status = ImpZwDeviceIoControlFile(handle,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      &status_block,
-                                      IOCTL_STORAGE_QUERY_PROPERTY,
-                                      &query,
-                                      sizeof(STORAGE_PROPERTY_QUERY),
-                                      descriptor,
-                                      header.Size);
+    status = ImpZwDeviceIoControlFile(
+        handle,
+        NULL,
+        NULL,
+        NULL,
+        &status_block,
+        IOCTL_STORAGE_QUERY_PROPERTY,
+        &query,
+        sizeof(STORAGE_PROPERTY_QUERY),
+        descriptor,
+        header.Size);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("ZwDeviceIoControlFile second call failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "ZwDeviceIoControlFile second call failed with status %x",
+            status);
         goto end;
     }
 
@@ -1124,19 +1163,20 @@ end:
     return status;
 }
 PVOID
-ScanForSignature(_In_ PVOID  BaseAddress,
-                 _In_ SIZE_T MaxLength,
-                 _In_ LPCSTR Signature,
-                 _In_ SIZE_T SignatureLength)
+ScanForSignature(
+    _In_ PVOID BaseAddress,
+    _In_ SIZE_T MaxLength,
+    _In_ LPCSTR Signature,
+    _In_ SIZE_T SignatureLength)
 {
     PAGED_CODE();
 
-    CHAR current_char     = 0;
+    CHAR current_char = 0;
     CHAR current_sig_char = 0;
 
     for (INT index = 0; index < MaxLength; index++) {
         for (INT sig = 0; sig < SignatureLength + 1; sig++) {
-            current_char     = *(PCHAR)((UINT64)BaseAddress + index + sig);
+            current_char = *(PCHAR)((UINT64)BaseAddress + index + sig);
             current_sig_char = Signature[sig];
 
             if (sig == SignatureLength)
@@ -1160,7 +1200,7 @@ UINT64
 MeasureInstructionRead(_In_ PVOID InstructionAddress)
 {
     CONST UINT64 start = __readmsr(IA32_APERF_MSR) << 32;
-    CHAR         value = *(PCHAR)InstructionAddress;
+    CHAR value = *(PCHAR)InstructionAddress;
     return (__readmsr(IA32_APERF_MSR) << 32) - start;
 }
 
@@ -1171,7 +1211,7 @@ UINT64
 MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
 {
     UINT64 read_average = 0;
-    KIRQL  irql         = {0};
+    KIRQL irql = {0};
 
     MeasureInstructionRead(Address);
 
@@ -1210,8 +1250,8 @@ MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
  */
 STATIC
 NTSTATUS
-GetAverageReadTimeAtRoutine(_In_ PVOID    RoutineAddress,
-                            _Out_ PUINT64 AverageTime)
+GetAverageReadTimeAtRoutine(
+    _In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime)
 {
     if (!RoutineAddress || !AverageTime)
         return STATUS_UNSUCCESSFUL;
@@ -1302,16 +1342,17 @@ InitiateEptFunctionAddressArrays()
 
 STATIC
 VOID
-ReportEptHook(_In_ UINT64 ControlAverage,
-              _In_ UINT64 ReadAverage,
-              _In_ WCHAR  FunctionName)
+ReportEptHook(
+    _In_ UINT64 ControlAverage,
+    _In_ UINT64 ReadAverage,
+    _In_ WCHAR FunctionName)
 {
-    NTSTATUS         status = STATUS_UNSUCCESSFUL;
-    UINT32           len    = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 len = 0;
     PEPT_HOOK_REPORT report = NULL;
-    UNICODE_STRING   string = {0};
+    UNICODE_STRING string = {0};
 
-    len    = CryptRequestRequiredBufferLength(sizeof(EPT_HOOK_REPORT));
+    len = CryptRequestRequiredBufferLength(sizeof(EPT_HOOK_REPORT));
     report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
@@ -1320,13 +1361,14 @@ ReportEptHook(_In_ UINT64 ControlAverage,
     INIT_REPORT_PACKET(report, REPORT_EPT_HOOK, 0);
 
     report->control_average = ControlAverage;
-    report->read_average    = ReadAverage;
+    report->read_average = ReadAverage;
 
     RtlInitUnicodeString(&string, FunctionName);
 
-    status = UnicodeToCharBufString(&string,
-                                    report->function_name,
-                                    sizeof(report->function_name));
+    status = UnicodeToCharBufString(
+        &string,
+        report->function_name,
+        sizeof(report->function_name));
 
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("UnicodeToCharBufString: %x", status);
@@ -1347,29 +1389,32 @@ DetectEptHooksInKeyFunctions()
 {
     PAGED_CODE();
 
-    NTSTATUS status           = STATUS_UNSUCCESSFUL;
-    UINT32   control_fails    = 0;
-    UINT64   instruction_time = 0;
-    UINT64   control_time_sum = 0;
-    UINT64   control_average  = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 control_fails = 0;
+    UINT64 instruction_time = 0;
+    UINT64 control_time_sum = 0;
+    UINT64 control_average = 0;
 
     /* todo: once we call this, we need to set a flag to skip this,
      * otherwise we just return early */
     status = InitiateEptFunctionAddressArrays();
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("InitiateEptFunctionAddressArrays failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "InitiateEptFunctionAddressArrays failed with status %x",
+            status);
         return status;
     }
 
     for (UINT32 index = 0; index < EPT_CONTROL_FUNCTIONS_COUNT; index++) {
-        status = GetAverageReadTimeAtRoutine(CONTROL_FUNCTION_ADDRESSES[index],
-                                             &instruction_time);
+        status = GetAverageReadTimeAtRoutine(
+            CONTROL_FUNCTION_ADDRESSES[index],
+            &instruction_time);
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "DetectEptPresentOnFunction failed with status %x",
+                status);
             control_fails += 1;
             continue;
         }
@@ -1387,13 +1432,14 @@ DetectEptHooksInKeyFunctions()
         return STATUS_UNSUCCESSFUL;
 
     for (UINT32 index = 0; index < EPT_PROTECTED_FUNCTIONS_COUNT; index++) {
-        status =
-            GetAverageReadTimeAtRoutine(PROTECTED_FUNCTION_ADDRESSES[index],
-                                        &instruction_time);
+        status = GetAverageReadTimeAtRoutine(
+            PROTECTED_FUNCTION_ADDRESSES[index],
+            &instruction_time);
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("DetectEptPresentOnFunction failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "DetectEptPresentOnFunction failed with status %x",
+                status);
             continue;
         }
 
@@ -1405,9 +1451,10 @@ DetectEptHooksInKeyFunctions()
                 "EPT hook detected at function: %llx with execution time of: %llx",
                 PROTECTED_FUNCTION_ADDRESSES[index],
                 instruction_time);
-            ReportEptHook(control_average,
-                          instruction_time,
-                          PROTECTED_FUNCTION_ADDRESSES[index]);
+            ReportEptHook(
+                control_average,
+                instruction_time,
+                PROTECTED_FUNCTION_ADDRESSES[index]);
         }
     }
 
@@ -1417,8 +1464,8 @@ DetectEptHooksInKeyFunctions()
 VOID
 FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
-    LPCSTR     process_name = NULL;
-    PEPROCESS* process      = (PEPROCESS*)Context;
+    LPCSTR process_name = NULL;
+    PEPROCESS* process = (PEPROCESS*)Context;
 
     if (!Context)
         return;
@@ -1431,12 +1478,13 @@ FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 
 STATIC
 NTSTATUS
-StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
-                                _In_ PVOID*                    Buffer,
-                                _In_ PULONG                    BufferSize)
+StoreModuleExecutableRegionsx86(
+    _In_ PRTL_MODULE_EXTENDED_INFO Module,
+    _In_ PVOID* Buffer,
+    _In_ PULONG BufferSize)
 {
-    NTSTATUS   status    = STATUS_UNSUCCESSFUL;
-    PEPROCESS  process   = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PEPROCESS process = NULL;
     KAPC_STATE apc_state = {0};
 
     RtlHashmapEnumerate(GetProcessHashmap(), FindWinLogonProcess, &process);
@@ -1446,11 +1494,12 @@ StoreModuleExecutableRegionsx86(_In_ PRTL_MODULE_EXTENDED_INFO Module,
 
     ImpKeStackAttachProcess(process, &apc_state);
 
-    status = StoreModuleExecutableRegionsInBuffer(Buffer,
-                                                  Module->ImageBase,
-                                                  Module->ImageSize,
-                                                  BufferSize,
-                                                  TRUE);
+    status = StoreModuleExecutableRegionsInBuffer(
+        Buffer,
+        Module->ImageBase,
+        Module->ImageSize,
+        BufferSize,
+        TRUE);
 
     ImpKeUnstackDetachProcess(&apc_state);
 
@@ -1471,18 +1520,18 @@ Enablex86Hashing(_In_ PDRIVER_LIST_HEAD Head)
 }
 
 VOID
-DeferredModuleHashingCallback(_In_ PDEVICE_OBJECT DeviceObject,
-                              _In_opt_ PVOID      Context)
+DeferredModuleHashingCallback(
+    _In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(DeviceObject);
 
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     RTL_MODULE_EXTENDED_INFO module = {0};
-    PDRIVER_LIST_HEAD        list   = GetDriverList();
-    PLIST_ENTRY              head   = &GetDriverList()->deferred_list;
-    PLIST_ENTRY              entry  = NULL;
-    PDRIVER_LIST_ENTRY       driver = NULL;
+    PDRIVER_LIST_HEAD list = GetDriverList();
+    PLIST_ENTRY head = &GetDriverList()->deferred_list;
+    PLIST_ENTRY entry = NULL;
+    PDRIVER_LIST_ENTRY driver = NULL;
 
     Enablex86Hashing(list);
 
@@ -1503,12 +1552,12 @@ DeferredModuleHashingCallback(_In_ PDEVICE_OBJECT DeviceObject,
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("HashModule-x86 failed with status %x", status);
             driver->hashed = FALSE;
-            entry          = RemoveHeadList(head);
+            entry = RemoveHeadList(head);
             continue;
         }
 
         driver->hashed = TRUE;
-        entry          = RemoveHeadList(head);
+        entry = RemoveHeadList(head);
     }
 
 end:
@@ -1521,15 +1570,15 @@ end:
 NTSTATUS
 HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
 {
-    NTSTATUS              status             = STATUS_UNSUCCESSFUL;
-    ANSI_STRING           ansi_string        = {0};
-    UNICODE_STRING        path               = {0};
-    ULONG                 memory_text_size   = 0;
-    PVOID                 memory_hash        = NULL;
-    ULONG                 memory_hash_size   = 0;
-    PVAL_INTEGRITY_HEADER memory_buffer      = NULL;
-    ULONG                 memory_buffer_size = 0;
-    PDRIVER_LIST_HEAD     list               = GetDriverList();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    ANSI_STRING ansi_string = {0};
+    UNICODE_STRING path = {0};
+    ULONG memory_text_size = 0;
+    PVOID memory_hash = NULL;
+    ULONG memory_hash_size = 0;
+    PVAL_INTEGRITY_HEADER memory_buffer = NULL;
+    ULONG memory_buffer_size = 0;
+    PDRIVER_LIST_HEAD list = GetDriverList();
 
     ImpRtlInitAnsiString(&ansi_string, Module->FullPathName);
 
@@ -1541,8 +1590,9 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
     status = ImpRtlAnsiStringToUnicodeString(&path, &ansi_string, TRUE);
 
     if (!NT_SUCCESS(status)) {
-        DEBUG_ERROR("RtlAnsiStringToUnicodeString failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "RtlAnsiStringToUnicodeString failed with status %x",
+            status);
         return status;
     }
 
@@ -1568,16 +1618,18 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
          * Once the WinLogon process has started, we can then hash new
          * x86 modules.
          */
-        status = StoreModuleExecutableRegionsx86(Module,
-                                                 (PVOID)&memory_buffer,
-                                                 &memory_buffer_size);
+        status = StoreModuleExecutableRegionsx86(
+            Module,
+            (PVOID)&memory_buffer,
+            &memory_buffer_size);
     }
     else {
-        status = StoreModuleExecutableRegionsInBuffer((PVOID)&memory_buffer,
-                                                      Module->ImageBase,
-                                                      Module->ImageSize,
-                                                      &memory_buffer_size,
-                                                      FALSE);
+        status = StoreModuleExecutableRegionsInBuffer(
+            (PVOID)&memory_buffer,
+            Module->ImageBase,
+            Module->ImageSize,
+            &memory_buffer_size,
+            FALSE);
     }
 
     if (!NT_SUCCESS(status)) {
@@ -1587,10 +1639,11 @@ HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
         goto end;
     }
 
-    status = CryptHashBuffer_sha256(memory_buffer->section_base,
-                                    memory_buffer->section_header.SizeOfRawData,
-                                    &memory_hash,
-                                    &memory_hash_size);
+    status = CryptHashBuffer_sha256(
+        memory_buffer->section_base,
+        memory_buffer->section_header.SizeOfRawData,
+        &memory_hash,
+        &memory_hash_size);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_VERBOSE("ComputeHashOfSections failed with status %x", status);
@@ -1622,8 +1675,8 @@ STATIC
 VOID
 ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
-    NTSTATUS                              status = STATUS_UNSUCCESSFUL;
-    UINT32                                len    = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 len = 0;
     PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT report = NULL;
 
     len = CryptRequestRequiredBufferLength(
@@ -1639,9 +1692,10 @@ ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     report->image_base = Module->ImageBase;
     report->image_size = Module->ImageSize;
 
-    IntCopyMemory(report->path_name,
-                  Module->FullPathName,
-                  sizeof(report->path_name));
+    IntCopyMemory(
+        report->path_name,
+        Module->FullPathName,
+        sizeof(report->path_name));
 
     status = CryptEncryptBuffer(report, len);
 
@@ -1657,13 +1711,14 @@ ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 VOID
 ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
-    NTSTATUS           status = STATUS_UNSUCCESSFUL;
-    PDRIVER_LIST_ENTRY entry  = NULL;
-    PVOID              hash   = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PDRIVER_LIST_ENTRY entry = NULL;
+    PVOID hash = NULL;
 
-    hash = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                           SHA_256_HASH_LENGTH,
-                           POOL_TAG_INTEGRITY);
+    hash = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        SHA_256_HASH_LENGTH,
+        POOL_TAG_INTEGRITY);
 
     if (!hash)
         return;
@@ -1698,12 +1753,14 @@ ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     }
 
     if (CompareHashes(hash, entry->text_hash, SHA_256_HASH_LENGTH)) {
-        DEBUG_VERBOSE("Module: %s text regions are valid.",
-                      Module->FullPathName);
+        DEBUG_VERBOSE(
+            "Module: %s text regions are valid.",
+            Module->FullPathName);
     }
     else {
-        DEBUG_WARNING("**!!** Module: %s text regions are NOT valid **!!**",
-                      Module->FullPathName);
+        DEBUG_WARNING(
+            "**!!** Module: %s text regions are NOT valid **!!**",
+            Module->FullPathName);
         ReportModifiedSystemImage(Module);
     }
 
@@ -1717,8 +1774,8 @@ STATIC
 VOID
 ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
-    NTSTATUS                            status = STATUS_UNSUCCESSFUL;
-    UINT32                              len    = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    UINT32 len = 0;
     PDRIVER_SELF_INTEGRITY_CHECK_REPORT packet = NULL;
 
     len = CryptRequestRequiredBufferLength(
@@ -1734,9 +1791,10 @@ ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
     packet->image_base = Module->ImageBase;
     packet->image_size = Module->ImageSize;
 
-    IntCopyMemory(packet->path_name,
-                  Module->FullPathName,
-                  sizeof(packet->path_name));
+    IntCopyMemory(
+        packet->path_name,
+        Module->FullPathName,
+        sizeof(packet->path_name));
 
     status = CryptEncryptBuffer(packet, len);
 
@@ -1752,14 +1810,14 @@ ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 NTSTATUS
 ValidateOurDriverImage()
 {
-    NTSTATUS                  status           = STATUS_UNSUCCESSFUL;
-    SYSTEM_MODULES            modules          = {0};
-    PRTL_MODULE_EXTENDED_INFO module_info      = NULL;
-    PVOID                     memory_hash      = NULL;
-    ULONG                     memory_hash_size = 0;
-    PDRIVER_LIST_ENTRY        entry            = NULL;
-    LPCSTR                    driver_name      = GetDriverName();
-    PUNICODE_STRING           path             = GetDriverPath();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    SYSTEM_MODULES modules = {0};
+    PRTL_MODULE_EXTENDED_INFO module_info = NULL;
+    PVOID memory_hash = NULL;
+    ULONG memory_hash_size = 0;
+    PDRIVER_LIST_ENTRY entry = NULL;
+    LPCSTR driver_name = GetDriverName();
+    PUNICODE_STRING path = GetDriverPath();
 
     status = GetSystemModuleInformation(&modules);
 
@@ -1775,9 +1833,10 @@ ValidateOurDriverImage()
         goto end;
     }
 
-    memory_hash = ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                  SHA_256_HASH_LENGTH,
-                                  POOL_TAG_INTEGRITY);
+    memory_hash = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        SHA_256_HASH_LENGTH,
+        POOL_TAG_INTEGRITY);
 
     if (!memory_hash)
         goto end;
@@ -1861,8 +1920,8 @@ GetCurrentVerificationIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 FORCEINLINE
 STATIC
 UINT32
-GetCurrentVerificationMaxIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context,
-                               _In_ UINT32                  Count)
+GetCurrentVerificationMaxIndex(
+    _In_ PSYS_MODULE_VAL_CONTEXT Context, _In_ UINT32 Count)
 {
     return Count + Context->block_size;
 }
@@ -1870,21 +1929,21 @@ GetCurrentVerificationMaxIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context,
 FORCEINLINE
 STATIC
 VOID
-UpdateCurrentVerificationIndex(_In_ PSYS_MODULE_VAL_CONTEXT Context,
-                               _In_ UINT32                  Count)
+UpdateCurrentVerificationIndex(
+    _In_ PSYS_MODULE_VAL_CONTEXT Context, _In_ UINT32 Count)
 {
     InterlockedExchange(&Context->current_count, Count);
 }
 
 STATIC
 VOID
-SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
-                                         _In_ PSYS_MODULE_VAL_CONTEXT Context)
+SystemModuleVerificationDispatchFunction(
+    _In_ PDEVICE_OBJECT DeviceObject, _In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
     UINT32 count = 0;
-    UINT32 max   = 0;
+    UINT32 max = 0;
 
     IncrementActiveThreadCount(Context);
 
@@ -1920,17 +1979,18 @@ SystemModuleVerificationDispatchFunction(_In_ PDEVICE_OBJECT DeviceObject,
 FORCEINLINE
 STATIC
 VOID
-InitSysModuleValidationContext(_Out_ PSYS_MODULE_VAL_CONTEXT  Context,
-                               _In_ PMODULE_DISPATCHER_HEADER DispatcherArray,
-                               _In_ PSYSTEM_MODULES           SystemModules)
+InitSysModuleValidationContext(
+    _Out_ PSYS_MODULE_VAL_CONTEXT Context,
+    _In_ PMODULE_DISPATCHER_HEADER DispatcherArray,
+    _In_ PSYSTEM_MODULES SystemModules)
 {
     Context->active_thread_count = 0;
-    Context->active              = TRUE;
-    Context->complete            = FALSE;
-    Context->dispatcher_info     = DispatcherArray;
-    Context->module_info         = SystemModules->address;
-    Context->total_count         = SystemModules->module_count;
-    Context->block_size          = VALIDATION_BLOCK_SIZE;
+    Context->active = TRUE;
+    Context->complete = FALSE;
+    Context->dispatcher_info = DispatcherArray;
+    Context->module_info = SystemModules->address;
+    Context->total_count = SystemModules->module_count;
+    Context->block_size = VALIDATION_BLOCK_SIZE;
 
     /* skip hal.dll and ntosrnl.exe  */
     Context->current_count = 2;
@@ -1951,10 +2011,10 @@ STATIC
 NTSTATUS
 InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 {
-    NTSTATUS                  status     = STATUS_UNSUCCESSFUL;
-    SYSTEM_MODULES            modules    = {0};
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    SYSTEM_MODULES modules = {0};
     PMODULE_DISPATCHER_HEADER dispatcher = NULL;
-    UINT32                    count      = 0;
+    UINT32 count = 0;
 
     status = GetSystemModuleInformation(&modules);
 
@@ -2013,7 +2073,7 @@ FreeModuleVerificationItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 VOID
 CleanupValidationContextOnUnload(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-    Context->active   = FALSE;
+    Context->active = FALSE;
     Context->complete = TRUE;
     FreeWorkItems(Context);
     FreeModuleVerificationItems(Context);
@@ -2030,25 +2090,26 @@ DispatchVerificationWorkerThreads(_In_ PSYS_MODULE_VAL_CONTEXT Context)
         if (!Context->work_items[index])
             continue;
 
-        ImpIoQueueWorkItem(Context->work_items[index],
-                           SystemModuleVerificationDispatchFunction,
-                           DelayedWorkQueue,
-                           Context);
+        ImpIoQueueWorkItem(
+            Context->work_items[index],
+            SystemModuleVerificationDispatchFunction,
+            DelayedWorkQueue,
+            Context);
     }
 }
 
 NTSTATUS
 SystemModuleVerificationDispatcher()
 {
-    NTSTATUS                status    = STATUS_UNSUCCESSFUL;
-    PIO_WORKITEM            work_item = NULL;
-    PSYS_MODULE_VAL_CONTEXT context   = GetSystemModuleValidationContext();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PIO_WORKITEM work_item = NULL;
+    PSYS_MODULE_VAL_CONTEXT context = GetSystemModuleValidationContext();
 
     if (context->complete) {
         DEBUG_VERBOSE(
             "System modules integrity check complete. Freeing items.");
 
-        context->active   = FALSE;
+        context->active = FALSE;
         context->complete = FALSE;
 
         FreeModuleVerificationItems(context);
@@ -2083,8 +2144,8 @@ SystemModuleVerificationDispatcher()
 NTSTATUS
 GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
 {
-    NTSTATUS           status = STATUS_ABANDONED;
-    RTL_OSVERSIONINFOW info   = {0};
+    NTSTATUS status = STATUS_ABANDONED;
+    RTL_OSVERSIONINFOW info = {0};
 
     if (!VersionInfo)
         return STATUS_INVALID_PARAMETER;
@@ -2096,15 +2157,16 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
         return status;
     }
 
-    VersionInfo->dwBuildNumber       = info.dwBuildNumber;
-    VersionInfo->dwMajorVersion      = info.dwMajorVersion;
-    VersionInfo->dwMinorVersion      = info.dwMinorVersion;
+    VersionInfo->dwBuildNumber = info.dwBuildNumber;
+    VersionInfo->dwMajorVersion = info.dwMajorVersion;
+    VersionInfo->dwMinorVersion = info.dwMinorVersion;
     VersionInfo->dwOSVersionInfoSize = info.dwOSVersionInfoSize;
-    VersionInfo->dwPlatformId        = info.dwPlatformId;
+    VersionInfo->dwPlatformId = info.dwPlatformId;
 
-    IntCopyMemory(VersionInfo->szCSDVersion,
-                  info.szCSDVersion,
-                  sizeof(VersionInfo->szCSDVersion));
+    IntCopyMemory(
+        VersionInfo->szCSDVersion,
+        info.szCSDVersion,
+        sizeof(VersionInfo->szCSDVersion));
 
     return status;
 }
@@ -2118,28 +2180,29 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
 UINT32
 CalculateCpuCoreUsage(_In_ UINT32 Core)
 {
-    PVOID  kpcr        = NULL;
-    PVOID  kpcrb       = NULL;
-    PVOID  idle_thread = NULL;
-    UINT32 idle_time   = 0;
+    PVOID kpcr = NULL;
+    PVOID kpcrb = NULL;
+    PVOID idle_thread = NULL;
+    UINT32 idle_time = 0;
     UINT32 kernel_time = 0;
-    UINT32 user_time   = 0;
+    UINT32 user_time = 0;
 
     KeSetSystemAffinityThread(1ull << Core);
 
     while (Core != KeGetCurrentProcessorNumber())
         YieldProcessor();
 
-    kpcr        = __readmsr(IA32_GS_BASE);
-    kpcrb       = (UINT64)kpcr + KPCR_KPRCB_OFFSET;
+    kpcr = __readmsr(IA32_GS_BASE);
+    kpcrb = (UINT64)kpcr + KPCR_KPRCB_OFFSET;
     idle_thread = *(UINT64*)((UINT64)kpcrb + KPCRB_IDLE_THREAD_OFFSET);
 
-    idle_time   = *(UINT32*)((UINT64)idle_thread + KTHREAD_IDLE_TIME_OFFSET);
+    idle_time = *(UINT32*)((UINT64)idle_thread + KTHREAD_IDLE_TIME_OFFSET);
     kernel_time = *(UINT32*)((UINT64)kpcrb + KPCRB_KERNEL_TIME_OFFSET);
-    user_time   = *(UINT32*)((UINT64)kpcrb + KPCRB_USER_TIME_OFFSET);
+    user_time = *(UINT32*)((UINT64)kpcrb + KPCRB_USER_TIME_OFFSET);
 
-    return (100 - (UINT32)(UInt32x32To64(idle_time, 100) /
-                           (UINT64)(kernel_time + user_time)));
+    return (
+        100 - (UINT32)(UInt32x32To64(idle_time, 100) /
+                       (UINT64)(kernel_time + user_time)));
 }
 
 BOOLEAN
@@ -2177,16 +2240,18 @@ STATIC
 NTSTATUS
 AllocateHeartbeatObjects(_Inout_ PHEARTBEAT_CONFIGURATION Configuration)
 {
-    Configuration->dpc = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                            sizeof(KDPC),
-                                            POOL_TAG_HEARTBEAT);
+    Configuration->dpc = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        sizeof(KDPC),
+        POOL_TAG_HEARTBEAT);
 
     if (!Configuration->dpc)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Configuration->timer = ImpExAllocatePool2(POOL_FLAG_NON_PAGED,
-                                              sizeof(KTIMER),
-                                              POOL_TAG_HEARTBEAT);
+    Configuration->timer = ImpExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        sizeof(KTIMER),
+        POOL_TAG_HEARTBEAT);
 
     if (!Configuration->timer) {
         ImpExFreePoolWithTag(Configuration->dpc, POOL_TAG_HEARTBEAT);
@@ -2209,8 +2274,8 @@ STATIC
 LARGE_INTEGER
 GenerateHeartbeatDueTime()
 {
-    UINT64        interval = 0;
-    LARGE_INTEGER ticks    = {0};
+    UINT64 interval = 0;
+    LARGE_INTEGER ticks = {0};
     LARGE_INTEGER due_time = {0};
 
     KeQueryTickCount(&ticks);
@@ -2272,7 +2337,7 @@ STATIC
 PHEARTBEAT_PACKET
 BuildHeartbeatPacket(_In_ UINT32 Size)
 {
-    PIRP_QUEUE_HEAD   queue  = GetIrpQueueHead();
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     PHEARTBEAT_PACKET packet = NULL;
 
     packet = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, Size, POOL_TAG_HEARTBEAT);
@@ -2290,8 +2355,8 @@ BuildHeartbeatPacket(_In_ UINT32 Size)
      * less then whats noted.
      */
     packet->total_heartbeats_completed = queue->total_heartbeats_completed;
-    packet->total_irps_completed       = queue->total_irps_completed;
-    packet->total_reports_completed    = queue->total_reports_completed;
+    packet->total_irps_completed = queue->total_irps_completed;
+    packet->total_reports_completed = queue->total_reports_completed;
 
     KeReleaseGuardedMutex(&queue->lock);
 
@@ -2307,17 +2372,17 @@ HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
     if (!ARGUMENT_PRESENT(Context))
         return;
 
-    UINT32                   packet_size = 0;
-    NTSTATUS                 status      = STATUS_UNSUCCESSFUL;
-    PHEARTBEAT_PACKET        packet      = NULL;
-    PHEARTBEAT_CONFIGURATION config      = (PHEARTBEAT_CONFIGURATION)Context;
+    UINT32 packet_size = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PHEARTBEAT_PACKET packet = NULL;
+    PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)Context;
 
     DEBUG_VERBOSE("Heartbeat timer alerted. Generating heartbeat packet.");
 
     SetHeartbeatActive(config);
 
     packet_size = CryptRequestRequiredBufferLength(sizeof(HEARTBEAT_PACKET));
-    packet      = BuildHeartbeatPacket(packet_size);
+    packet = BuildHeartbeatPacket(packet_size);
 
     if (packet) {
         status = CryptEncryptBuffer(packet, packet_size);
@@ -2350,10 +2415,11 @@ queue_next:
 
 STATIC
 VOID
-HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
-                    _In_opt_ PVOID DeferredContext,
-                    _In_opt_ PVOID SystemArgument1,
-                    _In_opt_ PVOID SystemArgument2)
+HeartbeatDpcRoutine(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
 {
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
@@ -2364,10 +2430,11 @@ HeartbeatDpcRoutine(_In_ PKDPC     Dpc,
 
     PHEARTBEAT_CONFIGURATION config = (PHEARTBEAT_CONFIGURATION)DeferredContext;
 
-    IoQueueWorkItem(config->work_item,
-                    HeartbeatWorkItem,
-                    NormalWorkQueue,
-                    config);
+    IoQueueWorkItem(
+        config->work_item,
+        HeartbeatWorkItem,
+        NormalWorkQueue,
+        config);
 }
 
 /*
@@ -2389,9 +2456,9 @@ InitialiseHeartbeatConfiguration(_Out_ PHEARTBEAT_CONFIGURATION Configuration)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-    Configuration->counter   = 0;
-    Configuration->active    = FALSE;
-    Configuration->seed      = GenerateRandSeed();
+    Configuration->counter = 0;
+    Configuration->active = FALSE;
+    Configuration->seed = GenerateRandSeed();
     Configuration->work_item = IoAllocateWorkItem(GetDriverDeviceObject());
 
     if (!Configuration->work_item)

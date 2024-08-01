@@ -1,9 +1,9 @@
 #include "hv.h"
 
-#include <intrin.h>
-#include "imports.h"
 #include "common.h"
+#include "imports.h"
 #include "io.h"
+#include <intrin.h>
 
 #include "lib/stdlib.h"
 
@@ -29,8 +29,8 @@ APERFMsrTimingCheck()
 {
     KAFFINITY new_affinity = {0};
     KAFFINITY old_affinity = {0};
-    UINT64    old_irql     = 0;
-    INT       cpuid_result[4];
+    UINT64 old_irql = 0;
+    INT cpuid_result[4];
 
     /*
      * First thing we do is we lock the current thread to the logical
@@ -98,14 +98,15 @@ PerformVirtualizationDetection(_Inout_ PIRP Irp)
     }
 
     HYPERVISOR_DETECTION_REPORT report = {0};
-    report.aperf_msr_timing_check      = APERFMsrTimingCheck();
-    report.invd_emulation_check        = TestINVDEmulation();
+    report.aperf_msr_timing_check = APERFMsrTimingCheck();
+    report.invd_emulation_check = TestINVDEmulation();
 
     Irp->IoStatus.Information = sizeof(HYPERVISOR_DETECTION_REPORT);
 
-    IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                  &report,
-                  sizeof(HYPERVISOR_DETECTION_REPORT));
+    IntCopyMemory(
+        Irp->AssociatedIrp.SystemBuffer,
+        &report,
+        sizeof(HYPERVISOR_DETECTION_REPORT));
 
     return STATUS_SUCCESS;
 }

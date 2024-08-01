@@ -137,7 +137,8 @@ QueryActiveApcContextsForCompletion()
 
         switch (entry->context_id) {
         case APC_CONTEXT_ID_STACKWALK:
-            FreeApcStackwalkApcContextInformation((PAPC_STACKWALK_CONTEXT)entry);
+            FreeApcStackwalkApcContextInformation(
+                (PAPC_STACKWALK_CONTEXT)entry);
             FreeApcContextStructure(entry);
             break;
         }

@@ -108,9 +108,9 @@ RtlRbTreePrintCurrentStatistics(_In_ PRB_TREE Tree)
  *   - This stores the size of the objects that will be stored in the tree. It
  *     is used to allocate memory for the nodes.
  *   - Lets say each node needs to have a THREAD_LIST_ENTRY object. The
- *     ObjectSize = sizeof(THREAD_LIST_OBJECT) and in turn will mean each node will
- *     be of size: sizeof(THREAD_LIST_OBJECT) + sizeof(RB_TREE_NODE). This is also
- *     this size the lookaside list pools will be set to.
+ *     ObjectSize = sizeof(THREAD_LIST_OBJECT) and in turn will mean each node
+ * will be of size: sizeof(THREAD_LIST_OBJECT) + sizeof(RB_TREE_NODE). This is
+ * also this size the lookaside list pools will be set to.
  *
  * > `LOOKASIDE_LIST_EX pool`:
  *   - This is a lookaside list that provides a fast, efficient way to allocate
@@ -118,31 +118,31 @@ RtlRbTreePrintCurrentStatistics(_In_ PRB_TREE Tree)
  *     block is `ObjectSize + sizeof(RB_TREE_NODE)`.
  */
 NTSTATUS
-RtlRbTreeCreate(_In_ RB_COMPARE Compare,
-                _In_ UINT32     ObjectSize,
-                _Out_ PRB_TREE  Tree)
+RtlRbTreeCreate(
+    _In_ RB_COMPARE Compare, _In_ UINT32 ObjectSize, _Out_ PRB_TREE Tree)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
     if (!ARGUMENT_PRESENT(Compare) || ObjectSize == 0)
         return STATUS_INVALID_PARAMETER;
 
-    status = ExInitializeLookasideListEx(&Tree->pool,
-                                         NULL,
-                                         NULL,
-                                         NonPagedPoolNx,
-                                         0,
-                                         ObjectSize + sizeof(RB_TREE_NODE),
-                                         POOL_TAG_RB_TREE,
-                                         0);
+    status = ExInitializeLookasideListEx(
+        &Tree->pool,
+        NULL,
+        NULL,
+        NonPagedPoolNx,
+        0,
+        ObjectSize + sizeof(RB_TREE_NODE),
+        POOL_TAG_RB_TREE,
+        0);
 
     if (!NT_SUCCESS(status))
         return status;
 
-    Tree->compare         = Compare;
-    Tree->deletion_count  = 0;
+    Tree->compare = Compare;
+    Tree->deletion_count = 0;
     Tree->insertion_count = 0;
-    Tree->node_count      = 0;
+    Tree->node_count = 0;
 
     KeInitializeGuardedMutex(&Tree->lock);
 
@@ -167,7 +167,7 @@ VOID
 RtlpRbTreeRotateLeft(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
 {
     PRB_TREE_NODE right_child = Node->right;
-    Node->right               = right_child->left;
+    Node->right = right_child->left;
 
     if (right_child->left)
         right_child->left->parent = Node;
@@ -182,7 +182,7 @@ RtlpRbTreeRotateLeft(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
         Node->parent->right = right_child;
 
     right_child->left = Node;
-    Node->parent      = right_child;
+    Node->parent = right_child;
 }
 
 /*
@@ -205,7 +205,7 @@ VOID
 RtlpRbTreeRotateRight(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
 {
     PRB_TREE_NODE left_child = Node->left;
-    Node->left               = left_child->right;
+    Node->left = left_child->right;
 
     if (left_child->right)
         left_child->right->parent = Node;
@@ -220,7 +220,7 @@ RtlpRbTreeRotateRight(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
         Node->parent->left = left_child;
 
     left_child->right = Node;
-    Node->parent      = left_child;
+    Node->parent = left_child;
 }
 
 /*
@@ -241,8 +241,8 @@ STATIC
 VOID
 RtlpRbTreeFixupInsert(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
 {
-    PRB_TREE_NODE uncle       = NULL;
-    PRB_TREE_NODE parent      = NULL;
+    PRB_TREE_NODE uncle = NULL;
+    PRB_TREE_NODE parent = NULL;
     PRB_TREE_NODE grandparent = NULL;
 
     while ((parent = Node->parent) && parent->colour == red) {
@@ -252,19 +252,19 @@ RtlpRbTreeFixupInsert(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             uncle = grandparent->right;
 
             if (uncle && uncle->colour == red) {
-                parent->colour      = black;
-                uncle->colour       = black;
+                parent->colour = black;
+                uncle->colour = black;
                 grandparent->colour = red;
-                Node                = grandparent;
+                Node = grandparent;
             }
             else {
                 if (Node == parent->right) {
                     RtlpRbTreeRotateLeft(Tree, parent);
-                    Node   = parent;
+                    Node = parent;
                     parent = Node->parent;
                 }
 
-                parent->colour      = black;
+                parent->colour = black;
                 grandparent->colour = red;
                 RtlpRbTreeRotateRight(Tree, grandparent);
             }
@@ -273,19 +273,19 @@ RtlpRbTreeFixupInsert(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             uncle = grandparent->left;
 
             if (uncle && uncle->colour == red) {
-                parent->colour      = black;
-                uncle->colour       = black;
+                parent->colour = black;
+                uncle->colour = black;
                 grandparent->colour = red;
-                Node                = grandparent;
+                Node = grandparent;
             }
             else {
                 if (Node == parent->left) {
                     RtlpRbTreeRotateRight(Tree, parent);
-                    Node   = parent;
+                    Node = parent;
                     parent = Node->parent;
                 }
 
-                parent->colour      = black;
+                parent->colour = black;
                 grandparent->colour = red;
                 RtlpRbTreeRotateLeft(Tree, grandparent);
             }
@@ -325,9 +325,9 @@ RtlpRbTreeFixupInsert(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
 PVOID
 RtlRbTreeInsertNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
-    UINT32        result  = 0;
-    PRB_TREE_NODE node    = NULL;
-    PRB_TREE_NODE parent  = NULL;
+    UINT32 result = 0;
+    PRB_TREE_NODE node = NULL;
+    PRB_TREE_NODE parent = NULL;
     PRB_TREE_NODE current = NULL;
 
     node = ExAllocateFromLookasideListEx(&Tree->pool);
@@ -336,8 +336,8 @@ RtlRbTreeInsertNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
         return NULL;
 
     node->parent = NULL;
-    node->left   = NULL;
-    node->right  = NULL;
+    node->left = NULL;
+    node->right = NULL;
     node->colour = red;
 
     current = Tree->root;
@@ -437,7 +437,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             sibling = Node->parent->right;
 
             if (sibling && sibling->colour == red) {
-                sibling->colour      = black;
+                sibling->colour = black;
                 Node->parent->colour = red;
                 RtlpRbTreeRotateLeft(Tree, Node->parent);
                 sibling = Node->parent->right;
@@ -446,7 +446,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             if (sibling && (!sibling->left || sibling->left->colour == black) &&
                 (!sibling->right || sibling->right->colour == black)) {
                 sibling->colour = red;
-                Node            = Node->parent;
+                Node = Node->parent;
             }
             else {
                 if (sibling &&
@@ -460,7 +460,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
                 }
 
                 if (sibling) {
-                    sibling->colour      = Node->parent->colour;
+                    sibling->colour = Node->parent->colour;
                     Node->parent->colour = black;
 
                     if (sibling->right)
@@ -476,7 +476,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
             sibling = Node->parent->left;
 
             if (sibling && sibling->colour == red) {
-                sibling->colour      = black;
+                sibling->colour = black;
                 Node->parent->colour = red;
                 RtlpRbTreeRotateRight(Tree, Node->parent);
                 sibling = Node->parent->left;
@@ -486,7 +486,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
                 (!sibling->right || sibling->right->colour == black) &&
                 (!sibling->left || sibling->left->colour == black)) {
                 sibling->colour = red;
-                Node            = Node->parent;
+                Node = Node->parent;
             }
             else {
                 if (sibling &&
@@ -500,7 +500,7 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
                 }
 
                 if (sibling) {
-                    sibling->colour      = Node->parent->colour;
+                    sibling->colour = Node->parent->colour;
                     Node->parent->colour = black;
 
                     if (sibling->left)
@@ -538,9 +538,10 @@ RtlpRbTreeFixupDelete(_In_ PRB_TREE Tree, _In_ PRB_TREE_NODE Node)
  */
 STATIC
 VOID
-RtlpRbTreeTransplant(_In_ PRB_TREE      Tree,
-                     _In_ PRB_TREE_NODE Target,
-                     _In_ PRB_TREE_NODE Replacement)
+RtlpRbTreeTransplant(
+    _In_ PRB_TREE Tree,
+    _In_ PRB_TREE_NODE Target,
+    _In_ PRB_TREE_NODE Replacement)
 {
     if (!Target->parent)
         Tree->root = Replacement;
@@ -557,7 +558,7 @@ STATIC
 PRB_TREE_NODE
 RtlpRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
-    INT32         result  = 0;
+    INT32 result = 0;
     PRB_TREE_NODE current = Tree->root;
 
     while (current) {
@@ -597,10 +598,10 @@ RtlpRbTreeFindNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 VOID
 RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
-    PRB_TREE_NODE target    = NULL;
-    PRB_TREE_NODE child     = NULL;
+    PRB_TREE_NODE target = NULL;
+    PRB_TREE_NODE child = NULL;
     PRB_TREE_NODE successor = NULL;
-    COLOUR        colour    = {0};
+    COLOUR colour = {0};
 
     /* We want the node not the object */
     target = RtlpRbTreeFindNode(Tree, Key);
@@ -620,8 +621,8 @@ RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
     }
     else {
         successor = RtlpRbTreeMinimum(target->right);
-        colour    = successor->colour;
-        child     = successor->right;
+        colour = successor->colour;
+        child = successor->right;
 
         if (successor->parent == target) {
             if (child)
@@ -629,14 +630,14 @@ RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
         }
         else {
             RtlpRbTreeTransplant(Tree, successor, successor->right);
-            successor->right         = target->right;
+            successor->right = target->right;
             successor->right->parent = successor;
         }
 
         RtlpRbTreeTransplant(Tree, target, successor);
-        successor->left         = target->left;
+        successor->left = target->left;
         successor->left->parent = successor;
-        successor->colour       = target->colour;
+        successor->colour = target->colour;
     }
 
     if (colour == black && child)
@@ -654,7 +655,7 @@ RtlRbTreeDeleteNode(_In_ PRB_TREE Tree, _In_ PVOID Key)
 PVOID
 RtlRbTreeFindNodeObject(_In_ PRB_TREE Tree, _In_ PVOID Key)
 {
-    INT32         result  = 0;
+    INT32 result = 0;
     PRB_TREE_NODE current = Tree->root;
 
     while (current) {
@@ -673,9 +674,10 @@ RtlRbTreeFindNodeObject(_In_ PRB_TREE Tree, _In_ PVOID Key)
 
 STATIC
 VOID
-RtlpRbTreeEnumerate(_In_ PRB_TREE_NODE    Node,
-                    _In_ RB_ENUM_CALLBACK Callback,
-                    _In_opt_ PVOID        Context)
+RtlpRbTreeEnumerate(
+    _In_ PRB_TREE_NODE Node,
+    _In_ RB_ENUM_CALLBACK Callback,
+    _In_opt_ PVOID Context)
 {
     if (Node == NULL)
         return;
@@ -686,9 +688,8 @@ RtlpRbTreeEnumerate(_In_ PRB_TREE_NODE    Node,
 }
 
 VOID
-RtlRbTreeEnumerate(_In_ PRB_TREE         Tree,
-                   _In_ RB_ENUM_CALLBACK Callback,
-                   _In_opt_ PVOID        Context)
+RtlRbTreeEnumerate(
+    _In_ PRB_TREE Tree, _In_ RB_ENUM_CALLBACK Callback, _In_opt_ PVOID Context)
 {
     if (Tree->root == NULL)
         return;
@@ -708,11 +709,12 @@ RtlpPrintInOrder(PRB_TREE_NODE Node)
     RtlpPrintInOrder(Node->left);
 
     const char* color = (Node->colour == red) ? "Red" : "Black";
-    DbgPrintEx(DPFLTR_DEFAULT_ID,
-               DPFLTR_INFO_LEVEL,
-               "Node: Key=%p, Color=%s\n",
-               *((PHANDLE)Node->object),
-               color);
+    DbgPrintEx(
+        DPFLTR_DEFAULT_ID,
+        DPFLTR_INFO_LEVEL,
+        "Node: Key=%p, Color=%s\n",
+        *((PHANDLE)Node->object),
+        color);
 
     RtlpPrintInOrder(Node->right);
 }
@@ -722,7 +724,7 @@ RtlRbTreeInOrderPrint(_In_ PRB_TREE Tree)
 {
     DEBUG_ERROR("*************************************************");
     DEBUG_ERROR("<><><><>STARTING IN ORDER PRINT <><><><><><");
-    RtlRbTreeAcquireLock(Tree);    
+    RtlRbTreeAcquireLock(Tree);
     RtlpPrintInOrder(Tree->root);
     RtlRbTreeReleaselock(Tree);
     DEBUG_ERROR("<><><><>ENDING IN ORDER PRINT <><><><><><");

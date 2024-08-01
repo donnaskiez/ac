@@ -55,19 +55,21 @@ PeGetExportDataDirectorySafe(_In_ PVOID Image)
 }
 
 PIMAGE_EXPORT_DIRECTORY
-PeGetExportDirectory(_In_ PVOID                 Image,
-                     _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
+PeGetExportDirectory(
+    _In_ PVOID Image, _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
 {
     if (!ExportDataDirectory->VirtualAddress || !ExportDataDirectory->Size)
         return NULL;
 
     return RVA(
-        PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
+        PIMAGE_EXPORT_DIRECTORY,
+        Image,
+        ExportDataDirectory->VirtualAddress);
 }
 
 PIMAGE_EXPORT_DIRECTORY
-PeGetExportDirectorySafe(_In_ PVOID                 Image,
-                     _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
+PeGetExportDirectorySafe(
+    _In_ PVOID Image, _In_ PIMAGE_DATA_DIRECTORY ExportDataDirectory)
 {
     if (!MmIsAddressValid(Image))
         return NULL;
@@ -76,7 +78,9 @@ PeGetExportDirectorySafe(_In_ PVOID                 Image,
         return NULL;
 
     return RVA(
-        PIMAGE_EXPORT_DIRECTORY, Image, ExportDataDirectory->VirtualAddress);
+        PIMAGE_EXPORT_DIRECTORY,
+        Image,
+        ExportDataDirectory->VirtualAddress);
 }
 
 UINT32
@@ -97,9 +101,9 @@ GetSectionCountSafe(_In_ PNT_HEADER_64 Header)
 PVOID
 PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
 {
-    ANSI_STRING           target   = {0};
-    PNT_HEADER_64         nt       = NULL;
-    PIMAGE_DATA_DIRECTORY data     = NULL;
+    ANSI_STRING target = {0};
+    PNT_HEADER_64 nt = NULL;
+    PIMAGE_DATA_DIRECTORY data = NULL;
     PIMAGE_EXPORT_DIRECTORY export = NULL;
 
     RtlInitAnsiString(&target, Name);
@@ -119,18 +123,14 @@ PeFindExportByName(_In_ PVOID Image, _In_ PCHAR Name)
     if (!export)
         return NULL;
 
-    PUINT32 functions =
-        RVA(PUINT32, Image, export->AddressOfFunctions);
-    PUINT32 names =
-        RVA(PUINT32, Image, export->AddressOfNames);
-    PUINT16 ordinals =
-        RVA(PUINT16, Image, export->AddressOfNameOrdinals);
+    PUINT32 functions = RVA(PUINT32, Image, export->AddressOfFunctions);
+    PUINT32 names = RVA(PUINT32, Image, export->AddressOfNames);
+    PUINT16 ordinals = RVA(PUINT16, Image, export->AddressOfNameOrdinals);
 
     for (UINT32 index = 0; index < export->NumberOfNames; index++) {
         PCHAR export = RVA(PCHAR, Image, names[index]);
         if (!IntCompareString(Name, export))
-            return RVA(
-                PVOID, Image, functions[ordinals[index]]);
+            return RVA(PVOID, Image, functions[ordinals[index]]);
     }
 
     return NULL;

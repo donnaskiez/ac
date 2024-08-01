@@ -2,14 +2,14 @@
 
 #include <intrin.h>
 
-#include "pool.h"
 #include "callbacks.h"
 #include "driver.h"
+#include "pool.h"
 
-#include "session.h"
-#include "imports.h"
 #include "containers/tree.h"
 #include "crypt.h"
+#include "imports.h"
+#include "session.h"
 
 #include "lib/stdlib.h"
 
@@ -23,9 +23,9 @@ DoesThreadHaveValidCidEntry(_In_ PETHREAD Thread)
 {
     PAGED_CODE();
 
-    NTSTATUS status    = STATUS_UNSUCCESSFUL;
-    HANDLE   thread_id = NULL;
-    PETHREAD thread    = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    HANDLE thread_id = NULL;
+    PETHREAD thread = NULL;
 
     /*
      * PsGetThreadId simply returns ETHREAD->Cid.UniqueThread
@@ -80,15 +80,15 @@ DoesThreadHaveValidCidEntry(_In_ PETHREAD Thread)
  * any APC's queued.
  */
 STATIC VOID
-DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
-                                     _Inout_opt_ PVOID       Context)
+DetectAttachedThreadsProcessCallback(
+    _In_ PTHREAD_LIST_ENTRY ThreadListEntry, _Inout_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
 
-    NTSTATUS    status            = STATUS_UNSUCCESSFUL;
-    PKAPC_STATE apc_state         = NULL;
-    PEPROCESS   protected_process = NULL;
-    UINT32      packet_size =
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PKAPC_STATE apc_state = NULL;
+    PEPROCESS protected_process = NULL;
+    UINT32 packet_size =
         CryptRequestRequiredBufferLength(sizeof(ATTACH_PROCESS_REPORT));
 
     SessionGetProcess(&protected_process);
@@ -110,8 +110,9 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
         return;
     }
 
-    DEBUG_WARNING("Thread is attached to our protected process: %llx",
-                  (UINT64)ThreadListEntry->thread);
+    DEBUG_WARNING(
+        "Thread is attached to our protected process: %llx",
+        (UINT64)ThreadListEntry->thread);
 
     PATTACH_PROCESS_REPORT report =
         ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
@@ -121,7 +122,7 @@ DetectAttachedThreadsProcessCallback(_In_ PTHREAD_LIST_ENTRY ThreadListEntry,
 
     INIT_REPORT_PACKET(report, REPORT_ILLEGAL_ATTACH_PROCESS, 0);
 
-    report->thread_id      = ImpPsGetThreadId(ThreadListEntry->thread);
+    report->thread_id = ImpPsGetThreadId(ThreadListEntry->thread);
     report->thread_address = ThreadListEntry->thread;
 
     status = CryptEncryptBuffer(report, packet_size);
@@ -141,5 +142,7 @@ DetectThreadsAttachedToProtectedProcess()
     PAGED_CODE();
     DEBUG_VERBOSE("Detecting threads attached to our process...");
     RtlRbTreeEnumerate(
-        GetThreadTree(), DetectAttachedThreadsProcessCallback, NULL);
+        GetThreadTree(),
+        DetectAttachedThreadsProcessCallback,
+        NULL);
 }

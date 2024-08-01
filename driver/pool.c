@@ -4,9 +4,9 @@
 
 #include "callbacks.h"
 
+#include "crypt.h"
 #include "ia32.h"
 #include "imports.h"
-#include "crypt.h"
 
 #include "lib/stdlib.h"
 
@@ -56,28 +56,30 @@ typedef struct _PROCESS_SCAN_CONTEXT {
 
 STATIC
 BOOLEAN
-ValidateIfAddressIsProcessStructure(_In_ PVOID        Address,
-                                    _In_ PPOOL_HEADER PoolHeader);
+ValidateIfAddressIsProcessStructure(
+    _In_ PVOID Address, _In_ PPOOL_HEADER PoolHeader);
 
 STATIC
 VOID
-ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
-                                  _In_ ULONG                    PageSize,
-                                  _In_ ULONG                    ObjectIndex,
-                                  _Inout_ PPROCESS_SCAN_CONTEXT Context);
+ScanPageForKernelObjectAllocation(
+    _In_ UINT64 PageBase,
+    _In_ ULONG PageSize,
+    _In_ ULONG ObjectIndex,
+    _Inout_ PPROCESS_SCAN_CONTEXT Context);
 
 STATIC
 BOOLEAN
-IsPhysicalAddressInPhysicalMemoryRange(_In_ UINT64 PhysicalAddress,
-                                       _In_ PPHYSICAL_MEMORY_RANGE
-                                           PhysicalMemoryRanges);
+IsPhysicalAddressInPhysicalMemoryRange(
+    _In_ UINT64 PhysicalAddress,
+    _In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges);
 
 STATIC
 VOID
-EnumerateKernelLargePages(_In_ UINT64                PageBase,
-                          _In_ ULONG                 PageSize,
-                          _In_ PPROCESS_SCAN_CONTEXT Context,
-                          _In_ ULONG                 ObjectIndex);
+EnumerateKernelLargePages(
+    _In_ UINT64 PageBase,
+    _In_ ULONG PageSize,
+    _In_ PPROCESS_SCAN_CONTEXT Context,
+    _In_ ULONG ObjectIndex);
 
 STATIC
 VOID
@@ -89,8 +91,8 @@ IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context);
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY Node,
-                                        _In_opt_ PVOID           Context);
+CheckIfProcessAllocationIsInProcessList(
+    _In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context);
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, GetGlobalDebuggerData)
@@ -105,9 +107,9 @@ GetGlobalDebuggerData()
 {
     PAGED_CODE();
 
-    CONTEXT            context       = {0};
-    PDUMP_HEADER       dump_header   = {0};
-    UINT64             thread_state  = 0;
+    CONTEXT context = {0};
+    PDUMP_HEADER dump_header = {0};
+    UINT64 thread_state = 0;
     PKDDEBUGGER_DATA64 debugger_data = NULL;
 
     context.ContextFlags = CONTEXT_FULL;
@@ -115,23 +117,35 @@ GetGlobalDebuggerData()
     RtlCaptureContext(&context);
 
     dump_header = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, DUMP_BLOCK_SIZE, POOL_DUMP_BLOCK_TAG);
+        POOL_FLAG_NON_PAGED,
+        DUMP_BLOCK_SIZE,
+        POOL_DUMP_BLOCK_TAG);
 
     if (!dump_header)
         goto end;
 
     KeCapturePersistentThreadState(
-        &context, NULL, NULL, NULL, NULL, NULL, NULL, dump_header);
+        &context,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        dump_header);
 
     debugger_data = (PKDDEBUGGER_DATA64)ExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(KDDEBUGGER_DATA64), POOL_DEBUGGER_DATA_TAG);
+        POOL_FLAG_NON_PAGED,
+        sizeof(KDDEBUGGER_DATA64),
+        POOL_DEBUGGER_DATA_TAG);
 
     if (!debugger_data)
         goto end;
 
-    IntCopyMemory(debugger_data,
-                  dump_header->KdDebuggerDataBlock,
-                  sizeof(KDDEBUGGER_DATA64));
+    IntCopyMemory(
+        debugger_data,
+        dump_header->KdDebuggerDataBlock,
+        sizeof(KDDEBUGGER_DATA64));
 
 end:
 
@@ -200,25 +214,25 @@ GetPsActiveProcessHead(_Out_ PUINT64 Address)
  */
 STATIC
 BOOLEAN
-ValidateIfAddressIsProcessStructure(_In_ PVOID        Address,
-                                    _In_ PPOOL_HEADER PoolHeader)
+ValidateIfAddressIsProcessStructure(
+    _In_ PVOID Address, _In_ PPOOL_HEADER PoolHeader)
 {
-    UINT64  peak_virtual_size    = 0;
-    UINT64  dir_table_base       = 0;
-    UINT64  allocation_size      = 0;
-    UINT64  peb                  = 0;
-    UINT64  object_table         = 0;
-    BOOLEAN peb_test             = FALSE;
-    BOOLEAN object_table_test    = FALSE;
-    UINT64  allocation_size_test = 0;
+    UINT64 peak_virtual_size = 0;
+    UINT64 dir_table_base = 0;
+    UINT64 allocation_size = 0;
+    UINT64 peb = 0;
+    UINT64 object_table = 0;
+    BOOLEAN peb_test = FALSE;
+    BOOLEAN object_table_test = FALSE;
+    UINT64 allocation_size_test = 0;
 
-    if (ImpMmIsAddressValid((UINT64)Address +
-                            KPROCESS_DIRECTORY_TABLE_BASE_OFFSET))
+    if (ImpMmIsAddressValid(
+            (UINT64)Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET))
         dir_table_base =
             *(UINT64*)((UINT64)Address + KPROCESS_DIRECTORY_TABLE_BASE_OFFSET);
 
-    if (ImpMmIsAddressValid((UINT64)Address +
-                            EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET))
+    if (ImpMmIsAddressValid(
+            (UINT64)Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET))
         peak_virtual_size =
             *(UINT64*)((UINT64)Address + EPROCESS_PEAK_VIRTUAL_SIZE_OFFSET);
 
@@ -278,23 +292,24 @@ ValidateIfAddressIsProcessStructure(_In_ PVOID        Address,
  */
 STATIC
 VOID
-ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
-                                  _In_ ULONG                    PageSize,
-                                  _In_ ULONG                    ObjectIndex,
-                                  _Inout_ PPROCESS_SCAN_CONTEXT Context)
+ScanPageForKernelObjectAllocation(
+    _In_ UINT64 PageBase,
+    _In_ ULONG PageSize,
+    _In_ ULONG ObjectIndex,
+    _Inout_ PPROCESS_SCAN_CONTEXT Context)
 {
-    INT          length           = 0;
-    CHAR         current_char     = 0;
-    CHAR         current_sig_byte = 0;
-    PPOOL_HEADER pool_header      = NULL;
-    PEPROCESS    process          = NULL;
-    PEPROCESS    process_size_one = NULL;
-    PEPROCESS    process_size_two = NULL;
-    PEPROCESS    test_process     = NULL;
-    LPCSTR       process_name     = NULL;
-    PUINT64      address_list     = NULL;
-    ULONG        allocation_size  = 0;
-    ULONG        minimum_process_allocation_size =
+    INT length = 0;
+    CHAR current_char = 0;
+    CHAR current_sig_byte = 0;
+    PPOOL_HEADER pool_header = NULL;
+    PEPROCESS process = NULL;
+    PEPROCESS process_size_one = NULL;
+    PEPROCESS process_size_two = NULL;
+    PEPROCESS test_process = NULL;
+    LPCSTR process_name = NULL;
+    PUINT64 address_list = NULL;
+    ULONG allocation_size = 0;
+    ULONG minimum_process_allocation_size =
         EPROCESS_SIZE - sizeof(POOL_HEADER) - OBJECT_HEADER_SIZE;
 
     if (!PageBase || !PageSize)
@@ -335,8 +350,9 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
                         (PEPROCESS)((UINT64)pool_header + sizeof(POOL_HEADER) +
                                     header_size);
 
-                    if (ValidateIfAddressIsProcessStructure(test_process,
-                                                            pool_header)) {
+                    if (ValidateIfAddressIsProcessStructure(
+                            test_process,
+                            pool_header)) {
                         process = test_process;
                         break;
                     }
@@ -345,8 +361,9 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
                 if (!process)
                     break;
 
-                DEBUG_VERBOSE("Found process via pt walk: %llx",
-                              (UINT64)process);
+                DEBUG_VERBOSE(
+                    "Found process via pt walk: %llx",
+                    (UINT64)process);
 
                 address_list = (PUINT64)Context->process_buffer;
 
@@ -374,17 +391,17 @@ ScanPageForKernelObjectAllocation(_In_ UINT64                   PageBase,
  */
 STATIC
 BOOLEAN
-IsPhysicalAddressInPhysicalMemoryRange(_In_ UINT64 PhysicalAddress,
-                                       _In_ PPHYSICAL_MEMORY_RANGE
-                                           PhysicalMemoryRanges)
+IsPhysicalAddressInPhysicalMemoryRange(
+    _In_ UINT64 PhysicalAddress,
+    _In_ PPHYSICAL_MEMORY_RANGE PhysicalMemoryRanges)
 {
-    ULONG  page_index    = 0;
+    ULONG page_index = 0;
     UINT64 start_address = 0;
-    UINT64 end_address   = 0;
+    UINT64 end_address = 0;
 
     while (PhysicalMemoryRanges[page_index].NumberOfBytes.QuadPart != NULL) {
         start_address = PhysicalMemoryRanges[page_index].BaseAddress.QuadPart;
-        end_address   = start_address +
+        end_address = start_address +
                       PhysicalMemoryRanges[page_index].NumberOfBytes.QuadPart;
 
         if (PhysicalAddress >= start_address && PhysicalAddress <= end_address)
@@ -398,10 +415,11 @@ IsPhysicalAddressInPhysicalMemoryRange(_In_ UINT64 PhysicalAddress,
 
 STATIC
 VOID
-EnumerateKernelLargePages(_In_ UINT64                PageBase,
-                          _In_ ULONG                 PageSize,
-                          _In_ PPROCESS_SCAN_CONTEXT Context,
-                          _In_ ULONG                 ObjectIndex)
+EnumerateKernelLargePages(
+    _In_ UINT64 PageBase,
+    _In_ ULONG PageSize,
+    _In_ PPROCESS_SCAN_CONTEXT Context,
+    _In_ ULONG ObjectIndex)
 {
     /*
      * Split the large pages up into blocks of 0x1000 and scan each block
@@ -409,7 +427,10 @@ EnumerateKernelLargePages(_In_ UINT64                PageBase,
     for (UINT64 page_index = 0; page_index < PageSize; page_index++) {
         UINT64 page_base = PageBase + (page_index * PAGE_SIZE);
         ScanPageForKernelObjectAllocation(
-            page_base, PAGE_SIZE, ObjectIndex, Context);
+            page_base,
+            PAGE_SIZE,
+            ObjectIndex,
+            Context);
     }
 }
 
@@ -445,24 +466,24 @@ STATIC
 VOID
 WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
 {
-    CR3                    cr3                    = {0};
-    PML4E                  pml4_base              = {0};
-    PML4E                  pml4_entry             = {0};
-    UINT64                 pdpt_base              = 0;
-    UINT64                 pd_base                = 0;
-    UINT64                 pt_base                = 0;
-    PDPTE                  pdpt_entry             = {0};
-    PDPTE_LARGE            pdpt_large_entry       = {0};
-    PDE                    pd_entry               = {0};
-    PDE_LARGE              pd_large_entry         = {0};
-    PTE                    pt_entry               = {0};
-    UINT64                 base_physical_page     = 0;
-    UINT64                 base_virtual_page      = 0;
-    UINT64                 base_2mb_virtual_page  = 0;
-    UINT64                 base_1gb_virtual_page  = 0;
-    PHYSICAL_ADDRESS       physical               = {0};
+    CR3 cr3 = {0};
+    PML4E pml4_base = {0};
+    PML4E pml4_entry = {0};
+    UINT64 pdpt_base = 0;
+    UINT64 pd_base = 0;
+    UINT64 pt_base = 0;
+    PDPTE pdpt_entry = {0};
+    PDPTE_LARGE pdpt_large_entry = {0};
+    PDE pd_entry = {0};
+    PDE_LARGE pd_large_entry = {0};
+    PTE pt_entry = {0};
+    UINT64 base_physical_page = 0;
+    UINT64 base_virtual_page = 0;
+    UINT64 base_2mb_virtual_page = 0;
+    UINT64 base_1gb_virtual_page = 0;
+    PHYSICAL_ADDRESS physical = {0};
     PPHYSICAL_MEMORY_RANGE physical_memory_ranges = NULL;
-    KIRQL                  irql                   = {0};
+    KIRQL irql = {0};
 
     physical_memory_ranges = ImpMmGetPhysicalMemoryRangesEx2(NULL, NULL);
 
@@ -481,8 +502,8 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
         return;
 
     for (INT pml4_index = 0; pml4_index < PML4_ENTRY_COUNT; pml4_index++) {
-        if (!ImpMmIsAddressValid(pml4_base.BitAddress +
-                                 pml4_index * sizeof(UINT64)))
+        if (!ImpMmIsAddressValid(
+                pml4_base.BitAddress + pml4_index * sizeof(UINT64)))
             continue;
 
         pml4_entry.BitAddress =
@@ -516,7 +537,8 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                                     << PAGE_1GB_SHIFT;
 
                 if (IsPhysicalAddressInPhysicalMemoryRange(
-                        physical.QuadPart, physical_memory_ranges) == FALSE)
+                        physical.QuadPart,
+                        physical_memory_ranges) == FALSE)
                     continue;
 
                 base_1gb_virtual_page = ImpMmGetVirtualForPhysical(physical);
@@ -525,10 +547,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                     !ImpMmIsAddressValid(base_1gb_virtual_page))
                     continue;
 
-                EnumerateKernelLargePages(base_1gb_virtual_page,
-                                          LARGE_PAGE_1GB_ENTRIES,
-                                          Context,
-                                          INDEX_PROCESS_POOL_TAG);
+                EnumerateKernelLargePages(
+                    base_1gb_virtual_page,
+                    LARGE_PAGE_1GB_ENTRIES,
+                    Context,
+                    INDEX_PROCESS_POOL_TAG);
 
                 continue;
             }
@@ -559,7 +582,8 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                                         << PAGE_2MB_SHIFT;
 
                     if (IsPhysicalAddressInPhysicalMemoryRange(
-                            physical.QuadPart, physical_memory_ranges) == FALSE)
+                            physical.QuadPart,
+                            physical_memory_ranges) == FALSE)
                         continue;
 
                     base_2mb_virtual_page =
@@ -569,10 +593,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                         !ImpMmIsAddressValid(base_2mb_virtual_page))
                         continue;
 
-                    EnumerateKernelLargePages(base_2mb_virtual_page,
-                                              LARGE_PAGE_2MB_ENTRIES,
-                                              Context,
-                                              INDEX_PROCESS_POOL_TAG);
+                    EnumerateKernelLargePages(
+                        base_2mb_virtual_page,
+                        LARGE_PAGE_2MB_ENTRIES,
+                        Context,
+                        INDEX_PROCESS_POOL_TAG);
 
                     continue;
                 }
@@ -589,8 +614,8 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                     continue;
 
                 for (INT pt_index = 0; pt_index < PT_ENTRY_COUNT; pt_index++) {
-                    if (!ImpMmIsAddressValid(pt_base +
-                                             pt_index * sizeof(UINT64)))
+                    if (!ImpMmIsAddressValid(
+                            pt_base + pt_index * sizeof(UINT64)))
                         continue;
 
                     pt_entry.BitAddress =
@@ -605,7 +630,8 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                     /* if the page base isnt in a legit
                      * region, go next */
                     if (IsPhysicalAddressInPhysicalMemoryRange(
-                            physical.QuadPart, physical_memory_ranges) == FALSE)
+                            physical.QuadPart,
+                            physical_memory_ranges) == FALSE)
                         continue;
 
                     base_virtual_page = ImpMmGetVirtualForPhysical(physical);
@@ -616,10 +642,11 @@ WalkKernelPageTables(_In_ PPROCESS_SCAN_CONTEXT Context)
                         !ImpMmIsAddressValid(base_virtual_page))
                         continue;
 
-                    ScanPageForKernelObjectAllocation(base_virtual_page,
-                                                      PAGE_BASE_SIZE,
-                                                      INDEX_PROCESS_POOL_TAG,
-                                                      Context);
+                    ScanPageForKernelObjectAllocation(
+                        base_virtual_page,
+                        PAGE_BASE_SIZE,
+                        INDEX_PROCESS_POOL_TAG,
+                        Context);
                 }
             }
         }
@@ -646,13 +673,13 @@ IncrementProcessCounter(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 
 STATIC
 VOID
-CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY Node,
-                                        _In_opt_ PVOID           Context)
+CheckIfProcessAllocationIsInProcessList(
+    _In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
     PAGED_CODE();
 
-    PUINT64               allocation_address = NULL;
-    PPROCESS_SCAN_CONTEXT context            = (PPROCESS_SCAN_CONTEXT)Context;
+    PUINT64 allocation_address = NULL;
+    PPROCESS_SCAN_CONTEXT context = (PPROCESS_SCAN_CONTEXT)Context;
 
     if (!context)
         return;
@@ -664,8 +691,9 @@ CheckIfProcessAllocationIsInProcessList(_In_ PPROCESS_LIST_ENTRY Node,
                 allocation_address[i] - PROCESS_OBJECT_ALLOCATION_MARGIN &&
             (UINT64)Node->process <=
                 allocation_address[i] + PROCESS_OBJECT_ALLOCATION_MARGIN) {
-            RtlZeroMemory((UINT64)context->process_buffer + i * sizeof(UINT64),
-                          sizeof(UINT64));
+            RtlZeroMemory(
+                (UINT64)context->process_buffer + i * sizeof(UINT64),
+                sizeof(UINT64));
         }
     }
 }
@@ -679,10 +707,10 @@ FindUnlinkedProcesses()
 {
     PAGED_CODE();
 
-    NTSTATUS                           status             = STATUS_UNSUCCESSFUL;
-    PUINT64                            allocation_address = NULL;
-    PROCESS_SCAN_CONTEXT               context            = {0};
-    PINVALID_PROCESS_ALLOCATION_REPORT report             = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PUINT64 allocation_address = NULL;
+    PROCESS_SCAN_CONTEXT context = {0};
+    PINVALID_PROCESS_ALLOCATION_REPORT report = NULL;
     UINT32 packet_size = CryptRequestRequiredBufferLength(
         sizeof(INVALID_PROCESS_ALLOCATION_REPORT));
 
@@ -693,10 +721,10 @@ FindUnlinkedProcesses()
         return STATUS_ABANDONED;
     }
 
-    context.process_buffer =
-        ExAllocatePool2(POOL_FLAG_NON_PAGED,
-                        context.process_count * 2 * sizeof(UINT64),
-                        PROCESS_ADDRESS_LIST_TAG);
+    context.process_buffer = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        context.process_count * 2 * sizeof(UINT64),
+        PROCESS_ADDRESS_LIST_TAG);
 
     if (!context.process_buffer)
         return STATUS_MEMORY_NOT_ALLOCATED;
@@ -704,7 +732,9 @@ FindUnlinkedProcesses()
     WalkKernelPageTables(&context);
 
     RtlHashmapEnumerate(
-        GetProcessHashmap(), CheckIfProcessAllocationIsInProcessList, &context);
+        GetProcessHashmap(),
+        CheckIfProcessAllocationIsInProcessList,
+        &context);
 
     allocation_address = (PUINT64)context.process_buffer;
 
@@ -727,7 +757,9 @@ FindUnlinkedProcesses()
             allocation);
 
         report = ImpExAllocatePool2(
-            POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+            POOL_FLAG_NON_PAGED,
+            packet_size,
+            REPORT_POOL_TAG);
 
         if (!report)
             continue;
@@ -735,7 +767,9 @@ FindUnlinkedProcesses()
         INIT_REPORT_PACKET(report, REPORT_INVALID_PROCESS_ALLOCATION, 0);
 
         IntCopyMemory(
-            report->process, allocation, REPORT_INVALID_PROCESS_BUFFER_SIZE);
+            report->process,
+            allocation,
+            REPORT_INVALID_PROCESS_BUFFER_SIZE);
 
         status = CryptEncryptBuffer(report, packet_size);
 
@@ -764,11 +798,11 @@ end:
 NTSTATUS
 EnumerateBigPoolAllocations()
 {
-    ULONG                       return_length    = 0;
-    NTSTATUS                    status           = STATUS_UNSUCCESSFUL;
-    PSYSTEM_BIGPOOL_ENTRY       entry            = NULL;
-    SYSTEM_BIGPOOL_INFORMATION  pool_information = {0};
-    PSYSTEM_BIGPOOL_INFORMATION pool_entries     = NULL;
+    ULONG return_length = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PSYSTEM_BIGPOOL_ENTRY entry = NULL;
+    SYSTEM_BIGPOOL_INFORMATION pool_information = {0};
+    PSYSTEM_BIGPOOL_INFORMATION pool_entries = NULL;
     UNICODE_STRING routine = RTL_CONSTANT_STRING(L"ZwQuerySystemInformation");
     ZwQuerySystemInformation pZwQuerySystemInformation =
         ImpMmGetSystemRoutineAddress(&routine);
@@ -778,10 +812,11 @@ EnumerateBigPoolAllocations()
         return status;
     }
 
-    status = pZwQuerySystemInformation(SYSTEM_BIGPOOL_INFORMATION_ID,
-                                       &pool_information,
-                                       sizeof(pool_information),
-                                       &return_length);
+    status = pZwQuerySystemInformation(
+        SYSTEM_BIGPOOL_INFORMATION_ID,
+        &pool_information,
+        sizeof(pool_information),
+        &return_length);
 
     if (status != STATUS_INFO_LENGTH_MISMATCH) {
         DEBUG_ERROR("ZwQuerySystemInformation failed with status %x", status);
@@ -791,15 +826,18 @@ EnumerateBigPoolAllocations()
     return_length += sizeof(SYSTEM_BIGPOOL_INFORMATION);
 
     pool_entries = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, return_length, POOL_TAG_INTEGRITY);
+        POOL_FLAG_NON_PAGED,
+        return_length,
+        POOL_TAG_INTEGRITY);
 
     if (!pool_entries)
         return STATUS_MEMORY_NOT_ALLOCATED;
 
-    status = pZwQuerySystemInformation(SYSTEM_BIGPOOL_INFORMATION_ID,
-                                       pool_entries,
-                                       return_length,
-                                       &return_length);
+    status = pZwQuerySystemInformation(
+        SYSTEM_BIGPOOL_INFORMATION_ID,
+        pool_entries,
+        return_length,
+        &return_length);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ZwQuerySystemInformation 2 failed with status %x", status);

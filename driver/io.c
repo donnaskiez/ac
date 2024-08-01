@@ -1,18 +1,18 @@
 #include "io.h"
 
-#include "modules.h"
-#include "driver.h"
 #include "callbacks.h"
-#include "pool.h"
+#include "driver.h"
 #include "integrity.h"
+#include "modules.h"
+#include "pool.h"
 #include "thread.h"
 
 #include "hv.h"
 #include "imports.h"
 
-#include "session.h"
-#include "hw.h"
 #include "containers/map.h"
+#include "hw.h"
+#include "session.h"
 
 #include "lib/stdlib.h"
 
@@ -171,9 +171,9 @@ STATIC
 NTSTATUS
 IrpQueueCompleteDeferredPacket(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
-    NTSTATUS        status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
-    PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
-    UINT16          type   = GetPacketType(Report->buffer);
+    NTSTATUS status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+    UINT16 type = GetPacketType(Report->buffer);
 
     if (!NT_SUCCESS(status))
         return status;
@@ -181,9 +181,11 @@ IrpQueueCompleteDeferredPacket(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
     IncrementPacketMetics(queue, type);
 
     IntCopyMemory(
-        Irp->AssociatedIrp.SystemBuffer, Report->buffer, Report->buffer_size);
+        Irp->AssociatedIrp.SystemBuffer,
+        Report->buffer,
+        Report->buffer_size);
 
-    Irp->IoStatus.Status      = STATUS_SUCCESS;
+    Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = Report->buffer_size;
     IofCompleteRequest(Irp, IO_NO_INCREMENT);
     IrpQueueFreeDeferredPacket(Report);
@@ -194,10 +196,10 @@ STATIC
 NTSTATUS
 IrpQueueQueryPendingPackets(_In_ PIRP Irp)
 {
-    PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     PDEFERRED_REPORT report = NULL;
-    NTSTATUS         status = STATUS_UNSUCCESSFUL;
-    KIRQL            irql   = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    KIRQL irql = 0;
 
     /*
      * Important we hold the lock before we call IsThereDeferredReport to
@@ -242,7 +244,7 @@ VOID
 IrpQueueCompleteCancelledIrp(_In_ PIO_CSQ Csq, _In_ PIRP Irp)
 {
     UNREFERENCED_PARAMETER(Csq);
-    Irp->IoStatus.Status      = STATUS_CANCELLED;
+    Irp->IoStatus.Status = STATUS_CANCELLED;
     Irp->IoStatus.Information = 0;
     ImpIofCompleteRequest(Irp, IO_NO_INCREMENT);
 }
@@ -252,12 +254,14 @@ PDEFERRED_REPORT
 IrpQueueAllocateDeferredPacket(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
     PDEFERRED_REPORT report = ImpExAllocatePool2(
-        POOL_FLAG_NON_PAGED, sizeof(DEFERRED_REPORT), REPORT_POOL_TAG);
+        POOL_FLAG_NON_PAGED,
+        sizeof(DEFERRED_REPORT),
+        REPORT_POOL_TAG);
 
     if (!report)
         return NULL;
 
-    report->buffer      = Buffer;
+    report->buffer = Buffer;
     report->buffer_size = BufferSize;
     return report;
 }
@@ -266,9 +270,8 @@ IrpQueueAllocateDeferredPacket(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 
 STATIC
 VOID
-IrpQueueDeferPacket(_In_ PIRP_QUEUE_HEAD Queue,
-                    _In_ PVOID           Buffer,
-                    _In_ UINT32          BufferSize)
+IrpQueueDeferPacket(
+    _In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
     PDEFERRED_REPORT report = NULL;
     /*
@@ -300,10 +303,10 @@ STATIC
 NTSTATUS
 IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 {
-    NTSTATUS        status = STATUS_UNSUCCESSFUL;
-    PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
-    PIRP            irp    = IoCsqRemoveNextIrp(&queue->csq, NULL);
-    UINT16          type   = GetPacketType(Buffer);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
+    PIRP irp = IoCsqRemoveNextIrp(&queue->csq, NULL);
+    UINT16 type = GetPacketType(Buffer);
 
     /*
      * If no irps are available in our queue, lets store it in a deferred
@@ -323,7 +326,7 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
      */
     if (!NT_SUCCESS(status)) {
         ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
-        irp->IoStatus.Status      = STATUS_INSUFFICIENT_RESOURCES;
+        irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
         irp->IoStatus.Information = 0;
         ImpIofCompleteRequest(irp, IO_NO_INCREMENT);
         return status;
@@ -331,7 +334,7 @@ IrpQueueCompletePacket(_In_ PVOID Buffer, _In_ ULONG BufferSize)
 
     IncrementPacketMetics(queue, type);
 
-    irp->IoStatus.Status      = STATUS_SUCCESS;
+    irp->IoStatus.Status = STATUS_SUCCESS;
     irp->IoStatus.Information = BufferSize;
     IntCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, BufferSize);
     ImpExFreePoolWithTag(Buffer, REPORT_POOL_TAG);
@@ -357,9 +360,9 @@ STATIC
 VOID
 IrpQueueFreeDeferredPackets()
 {
-    PIRP_QUEUE_HEAD  queue  = GetIrpQueueHead();
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     PDEFERRED_REPORT report = NULL;
-    KIRQL            irql   = 0;
+    KIRQL irql = 0;
 
     /* just in case... */
     KeAcquireGuardedMutex(&queue->deferred_reports.lock);
@@ -375,21 +378,22 @@ IrpQueueFreeDeferredPackets()
 NTSTATUS
 IrpQueueInitialise()
 {
-    NTSTATUS        status = STATUS_UNSUCCESSFUL;
-    PIRP_QUEUE_HEAD queue  = GetIrpQueueHead();
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
     KeInitializeGuardedMutex(&queue->lock);
     KeInitializeGuardedMutex(&queue->deferred_reports.lock);
     InitializeListHead(&queue->queue);
     InitializeListHead(&queue->deferred_reports.head);
 
-    status = IoCsqInitialize(&queue->csq,
-                             IrpQueueInsert,
-                             IrpQueueRemove,
-                             IrpQueuePeekNextEntry,
-                             IrpQueueAcquireLock,
-                             IrpQueueReleaseLock,
-                             IrpQueueCompleteCancelledIrp);
+    status = IoCsqInitialize(
+        &queue->csq,
+        IrpQueueInsert,
+        IrpQueueRemove,
+        IrpQueuePeekNextEntry,
+        IrpQueueAcquireLock,
+        IrpQueueReleaseLock,
+        IrpQueueCompleteCancelledIrp);
 
     if (!NT_SUCCESS(status))
         DEBUG_ERROR("IoCsqInitialize failed with status %x", status);
@@ -398,17 +402,18 @@ IrpQueueInitialise()
 }
 
 VOID
-SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
-                         _In_opt_ PVOID      Context)
+SharedMappingWorkRoutine(
+    _In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
-    NTSTATUS        status = STATUS_UNSUCCESSFUL;
-    HANDLE          handle = NULL;
-    PSHARED_MAPPING state  = (PSHARED_MAPPING)Context;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    HANDLE handle = NULL;
+    PSHARED_MAPPING state = (PSHARED_MAPPING)Context;
 
     InterlockedIncrement(&state->work_item_status);
 
-    DEBUG_VERBOSE("SharedMapping work routine called. OperationId: %lx",
-                  state->kernel_buffer->operation_id);
+    DEBUG_VERBOSE(
+        "SharedMapping work routine called. OperationId: %lx",
+        state->kernel_buffer->operation_id);
 
     switch (state->kernel_buffer->operation_id) {
     case ssRunNmiCallbacks:
@@ -427,13 +432,14 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
         DEBUG_INFO(
             "SHARED_STATE_OPERATION_ID: ValidateDriverObjects Received.");
 
-        status = ImpPsCreateSystemThread(&handle,
-                                         PROCESS_ALL_ACCESS,
-                                         NULL,
-                                         NULL,
-                                         NULL,
-                                         HandleValidateDriversIOCTL,
-                                         NULL);
+        status = ImpPsCreateSystemThread(
+            &handle,
+            PROCESS_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            HandleValidateDriversIOCTL,
+            NULL);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
@@ -473,8 +479,9 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
         status = ValidateOurDriverImage();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("VerifyInMemoryImageVsDiskImage failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "VerifyInMemoryImageVsDiskImage failed with status %x",
+                status);
 
         break;
 
@@ -494,8 +501,9 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
         status = DetectEptHooksInKeyFunctions();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "DetectEpthooksInKeyFunctions failed with status %x",
+                status);
 
         break;
 
@@ -531,8 +539,9 @@ SharedMappingWorkRoutine(_In_ PDEVICE_OBJECT DeviceObject,
         status = ValidateWin32kDispatchTables();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "ValidateWin32kDispatchTables failed with status %x",
+                status);
 
         break;
 
@@ -545,10 +554,11 @@ end:
 
 /* again, we want to run our routine at apc level not dispatch level */
 VOID
-SharedMappingDpcRoutine(_In_ PKDPC     Dpc,
-                        _In_opt_ PVOID DeferredContext,
-                        _In_opt_ PVOID SystemArgument1,
-                        _In_opt_ PVOID SystemArgument2)
+SharedMappingDpcRoutine(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
 {
     PSHARED_MAPPING mapping = (PSHARED_MAPPING)DeferredContext;
 
@@ -556,7 +566,10 @@ SharedMappingDpcRoutine(_In_ PKDPC     Dpc,
         return;
 
     IoQueueWorkItem(
-        mapping->work_item, SharedMappingWorkRoutine, NormalWorkQueue, mapping);
+        mapping->work_item,
+        SharedMappingWorkRoutine,
+        NormalWorkQueue,
+        mapping);
 }
 
 #define REPEAT_TIME_15_SEC 30000
@@ -572,9 +585,9 @@ SharedMappingTerminate()
     while (mapping->work_item_status)
         YieldProcessor();
 
-    mapping->active      = FALSE;
+    mapping->active = FALSE;
     mapping->user_buffer = NULL;
-    mapping->size        = 0;
+    mapping->size = 0;
 
     KeCancelTimer(&mapping->timer);
     IoFreeWorkItem(mapping->work_item);
@@ -589,7 +602,7 @@ NTSTATUS
 SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
 {
     LARGE_INTEGER due_time = {0};
-    LONG          period   = 0;
+    LONG period = 0;
 
     due_time.QuadPart = -ABSOLUTE(SECONDS(30));
 
@@ -603,7 +616,10 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
     KeInitializeDpc(&Mapping->timer_dpc, SharedMappingDpcRoutine, Mapping);
     KeInitializeTimer(&Mapping->timer);
     KeSetTimerEx(
-        &Mapping->timer, due_time, REPEAT_TIME_15_SEC, &Mapping->timer_dpc);
+        &Mapping->timer,
+        due_time,
+        REPEAT_TIME_15_SEC,
+        &Mapping->timer_dpc);
 
     DEBUG_VERBOSE("Initialised shared mapping event timer.");
     return STATUS_SUCCESS;
@@ -611,16 +627,17 @@ SharedMappingInitialiseTimer(_In_ PSHARED_MAPPING Mapping)
 
 STATIC
 VOID
-InitSharedMappingStructure(_Out_ PSHARED_MAPPING Mapping,
-                           _In_ PVOID            KernelBuffer,
-                           _In_ PVOID            UserBuffer,
-                           _In_ PMDL             Mdl)
+InitSharedMappingStructure(
+    _Out_ PSHARED_MAPPING Mapping,
+    _In_ PVOID KernelBuffer,
+    _In_ PVOID UserBuffer,
+    _In_ PMDL Mdl)
 {
-    Mapping->kernel_buffer    = (PSHARED_STATE)KernelBuffer;
-    Mapping->user_buffer      = UserBuffer;
-    Mapping->mdl              = Mdl;
-    Mapping->size             = PAGE_SIZE;
-    Mapping->active           = TRUE;
+    Mapping->kernel_buffer = (PSHARED_STATE)KernelBuffer;
+    Mapping->user_buffer = UserBuffer;
+    Mapping->mdl = Mdl;
+    Mapping->size = PAGE_SIZE;
+    Mapping->active = TRUE;
     Mapping->work_item_status = FALSE;
 }
 
@@ -628,13 +645,13 @@ STATIC
 NTSTATUS
 SharedMappingInitialise(_In_ PIRP Irp)
 {
-    NTSTATUS             status       = STATUS_UNSUCCESSFUL;
-    PMDL                 mdl          = NULL;
-    PSHARED_MAPPING      mapping      = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PMDL mdl = NULL;
+    PSHARED_MAPPING mapping = NULL;
     PSHARED_MAPPING_INIT mapping_init = NULL;
-    PEPROCESS            process      = NULL;
-    PVOID                buffer       = NULL;
-    PVOID                user_buffer  = NULL;
+    PEPROCESS process = NULL;
+    PVOID buffer = NULL;
+    PVOID user_buffer = NULL;
 
     mapping = GetSharedMappingConfig();
 
@@ -667,18 +684,19 @@ SharedMappingInitialise(_In_ PIRP Irp)
     MmBuildMdlForNonPagedPool(mdl);
 
     __try {
-        user_buffer = MmMapLockedPagesSpecifyCache(mdl,
-                                                   UserMode,
-                                                   MmCached,
-                                                   NULL,
-                                                   FALSE,
-                                                   NormalPagePriority |
-                                                       MdlMappingNoExecute);
+        user_buffer = MmMapLockedPagesSpecifyCache(
+            mdl,
+            UserMode,
+            MmCached,
+            NULL,
+            FALSE,
+            NormalPagePriority | MdlMappingNoExecute);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         status = GetExceptionCode();
-        DEBUG_ERROR("MmMapLockedPagesSpecifyCache failed with status %x",
-                    status);
+        DEBUG_ERROR(
+            "MmMapLockedPagesSpecifyCache failed with status %x",
+            status);
         IoFreeMdl(mdl);
         ExFreePoolWithTag(buffer, POOL_TAG_INTEGRITY);
         return status;
@@ -689,7 +707,7 @@ SharedMappingInitialise(_In_ PIRP Irp)
 
     mapping_init = (PSHARED_MAPPING_INIT)Irp->AssociatedIrp.SystemBuffer;
     mapping_init->buffer = user_buffer;
-    mapping_init->size   = PAGE_SIZE;
+    mapping_init->size = PAGE_SIZE;
 
     return status;
 }
@@ -707,14 +725,16 @@ DispatchApcOperation(_In_ PAPC_OPERATION_ID Operation)
     switch (Operation->operation_id) {
     case APC_OPERATION_STACKWALK:
 
-        DEBUG_INFO("Initiating APC stackwalk operation with operation id %i",
-                   Operation->operation_id);
+        DEBUG_INFO(
+            "Initiating APC stackwalk operation with operation id %i",
+            Operation->operation_id);
 
         status = ValidateThreadsViaKernelApc();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("ValidateThreadsViaKernelApc failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "ValidateThreadsViaKernelApc failed with status %x",
+                status);
 
         return status;
 
@@ -792,11 +812,11 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
-    NTSTATUS           status         = STATUS_SUCCESS;
+    NTSTATUS status = STATUS_SUCCESS;
     PIO_STACK_LOCATION stack_location = IoGetCurrentIrpStackLocation(Irp);
-    HANDLE             handle         = NULL;
-    PKTHREAD           thread         = NULL;
-    BOOLEAN            security_flag  = FALSE;
+    HANDLE handle = NULL;
+    PKTHREAD thread = NULL;
+    BOOLEAN security_flag = FALSE;
 
     /*
      * LMAO
@@ -835,13 +855,14 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
          * bug check under windows driver verifier.
          */
 
-        status = ImpPsCreateSystemThread(&handle,
-                                         PROCESS_ALL_ACCESS,
-                                         NULL,
-                                         NULL,
-                                         NULL,
-                                         HandleValidateDriversIOCTL,
-                                         NULL);
+        status = ImpPsCreateSystemThread(
+            &handle,
+            PROCESS_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            HandleValidateDriversIOCTL,
+            NULL);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
@@ -889,8 +910,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = PerformVirtualizationDetection(Irp);
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("PerformVirtualizationDetection failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "PerformVirtualizationDetection failed with status %x",
+                status);
 
         break;
 
@@ -908,30 +930,32 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         DEBUG_VERBOSE("IOCTL_RETRIEVE_MODULE_EXECUTABLE_REGIONS Received");
 
-        status =
-            ImpPsCreateSystemThread(&handle,
-                                    PROCESS_ALL_ACCESS,
-                                    NULL,
-                                    NULL,
-                                    NULL,
-                                    RetrieveInMemoryModuleExecutableSections,
-                                    Irp);
+        status = ImpPsCreateSystemThread(
+            &handle,
+            PROCESS_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            RetrieveInMemoryModuleExecutableSections,
+            Irp);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
             goto end;
         }
 
-        status = ImpObReferenceObjectByHandle(handle,
-                                              THREAD_ALL_ACCESS,
-                                              *PsThreadType,
-                                              KernelMode,
-                                              &thread,
-                                              NULL);
+        status = ImpObReferenceObjectByHandle(
+            handle,
+            THREAD_ALL_ACCESS,
+            *PsThreadType,
+            KernelMode,
+            &thread,
+            NULL);
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("ObReferenceObjectbyhandle failed with status %lx",
-                        status);
+            DEBUG_ERROR(
+                "ObReferenceObjectbyhandle failed with status %lx",
+                status);
             ImpZwClose(handle);
             goto end;
         }
@@ -982,8 +1006,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = ValidateOurDriverImage();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("VerifyInMemoryImageVsDiskImage failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "VerifyInMemoryImageVsDiskImage failed with status %x",
+                status);
 
         break;
 
@@ -1002,8 +1027,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = ValidateProcessLoadedModule(Irp);
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("ValidateProcessLoadedModule failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "ValidateProcessLoadedModule failed with status %x",
+                status);
 
         break;
 
@@ -1017,16 +1043,18 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = ValidateIrpOutputBuffer(Irp, sizeof(SYSTEM_INFORMATION));
 
         if (!NT_SUCCESS(status)) {
-            DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "ValidateIrpOutputBuffer failed with status %x",
+                status);
             goto end;
         }
 
         Irp->IoStatus.Information = sizeof(SYSTEM_INFORMATION);
 
-        IntCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-                      system_information,
-                      sizeof(SYSTEM_INFORMATION));
+        IntCopyMemory(
+            Irp->AssociatedIrp.SystemBuffer,
+            system_information,
+            sizeof(SYSTEM_INFORMATION));
 
         break;
 
@@ -1051,8 +1079,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = DetectEptHooksInKeyFunctions();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("DetectEpthooksInKeyFunctions failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "DetectEpthooksInKeyFunctions failed with status %x",
+                status);
 
         break;
 
@@ -1120,8 +1149,9 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = SharedMappingInitialise(Irp);
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("SharedMappingInitialise failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "SharedMappingInitialise failed with status %x",
+                status);
 
         break;
 
@@ -1129,13 +1159,14 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 
         DEBUG_INFO("IOCTL_VALIDATE_PCI_DEVICES Received");
 
-        status = ImpPsCreateSystemThread(&handle,
-                                         PROCESS_ALL_ACCESS,
-                                         NULL,
-                                         NULL,
-                                         NULL,
-                                         ValidatePciDevices,
-                                         NULL);
+        status = ImpPsCreateSystemThread(
+            &handle,
+            PROCESS_ALL_ACCESS,
+            NULL,
+            NULL,
+            NULL,
+            ValidatePciDevices,
+            NULL);
 
         if (!NT_SUCCESS(status)) {
             DEBUG_ERROR("PsCreateSystemThread failed with status %x", status);
@@ -1152,14 +1183,16 @@ DeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
         status = ValidateWin32kDispatchTables();
 
         if (!NT_SUCCESS(status))
-            DEBUG_ERROR("ValidateWin32kDispatchTables failed with status %x",
-                        status);
+            DEBUG_ERROR(
+                "ValidateWin32kDispatchTables failed with status %x",
+                status);
 
         break;
 
     default:
-        DEBUG_WARNING("Invalid IOCTL passed to driver: %lx",
-                      stack_location->Parameters.DeviceIoControl.IoControlCode);
+        DEBUG_WARNING(
+            "Invalid IOCTL passed to driver: %lx",
+            stack_location->Parameters.DeviceIoControl.IoControlCode);
 
         status = STATUS_INVALID_PARAMETER;
         break;

@@ -1,7 +1,7 @@
 #include "session.h"
 
-#include "imports.h"
 #include "crypt.h"
+#include "imports.h"
 #include "util.h"
 
 #include "lib/stdlib.h"
@@ -9,7 +9,7 @@
 NTSTATUS
 SessionInitialiseStructure()
 {
-    NTSTATUS        status  = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     PACTIVE_SESSION session = GetActiveSession();
 
     KeInitializeGuardedMutex(&session->lock);
@@ -74,12 +74,12 @@ SessionTerminate()
     DEBUG_INFO("Termination active session.");
 
     PACTIVE_SESSION session = GetActiveSession();
-    KIRQL           irql    = {0};
+    KIRQL irql = {0};
 
     KeAcquireGuardedMutex(&session->lock);
-    session->km_handle         = NULL;
-    session->um_handle         = NULL;
-    session->process           = NULL;
+    session->km_handle = NULL;
+    session->um_handle = NULL;
+    session->process = NULL;
     session->is_session_active = FALSE;
 
     RtlZeroMemory(&session->module, sizeof(MODULE_INFORMATION));
@@ -92,18 +92,19 @@ SessionTerminate()
 /* Return type for this doesnt matter */
 STATIC
 BOOLEAN
-HashOurUserModuleOnEntryCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
-                                 _In_opt_ PVOID                 Context)
+HashOurUserModuleOnEntryCallback(
+    _In_ PPROCESS_MAP_MODULE_ENTRY Entry, _In_opt_ PVOID Context)
 {
-    NTSTATUS        status  = STATUS_UNSUCCESSFUL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
     PACTIVE_SESSION session = (PACTIVE_SESSION)Context;
 
     if (!ARGUMENT_PRESENT(Context))
         return FALSE;
 
-    status = HashUserModule(Entry,
-                            session->module.module_hash,
-                            sizeof(session->module.module_hash));
+    status = HashUserModule(
+        Entry,
+        session->module.module_hash,
+        sizeof(session->module.module_hash));
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("HashUserModule: %lx", status);
@@ -111,8 +112,9 @@ HashOurUserModuleOnEntryCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
     }
 
     DEBUG_VERBOSE("User module hashed!");
-    DumpBufferToKernelDebugger(session->module.module_hash,
-                               sizeof(session->module.module_hash));
+    DumpBufferToKernelDebugger(
+        session->module.module_hash,
+        sizeof(session->module.module_hash));
 
     return TRUE;
 }
@@ -120,16 +122,17 @@ HashOurUserModuleOnEntryCallback(_In_ PPROCESS_MAP_MODULE_ENTRY Entry,
 NTSTATUS
 SessionInitialise(_In_ PIRP Irp)
 {
-    NTSTATUS                   status     = STATUS_UNSUCCESSFUL;
-    PEPROCESS                  process    = NULL;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    PEPROCESS process = NULL;
     PSESSION_INITIATION_PACKET initiation = NULL;
-    PACTIVE_SESSION            session    = GetActiveSession();
-    KIRQL                      irql       = {0};
+    PACTIVE_SESSION session = GetActiveSession();
+    KIRQL irql = {0};
 
     DEBUG_VERBOSE("Initialising new session.");
 
     status = ValidateIrpInputBuffer(
-        Irp, sizeof(SESSION_INITIATION_PACKET) - SHA_256_HASH_LENGTH);
+        Irp,
+        sizeof(SESSION_INITIATION_PACKET) - SHA_256_HASH_LENGTH);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateIrpInputBuffer failed with status %x", status);
@@ -151,17 +154,19 @@ SessionInitialise(_In_ PIRP Irp)
     }
 
     session->km_handle = ImpPsGetProcessId(process);
-    session->process   = process;
-    session->cookie    = initiation->cookie;
+    session->process = process;
+    session->cookie = initiation->cookie;
 
     IntCopyMemory(session->aes_key, initiation->aes_key, AES_256_KEY_SIZE);
     IntCopyMemory(session->iv, initiation->aes_iv, AES_256_IV_SIZE);
 
     session->module.base_address = initiation->module_info.base_address;
-    session->module.size         = initiation->module_info.size;
+    session->module.size = initiation->module_info.size;
 
     IntCopyMemory(
-        session->module.path, initiation->module_info.path, MAX_MODULE_PATH);
+        session->module.path,
+        initiation->module_info.path,
+        MAX_MODULE_PATH);
 
     DEBUG_VERBOSE("Module base: %llx", session->module.base_address);
     DEBUG_VERBOSE("Module size: %lx ", session->module.size);
@@ -193,8 +198,8 @@ end:
 VOID
 SessionTerminateProcess()
 {
-    NTSTATUS status     = STATUS_UNSUCCESSFUL;
-    ULONG    process_id = 0;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    ULONG process_id = 0;
 
     SessionGetProcessId(&process_id);
 
@@ -205,8 +210,9 @@ SessionTerminateProcess()
 
     /* Make sure we pass a km handle to ZwTerminateProcess and NOT a
      * usermode handle. */
-    status = ZwTerminateProcess(process_id,
-                                STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
+    status = ZwTerminateProcess(
+        process_id,
+        STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION);
 
     if (!NT_SUCCESS(status)) {
         /*
