@@ -1,20 +1,17 @@
 #include "io.h"
 
 #include "callbacks.h"
+#include "containers/map.h"
 #include "driver.h"
+#include "hv.h"
+#include "hw.h"
+#include "imports.h"
 #include "integrity.h"
+#include "lib/stdlib.h"
 #include "modules.h"
 #include "pool.h"
-#include "thread.h"
-
-#include "hv.h"
-#include "imports.h"
-
-#include "containers/map.h"
-#include "hw.h"
 #include "session.h"
-
-#include "lib/stdlib.h"
+#include "thread.h"
 
 STATIC
 NTSTATUS
@@ -106,6 +103,9 @@ PIRP
 IrpQueuePeekNextEntry(_In_ PIO_CSQ Csq, _In_ PIRP Irp, _In_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
+
+    NT_ASSERT(Irp != NULL);
+
     PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
 
     if (queue->irp_count == 0)
@@ -171,6 +171,8 @@ STATIC
 NTSTATUS
 IrpQueueCompleteDeferredPacket(_In_ PDEFERRED_REPORT Report, _In_ PIRP Irp)
 {
+    NT_ASSERT(Report != NULL);
+
     NTSTATUS status = ValidateIrpOutputBuffer(Irp, Report->buffer_size);
     PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     UINT16 type = GetPacketType(Report->buffer);
@@ -196,6 +198,8 @@ STATIC
 NTSTATUS
 IrpQueueQueryPendingPackets(_In_ PIRP Irp)
 {
+    NT_ASSERT(Irp != NULL);
+
     PIRP_QUEUE_HEAD queue = GetIrpQueueHead();
     PDEFERRED_REPORT report = NULL;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -253,6 +257,9 @@ STATIC
 PDEFERRED_REPORT
 IrpQueueAllocateDeferredPacket(_In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
+    NT_ASSERT(Buffer != NULL);
+    NT_ASSERT(BufferSize != 0);
+
     PDEFERRED_REPORT report = ImpExAllocatePool2(
         POOL_FLAG_NON_PAGED,
         sizeof(DEFERRED_REPORT),
@@ -273,6 +280,9 @@ VOID
 IrpQueueDeferPacket(
     _In_ PIRP_QUEUE_HEAD Queue, _In_ PVOID Buffer, _In_ UINT32 BufferSize)
 {
+    NT_ASSERT(Queue != NULL);
+    NT_ASSERT(Buffer != NULL);
+
     PDEFERRED_REPORT report = NULL;
     /*
      * arbitrary number, if we ever do have 100 deferred reports, theres

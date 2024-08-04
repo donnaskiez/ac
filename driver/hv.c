@@ -3,9 +3,9 @@
 #include "common.h"
 #include "imports.h"
 #include "io.h"
-#include <intrin.h>
-
 #include "lib/stdlib.h"
+
+#include <intrin.h>
 
 #ifdef ALLOC_PRAGMA
 #    pragma alloc_text(PAGE, PerformVirtualizationDetection)

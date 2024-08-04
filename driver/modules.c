@@ -53,7 +53,7 @@ CHAR WHITELISTED_MODULES[WHITELISTED_MODULE_COUNT][MODULE_MAX_STRING_SIZE] = {
 
 typedef struct _WHITELISTED_REGIONS {
     UINT64 base;
-    UINT64 end;
+    UINT64 size;
 
 } WHITELISTED_REGIONS, *PWHITELISTED_REGIONS;
 
@@ -201,7 +201,7 @@ PopulateWhitelistedModuleBuffer(
 
         region = &Whitelist[index];
         region->base = (UINT64)module->ImageBase;
-        region->end = (UINT64)module->ImageBase + module->ImageSize;
+        region->size = (UINT64)module->ImageBase + module->ImageSize;
     }
 }
 
@@ -267,7 +267,7 @@ DoesDriverHaveInvalidDispatchRoutine(
          */
         for (UINT32 index = 0; index < WHITELISTED_MODULE_COUNT; index++) {
             if (dispatch_function >= Regions[index].base &&
-                dispatch_function <= Regions[index].end)
+                dispatch_function <= Regions[index].size)
                 return FALSE;
         }
 

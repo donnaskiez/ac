@@ -9,19 +9,19 @@
 #include "imports.h"
 
 VOID
-GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index);
+GetApcContextByIndex(_Out_ PVOID* Context, _In_ UINT32 Index);
 
 VOID
-GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier);
+GetApcContext(_Out_ PVOID* Context, _In_ UINT32 ContextIdentifier);
 
 BOOLEAN
 FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context);
 
 VOID
-IncrementApcCount(_In_ LONG ContextId);
+IncrementApcCount(_In_ UINT32 ContextId);
 
 VOID
-FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId);
+FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ UINT32 ContextId);
 
 NTSTATUS
 QueryActiveApcContextsForCompletion();

@@ -2,9 +2,8 @@
 
 #include "crypt.h"
 #include "imports.h"
-#include "modules.h"
-
 #include "lib/stdlib.h"
+#include "modules.h"
 
 #define PCI_VENDOR_ID_OFFSET 0x00
 #define PCI_DEVICE_ID_OFFSET 0x02
@@ -283,11 +282,12 @@ ReportBlacklistedPcieDevice(
     _In_ PDEVICE_OBJECT DeviceObject, _In_ PPCI_COMMON_HEADER Header)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
-    UINT32 packet_size = CryptRequestRequiredBufferLength(
-        sizeof(BLACKLISTED_PCIE_DEVICE_REPORT));
+    UINT32 len = 0;
+    PBLACKLISTED_PCIE_DEVICE_REPORT report = NULL;
 
-    PBLACKLISTED_PCIE_DEVICE_REPORT report =
-        ImpExAllocatePool2(POOL_FLAG_NON_PAGED, packet_size, REPORT_POOL_TAG);
+    len = CryptRequestRequiredBufferLength(
+        sizeof(BLACKLISTED_PCIE_DEVICE_REPORT));
+    report = ImpExAllocatePool2(POOL_FLAG_NON_PAGED, len, REPORT_POOL_TAG);
 
     if (!report)
         return;
@@ -298,15 +298,15 @@ ReportBlacklistedPcieDevice(
     report->device_id = Header->DeviceID;
     report->vendor_id = Header->VendorID;
 
-    status = CryptEncryptBuffer(report, packet_size);
+    status = CryptEncryptBuffer(report, len);
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("CryptEncryptBuffer: %lx", status);
-        ImpExFreePoolWithTag(report, packet_size);
+        ImpExFreePoolWithTag(report, len);
         return;
     }
 
-    IrpQueueSchedulePacket(report, packet_size);
+    IrpQueueSchedulePacket(report, len);
 }
 
 STATIC
@@ -337,13 +337,6 @@ PciDeviceQueryCallback(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
             (UINT64)DeviceObject,
             header.DeviceID);
         ReportBlacklistedPcieDevice(DeviceObject, &header);
-    }
-    else {
-        DEBUG_VERBOSE(
-            "Device: %llx, DeviceID: %lx, VendorID: %lx",
-            DeviceObject,
-            header.DeviceID,
-            header.VendorID);
     }
 
     return status;

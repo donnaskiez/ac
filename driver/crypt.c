@@ -2,13 +2,11 @@
 
 #include "driver.h"
 #include "imports.h"
+#include "lib/stdlib.h"
 #include "session.h"
-#include "util.h"
-
 #include "types/tpm20.h"
 #include "types/tpmptp.h"
-
-#include "lib/stdlib.h"
+#include "util.h"
 
 #include <bcrypt.h>
 #include <immintrin.h>

@@ -9,12 +9,11 @@
 #include "imports.h"
 #include "integrity.h"
 #include "io.h"
+#include "lib/stdlib.h"
 #include "modules.h"
 #include "pool.h"
 #include "session.h"
 #include "thread.h"
-
-#include "lib/stdlib.h"
 
 #include <immintrin.h>
 
@@ -465,7 +464,6 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
     UnregisterThreadCreateNotifyRoutine();
     UnregisterProcessCreateNotifyRoutine();
     UnregisterImageLoadNotifyRoutine();
-
 
     DrvUnloadFreeThreadList();
     DrvUnloadFreeProcessList();
@@ -1049,7 +1047,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
     SetDriverLoadedFlag();
     TpmExtractEndorsementKey();
-    //PoolScanForManualMappedDrivers();
+    // PoolScanForManualMappedDrivers();
 
     DEBUG_INFO("Driver Entry Complete.");
     return STATUS_SUCCESS;

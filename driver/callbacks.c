@@ -1,19 +1,16 @@
 #include "callbacks.h"
 
-#include "driver.h"
-
+#include "containers/map.h"
+#include "containers/tree.h"
 #include "crypt.h"
+#include "driver.h"
 #include "imports.h"
+#include "lib/stdlib.h"
 #include "modules.h"
 #include "pool.h"
 #include "session.h"
 #include "thread.h"
 #include "util.h"
-
-#include "lib/stdlib.h"
-
-#include "containers/map.h"
-#include "containers/tree.h"
 
 #define PROCESS_HASHMAP_BUCKET_COUNT 101
 
@@ -51,33 +48,29 @@ UnregisterProcessCreateNotifyRoutine()
 VOID
 UnregisterImageLoadNotifyRoutine()
 {
-    PDRIVER_LIST_HEAD list = GetDriverList();
-    InterlockedExchange(&list->active, FALSE);
+    InterlockedExchange(&GetDriverList()->active, FALSE);
     PsRemoveLoadImageNotifyRoutine(ImageLoadNotifyRoutineCallback);
 }
 
 VOID
 UnregisterThreadCreateNotifyRoutine()
 {
-    PRB_TREE tree = GetThreadTree();
-    InterlockedExchange(&tree->active, FALSE);
+    InterlockedExchange(&GetThreadTree()->active, FALSE);
     ImpPsRemoveCreateThreadNotifyRoutine(ThreadCreateNotifyRoutine);
 }
 
 VOID
 CleanupThreadListOnDriverUnload()
 {
-    PRB_TREE tree = GetThreadTree();
-    DEBUG_VERBOSE("Freeing thread list!");
-    RtlRbTreeEnumerate(tree, CleanupThreadListFreeCallback, NULL);
-    RtlRbTreeDeleteTree(tree);
+    RtlRbTreeEnumerate(GetThreadTree(), CleanupThreadListFreeCallback, NULL);
+    RtlRbTreeDeleteTree(GetThreadTree());
 }
 
 VOID
 CleanupDriverListOnDriverUnload()
 {
-    PDRIVER_LIST_HEAD head = GetDriverList();
     PLIST_ENTRY entry = NULL;
+    PDRIVER_LIST_HEAD head = GetDriverList();
     PDRIVER_LIST_ENTRY driver = NULL;
 
     ImpKeAcquireGuardedMutex(&head->lock);
@@ -95,19 +88,20 @@ VOID
 EnumerateDriverListWithCallbackRoutine(
     _In_ DRIVERLIST_CALLBACK_ROUTINE CallbackRoutine, _In_opt_ PVOID Context)
 {
+    NT_ASSERT(CallbackRoutine != NULL);
+
     PDRIVER_LIST_HEAD head = GetDriverList();
-    PLIST_ENTRY list_entry = NULL;
-    PDRIVER_LIST_ENTRY driver_entry = NULL;
+    PLIST_ENTRY entry = NULL;
+    PDRIVER_LIST_ENTRY driver = NULL;
 
     ImpKeAcquireGuardedMutex(&head->lock);
 
     if (CallbackRoutine) {
-        list_entry = head->list_entry.Flink;
-        while (list_entry != &head->list_entry) {
-            driver_entry =
-                CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, list_entry);
-            CallbackRoutine(driver_entry, Context);
-            list_entry = list_entry->Flink;
+        entry = head->list_entry.Flink;
+        while (entry != &head->list_entry) {
+            driver = CONTAINING_RECORD(entry, DRIVER_LIST_ENTRY, list_entry);
+            CallbackRoutine(driver, Context);
+            entry = entry->Flink;
         }
     }
 
@@ -197,7 +191,6 @@ InitialiseDriverList()
     }
 
     KeReleaseGuardedMutex(&head->lock);
-
     head->active = TRUE;
 
     if (modules.address)
@@ -215,25 +208,27 @@ VOID
 FindDriverEntryByBaseAddress(
     _In_ PVOID ImageBase, _Out_ PDRIVER_LIST_ENTRY* Entry)
 {
-    PDRIVER_LIST_HEAD head = GetDriverList();
-    PLIST_ENTRY list_entry = NULL;
-    PDRIVER_LIST_ENTRY driver_entry = NULL;
+    NT_ASSERT(ImageBase != NULL);
+    NT_ASSERT(Entry != NULL);
 
-    ImpKeAcquireGuardedMutex(&head->lock);
+    PDRIVER_LIST_HEAD head = GetDriverList();
+    PLIST_ENTRY entry = NULL;
+    PDRIVER_LIST_ENTRY driver = NULL;
+
     *Entry = NULL;
 
-    list_entry = head->list_entry.Flink;
+    ImpKeAcquireGuardedMutex(&head->lock);
+    entry = head->list_entry.Flink;
 
-    while (list_entry != &head->list_entry) {
-        driver_entry =
-            CONTAINING_RECORD(list_entry, DRIVER_LIST_ENTRY, list_entry);
+    while (entry != &head->list_entry) {
+        driver = CONTAINING_RECORD(entry, DRIVER_LIST_ENTRY, list_entry);
 
-        if (driver_entry->ImageBase == ImageBase) {
-            *Entry = driver_entry;
+        if (driver->ImageBase == ImageBase) {
+            *Entry = driver;
             goto unlock;
         }
 
-        list_entry = list_entry->Flink;
+        entry = entry->Flink;
     }
 
 unlock:
@@ -244,6 +239,9 @@ STATIC
 BOOLEAN
 ProcessHashmapCompareFunction(_In_ PVOID Struct1, _In_ PVOID Struct2)
 {
+    NT_ASSERT(Struct1 != NULL);
+    NT_ASSERT(Struct2 != NULL);
+
     HANDLE h1 = *((PHANDLE)Struct1);
     HANDLE h2 = *((PHANDLE)Struct2);
 
@@ -404,6 +402,7 @@ FreeProcessEntryModuleList(
     _In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
+    NT_ASSERT(Entry != NULL);
 
     PRTL_HASHMAP map = GetProcessHashmap();
     PLIST_ENTRY list = NULL;
@@ -460,6 +459,8 @@ VOID
 FindOurUserModeModuleEntry(
     _In_ PROCESS_MODULE_CALLBACK Callback, _In_opt_ PVOID Context)
 {
+    NT_ASSERT(Callback != NULL);
+
     INT32 index = 0;
     PRTL_HASHMAP map = GetProcessHashmap();
     PPROCESS_LIST_ENTRY entry = NULL;
@@ -524,7 +525,6 @@ CleanupProcessHashmap()
     }
 
     context = map->context;
-
     ExDeleteLookasideListEx(&context->pool);
     ExFreePoolWithTag(map->context, POOL_TAG_HASHMAP);
     RtlHashmapDelete(map);
@@ -583,6 +583,9 @@ STATIC
 UINT32
 ThreadListTreeCompare(_In_ PVOID Key, _In_ PVOID Object)
 {
+    NT_ASSERT(Key != NULL);
+    NT_ASSERT(Object != NULL);
+
     HANDLE tid_1 = *((PHANDLE)Object);
     HANDLE tid_2 = *((PHANDLE)Key);
 
@@ -603,8 +606,10 @@ InitialiseThreadList()
     status =
         RtlRbTreeCreate(ThreadListTreeCompare, sizeof(THREAD_LIST_ENTRY), tree);
 
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("RtlRbTreeCreate: %x", status);
+        return status;
+    }
 
     tree->active = TRUE;
     return status;
@@ -630,6 +635,7 @@ CanInitiateDeferredHashing(_In_ LPCSTR ProcessName, _In_ PDRIVER_LIST_HEAD Head)
                : FALSE;
 }
 
+#ifdef DEBUG
 STATIC
 VOID
 PrintHashmapCallback(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
@@ -656,6 +662,7 @@ EnumerateAndPrintProcessHashmap()
 {
     RtlHashmapEnumerate(GetProcessHashmap(), PrintHashmapCallback, NULL);
 }
+#endif
 
 VOID
 ProcessCreateNotifyRoutine(
@@ -852,16 +859,10 @@ ObPreOpCallbackRoutine(
     _In_ POB_PRE_OPERATION_INFORMATION OperationInformation)
 {
     PAGED_CODE();
-
     UNREFERENCED_PARAMETER(RegistrationContext);
 
     /* access mask to completely strip permissions */
     ACCESS_MASK deny_access = SYNCHRONIZE | PROCESS_TERMINATE;
-
-    /*
-     * This callback routine is executed in the context of the thread that
-     * is requesting to open said handle
-     */
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PEPROCESS process_creator = PsGetCurrentProcess();
     PEPROCESS protected_process = NULL;
@@ -1178,8 +1179,8 @@ EnumerateProcessHandles(_In_ PPROCESS_LIST_ENTRY Entry, _In_opt_ PVOID Context)
 {
     /* Handles are stored in pageable memory */
     PAGED_CODE();
-
     UNREFERENCED_PARAMETER(Context);
+    NT_ASSERT(Entry != NULL);
 
     if (!Entry)
         return STATUS_INVALID_PARAMETER;
@@ -1214,6 +1215,8 @@ VOID
 TimerObjectValidateProcessModuleCallback(
     _In_ PPROCESS_MAP_MODULE_ENTRY Entry, _In_opt_ PVOID Context)
 {
+    NT_ASSERT(Entry != NULL);
+
     CHAR hash[SHA_256_HASH_LENGTH] = {0};
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PACTIVE_SESSION session = (PACTIVE_SESSION)Context;
@@ -1297,6 +1300,7 @@ TimerObjectCallbackRoutine(
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
+    NT_ASSERT(DeferredContext != NULL);
 
     if (!HasDriverLoaded() || !ARGUMENT_PRESENT(DeferredContext))
         return;

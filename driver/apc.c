@@ -2,24 +2,28 @@
 
 #include "driver.h"
 #include "imports.h"
-
 #include "lib/stdlib.h"
 
 VOID
-GetApcContextByIndex(_Out_ PVOID* Context, _In_ INT Index)
+GetApcContextByIndex(_Out_ PVOID* Context, _In_ UINT32 Index)
 {
+    NT_ASSERT(Index <= MAXIMUM_APC_CONTEXTS);
     AcquireDriverConfigLock();
     *Context = (PVOID)GetApcContextArray()[Index];
     ReleaseDriverConfigLock();
 }
 
 VOID
-GetApcContext(_Out_ PVOID* Context, _In_ LONG ContextIdentifier)
+GetApcContext(_Out_ PVOID* Context, _In_ UINT32 ContextIdentifier)
 {
+    NT_ASSERT(ContextIdentifier <= MAXIMUM_APC_CONTEXTS);
+
+    PAPC_CONTEXT_HEADER header = NULL;
+
     AcquireDriverConfigLock();
 
-    for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
-        PAPC_CONTEXT_HEADER header = GetApcContextArray()[index];
+    for (UINT32 index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
+        header = GetApcContextArray()[index];
 
         if (!header)
             continue;
@@ -43,10 +47,12 @@ unlock:
 BOOLEAN
 FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
 {
-    DEBUG_VERBOSE("All APCs executed, freeing context structure");
+    NT_ASSERT(Context <= MAXIMUM_APC_CONTEXTS);
 
-    for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
-        PUINT64 entry = GetApcContextArray();
+    PUINT64 entry = NULL;
+
+    for (UINT32 index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
+        entry = GetApcContextArray();
 
         if (entry[index] != (UINT64)Context)
             continue;
@@ -63,23 +69,28 @@ FreeApcContextStructure(_Inout_ PAPC_CONTEXT_HEADER Context)
 }
 
 VOID
-IncrementApcCount(_In_ LONG ContextId)
+IncrementApcCount(_In_ UINT32 ContextId)
 {
+    NT_ASSERT(ContextId <= MAXIMUM_APC_CONTEXTS);
+
     PAPC_CONTEXT_HEADER header = NULL;
+
     GetApcContext(&header, ContextId);
 
     if (!header)
         return;
 
-    /* i actually dont think we need this lock here */
     AcquireDriverConfigLock();
     header->count += 1;
     ReleaseDriverConfigLock();
 }
 
 VOID
-FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
+FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ UINT32 ContextId)
 {
+    NT_ASSERT(Apc != NULL);
+    NT_ASSERT(ContextId <= MAXIMUM_APC_CONTEXTS);
+
     PAPC_CONTEXT_HEADER context = NULL;
 
     ImpExFreePoolWithTag(Apc, POOL_TAG_APC);
@@ -123,10 +134,11 @@ FreeApcAndDecrementApcCount(_Inout_ PRKAPC Apc, _In_ LONG ContextId)
 NTSTATUS
 QueryActiveApcContextsForCompletion()
 {
+    PAPC_CONTEXT_HEADER entry = NULL;
+
     AcquireDriverConfigLock();
 
-    for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
-        PAPC_CONTEXT_HEADER entry = NULL;
+    for (UINT32 index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
         GetApcContextByIndex(&entry, index);
 
         if (!entry)
@@ -137,8 +149,7 @@ QueryActiveApcContextsForCompletion()
 
         switch (entry->context_id) {
         case APC_CONTEXT_ID_STACKWALK:
-            FreeApcStackwalkApcContextInformation(
-                (PAPC_STACKWALK_CONTEXT)entry);
+            FreeApcStackwalkApcContextInformation(entry);
             FreeApcContextStructure(entry);
             break;
         }
@@ -151,13 +162,17 @@ QueryActiveApcContextsForCompletion()
 VOID
 InsertApcContext(_In_ PVOID Context)
 {
+    NT_ASSERT(Context != NULL);
+
+    PUINT64 entry = NULL;
+
     if (IsDriverUnloading())
         return;
 
     AcquireDriverConfigLock();
 
-    for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
-        PUINT64 entry = GetApcContextArray();
+    for (UINT32 index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
+        entry = GetApcContextArray();
 
         if (entry[index] == NULL) {
             entry[index] = (UINT64)Context;
@@ -198,17 +213,26 @@ end:
 BOOLEAN
 DrvUnloadFreeAllApcContextStructures()
 {
+    PUINT64 entry = NULL;
+    PAPC_CONTEXT_HEADER context = NULL;
+    LARGE_INTEGER delay = {.QuadPart = -ABSOLUTE(SECONDS(1))};
+
     AcquireDriverConfigLock();
 
-    for (INT index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
-        PUINT64 entry = GetApcContextArray();
+    for (UINT32 index = 0; index < MAXIMUM_APC_CONTEXTS; index++) {
+        entry = GetApcContextArray();
 
         if (entry[index] == NULL)
             continue;
 
-        PAPC_CONTEXT_HEADER context = entry[index];
+        context = entry[index];
 
         if (context->count > 0) {
+            DEBUG_VERBOSE(
+                "Still active APCs: Index: %lx, Count: %lx",
+                index,
+                context->count);
+            KeDelayExecutionThread(KernelMode, FALSE, &delay);
             ReleaseDriverConfigLock();
             return FALSE;
         }

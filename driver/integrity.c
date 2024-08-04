@@ -6,47 +6,60 @@
 #include "driver.h"
 #include "imports.h"
 #include "io.h"
+#include "lib/stdlib.h"
 #include "modules.h"
 #include "pe.h"
 #include "session.h"
 #include "util.h"
 
-#include "lib/stdlib.h"
-
 #include <bcrypt.h>
 #include <devpkey.h>
 #include <initguid.h>
 
-/* Header for a buffer that contains an array of sections copied from a module
- */
+// clang-format off
+
 typedef struct _INTEGRITY_CHECK_HEADER {
+
+    /* Count of total sections contained within the buffer */
     UINT32 section_count;
+
+    /* Total size of the buffer */
     UINT32 total_size;
 
 } INTEGRITY_CHECK_HEADER, *PINTEGRITY_CHECK_HEADER;
 
+
 typedef struct _PROCESS_MODULE_INFORMATION {
+    /* Pointer to the base of the module*/
     PVOID module_base;
+
+    /* Total size of the module */
     SIZE_T module_size;
+
+    /* Path to the modules executable image*/
     WCHAR module_path[MAX_MODULE_PATH];
 
 } PROCESS_MODULE_INFORMATION, *PPROCESS_MODULE_INFORMATION;
 
-/* Structure representing the data passed back to user-mode after validating a
- * process module sections*/
 typedef struct _PROCESS_MODULE_VALIDATION_RESULT {
+
+    /* Boolean value of whether or not the module image is valid */
     UINT32 is_module_valid;
 
 } PROCESS_MODULE_VALIDATION_RESULT, *PPROCESS_MODULE_VALIDATION_RESULT;
 
 typedef struct _VAL_INTEGRITY_HEADER {
+
+    /* Header containing information pertaining to the buffer */
     INTEGRITY_CHECK_HEADER integrity_check_header;
+
+    /* Section header */
     IMAGE_SECTION_HEADER section_header;
+
+    /* Pointer to the start of the sections image */
     CHAR section_base[];
 
 } VAL_INTEGRITY_HEADER, *PVAL_INTEGRITY_HEADER;
-
-// clang-format off
 
 STATIC
 NTSTATUS
@@ -136,10 +149,12 @@ GetDriverImageSize(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
+    NT_ASSERT(Irp != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
-    LPCSTR driver_name = GetDriverName();
+    LPCSTR name = GetDriverName();
     SYSTEM_MODULES modules = {0};
-    PRTL_MODULE_EXTENDED_INFO driver_info = NULL;
+    PRTL_MODULE_EXTENDED_INFO driver = NULL;
 
     status = GetSystemModuleInformation(&modules);
 
@@ -148,27 +163,27 @@ GetDriverImageSize(_Inout_ PIRP Irp)
         return status;
     }
 
-    driver_info = FindSystemModuleByName(driver_name, &modules);
+    driver = FindSystemModuleByName(name, &modules);
 
-    if (!driver_info) {
+    if (!driver) {
         DEBUG_ERROR("FindSystemModuleByName failed with no status code");
         ImpExFreePoolWithTag(modules.address, SYSTEM_MODULES_POOL);
         return STATUS_NOT_FOUND;
     }
 
-    status = ValidateIrpOutputBuffer(Irp, sizeof(ULONG));
+    status = ValidateIrpOutputBuffer(Irp, sizeof(UINT32));
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
         goto end;
     }
 
-    Irp->IoStatus.Information = sizeof(ULONG);
+    Irp->IoStatus.Information = sizeof(UINT32);
 
     IntCopyMemory(
         Irp->AssociatedIrp.SystemBuffer,
-        &driver_info->ImageSize,
-        sizeof(ULONG));
+        &driver->ImageSize,
+        sizeof(UINT32));
 
 end:
 
@@ -184,6 +199,8 @@ GetModuleInformationByName(
     _Out_ PRTL_MODULE_EXTENDED_INFO ModuleInfo, _In_ LPCSTR ModuleName)
 {
     PAGED_CODE();
+
+    NT_ASSERT(ModuleName != NULL);
 
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     LPCSTR driver_name = GetDriverName();
@@ -270,6 +287,10 @@ StoreModuleExecutableRegionsInBuffer(
     _In_ BOOLEAN IsModulex86)
 {
     PAGED_CODE();
+
+    NT_ASSERT(Buffer != NULL);
+    NT_ASSERT(ModuleBase != NULL);
+    NT_ASSERT(BytesWritten != NULL);
 
     UINT32 total_packet_size = 0;
     UINT32 num_sections = 0;
@@ -382,6 +403,11 @@ MapDiskImageIntoVirtualAddressSpace(
 {
     PAGED_CODE();
 
+    NT_ASSERT(SectionHandle != NULL);
+    NT_ASSERT(Section != NULL);
+    NT_ASSERT(Path != NULL);
+    NT_ASSERT(Size != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     HANDLE handle = NULL;
     OBJECT_ATTRIBUTES oa = {0};
@@ -464,6 +490,8 @@ RetrieveInMemoryModuleExecutableSections(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
+    NT_ASSERT(Irp != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     SIZE_T bytes_written = NULL;
     PVOID buffer = NULL;
@@ -532,11 +560,17 @@ GetNextSMBIOSStructureInTable(_Inout_ PSMBIOS_TABLE_HEADER* CurrentStructure)
 {
     PAGED_CODE();
 
-    PCHAR string_section_start =
+    NT_ASSERT(CurrentStructure != NULL);
+
+    PCHAR string_section_start = NULL;
+    PCHAR current_char_in_strings = NULL;
+    PCHAR next_char_in_strings = NULL;
+
+    string_section_start =
         (PCHAR)((UINT64)*CurrentStructure + (*CurrentStructure)->Length);
 
-    PCHAR current_char_in_strings = string_section_start;
-    PCHAR next_char_in_strings = string_section_start + 1;
+    current_char_in_strings = string_section_start;
+    next_char_in_strings = string_section_start + 1;
 
     for (;;) {
         if (*current_char_in_strings == NULL_TERMINATOR &&
@@ -574,10 +608,14 @@ GetStringAtIndexFromSMBIOSTable(
 {
     PAGED_CODE();
 
+    NT_ASSERT(Table != NULL);
+    NT_ASSERT(Buffer != NULL);
+
     UINT32 current_string_char_index = 0;
     UINT32 string_count = 0;
     PCHAR current_string_char = (PCHAR)((UINT64)Table + Table->Length);
     PCHAR next_string_char = current_string_char + 1;
+    UINT64 dest = 0;
 
     for (;;) {
         if (*current_string_char == NULL_TERMINATOR &&
@@ -591,7 +629,7 @@ GetStringAtIndexFromSMBIOSTable(
             if (*current_string_char == NULL_TERMINATOR)
                 return STATUS_SUCCESS;
 
-            UINT64 dest = (UINT64)Buffer + current_string_char_index;
+            dest = (UINT64)Buffer + current_string_char_index;
 
             IntCopyMemory(dest, current_string_char, sizeof(CHAR));
             current_string_char_index++;
@@ -635,6 +673,8 @@ ParseSMBIOSTable(
     _In_ ULONG TableSubIndex)
 {
     PAGED_CODE();
+
+    NT_ASSERT(Buffer != NULL);
 
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PVOID buffer = NULL;
@@ -727,6 +767,13 @@ ComputeHashOfSections(
     _Out_ PVOID* MemoryHash,
     _Out_ PULONG MemoryHashSize)
 {
+    NT_ASSERT(DiskSection != NULL);
+    NT_ASSERT(MemorySection != NULL);
+    NT_ASSERT(DiskHash != NULL);
+    NT_ASSERT(DiskHashSize != NULL);
+    NT_ASSERT(MemoryHash != NULL);
+    NT_ASSERT(MemoryHashSize != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
     if (DiskSection->SizeOfRawData != MemorySection->SizeOfRawData) {
@@ -829,6 +876,8 @@ NTSTATUS
 ValidateProcessLoadedModule(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
+
+    NT_ASSERT(Irp != NULL);
 
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PROCESS_MODULE_VALIDATION_RESULT validation_result = {0};
@@ -954,6 +1003,9 @@ HashUserModule(
 {
     PAGED_CODE();
 
+    NT_ASSERT(Entry != NULL);
+    NT_ASSERT(OutBuffer != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     KAPC_STATE apc_state = {0};
     PVAL_INTEGRITY_HEADER memory_buffer = NULL;
@@ -1049,6 +1101,8 @@ GetHardDiskDriveSerialNumber(
     _Inout_ PVOID ConfigDrive0Serial, _In_ SIZE_T ConfigDrive0MaxSize)
 {
     PAGED_CODE();
+
+    NT_ASSERT(ConfigDrive0Serial != NULL);
 
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     HANDLE handle = NULL;
@@ -1171,11 +1225,14 @@ ScanForSignature(
 {
     PAGED_CODE();
 
+    NT_ASSERT(BaseAddress != NULL);
+    NT_ASSERT(Signature != NULL);
+
     CHAR current_char = 0;
     CHAR current_sig_char = 0;
 
-    for (INT index = 0; index < MaxLength; index++) {
-        for (INT sig = 0; sig < SignatureLength + 1; sig++) {
+    for (UINT32 index = 0; index < MaxLength; index++) {
+        for (UINT32 sig = 0; sig < SignatureLength + 1; sig++) {
             current_char = *(PCHAR)((UINT64)BaseAddress + index + sig);
             current_sig_char = Signature[sig];
 
@@ -1199,6 +1256,7 @@ STATIC
 UINT64
 MeasureInstructionRead(_In_ PVOID InstructionAddress)
 {
+    NT_ASSERT(InstructionAddress != NULL);
     CONST UINT64 start = __readmsr(IA32_APERF_MSR) << 32;
     CHAR value = *(PCHAR)InstructionAddress;
     return (__readmsr(IA32_APERF_MSR) << 32) - start;
@@ -1210,6 +1268,9 @@ STATIC
 UINT64
 MeasureReads(_In_ PVOID Address, _In_ ULONG Count)
 {
+    NT_ASSERT(Address != NULL);
+    NT_ASSERT(Count > 0);
+
     UINT64 read_average = 0;
     KIRQL irql = {0};
 
@@ -1253,6 +1314,9 @@ NTSTATUS
 GetAverageReadTimeAtRoutine(
     _In_ PVOID RoutineAddress, _Out_ PUINT64 AverageTime)
 {
+    NT_ASSERT(RoutineAddress != NULL);
+    NT_ASSERT(AverageTime != NULL);
+
     if (!RoutineAddress || !AverageTime)
         return STATUS_UNSUCCESSFUL;
 
@@ -1324,6 +1388,7 @@ InitiateEptFunctionAddressArrays()
         CONTROL_FUNCTION_ADDRESSES[index] =
             ImpMmGetSystemRoutineAddress(&current_function);
 
+        NT_ASSERT(CONTROL_FUNCTION_ADDRESSES[index] != NULL);
         if (!CONTROL_FUNCTION_ADDRESSES[index])
             return STATUS_UNSUCCESSFUL;
     }
@@ -1333,6 +1398,7 @@ InitiateEptFunctionAddressArrays()
         PROTECTED_FUNCTION_ADDRESSES[index] =
             ImpMmGetSystemRoutineAddress(&current_function);
 
+        NT_ASSERT(PROTECTED_FUNCTION_ADDRESSES[index] != NULL);
         if (!PROTECTED_FUNCTION_ADDRESSES[index])
             return STATUS_UNSUCCESSFUL;
     }
@@ -1464,6 +1530,9 @@ DetectEptHooksInKeyFunctions()
 VOID
 FindWinLogonProcess(_In_ PPROCESS_LIST_ENTRY Node, _In_opt_ PVOID Context)
 {
+    NT_ASSERT(Node != NULL);
+    NT_ASSERT(Context != NULL);
+
     LPCSTR process_name = NULL;
     PEPROCESS* process = (PEPROCESS*)Context;
 
@@ -1483,6 +1552,10 @@ StoreModuleExecutableRegionsx86(
     _In_ PVOID* Buffer,
     _In_ PULONG BufferSize)
 {
+    NT_ASSERT(Module != NULL);
+    NT_ASSERT(Buffer != NULL);
+    NT_ASSERT(BufferSize != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PEPROCESS process = NULL;
     KAPC_STATE apc_state = {0};
@@ -1570,6 +1643,9 @@ end:
 NTSTATUS
 HashModule(_In_ PRTL_MODULE_EXTENDED_INFO Module, _Out_ PVOID Hash)
 {
+    NT_ASSERT(Module != NULL);
+    NT_ASSERT(Hash != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     ANSI_STRING ansi_string = {0};
     UNICODE_STRING path = {0};
@@ -1675,6 +1751,8 @@ STATIC
 VOID
 ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
+    NT_ASSERT(Module != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     UINT32 len = 0;
     PSYSTEM_MODULE_INTEGRITY_CHECK_REPORT report = NULL;
@@ -1711,6 +1789,8 @@ ReportModifiedSystemImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 VOID
 ValidateSystemModule(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
+    NT_ASSERT(Module != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PDRIVER_LIST_ENTRY entry = NULL;
     PVOID hash = NULL;
@@ -1774,6 +1854,8 @@ STATIC
 VOID
 ReportModifiedSelfDriverImage(_In_ PRTL_MODULE_EXTENDED_INFO Module)
 {
+    NT_ASSERT(Module != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     UINT32 len = 0;
     PDRIVER_SELF_INTEGRITY_CHECK_REPORT packet = NULL;
@@ -1942,11 +2024,12 @@ SystemModuleVerificationDispatchFunction(
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
+    NT_ASSERT(Context != NULL);
+
     UINT32 count = 0;
     UINT32 max = 0;
 
     IncrementActiveThreadCount(Context);
-
     count = GetCurrentVerificationIndex(Context);
 
     /*
@@ -1959,6 +2042,12 @@ SystemModuleVerificationDispatchFunction(
     max = GetCurrentVerificationMaxIndex(Context, count);
 
     for (; count < max && count < Context->total_count; count++) {
+        DEBUG_VERBOSE(
+            "ThrId: %lx, Count: %lx, Max: %lx, Total Count: %lx",
+            PsGetCurrentThreadId(),
+            count,
+            max,
+            Context->total_count);
         if (!InterlockedCompareExchange(
                 &Context->dispatcher_info[count].validated,
                 TRUE,
@@ -2011,6 +2100,8 @@ STATIC
 NTSTATUS
 InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 {
+    NT_ASSERT(Context != NULL);
+
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     SYSTEM_MODULES modules = {0};
     PMODULE_DISPATCHER_HEADER dispatcher = NULL;
@@ -2042,7 +2133,9 @@ InitialiseSystemModuleVerificationContext(PSYS_MODULE_VAL_CONTEXT Context)
 VOID
 FreeWorkItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
-    for (INT index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
+    NT_ASSERT(Context != NULL);
+
+    for (UINT32 index = 0; index < VERIFICATION_THREAD_COUNT; index++) {
         if (Context->work_items[index]) {
             ImpIoFreeWorkItem(Context->work_items[index]);
             Context->work_items[index] = NULL;
@@ -2054,6 +2147,8 @@ STATIC
 VOID
 FreeModuleVerificationItems(_In_ PSYS_MODULE_VAL_CONTEXT Context)
 {
+    NT_ASSERT(Context != NULL);
+
     /* if a thread hasnt completed by this point, something catastrophic has
      * gone wrong and maybe its better not to yield..*/
     while (Context->active_thread_count)
@@ -2169,40 +2264,6 @@ GetOsVersionInformation(_Out_ PRTL_OSVERSIONINFOW VersionInfo)
         sizeof(VersionInfo->szCSDVersion));
 
     return status;
-}
-
-#define KPCR_KPRCB_OFFSET        0x180
-#define KPCRB_IDLE_THREAD_OFFSET 0x018
-#define KTHREAD_IDLE_TIME_OFFSET 0x28c
-#define KPCRB_KERNEL_TIME_OFFSET 0x7e84
-#define KPCRB_USER_TIME_OFFSET   0x7e88
-
-UINT32
-CalculateCpuCoreUsage(_In_ UINT32 Core)
-{
-    PVOID kpcr = NULL;
-    PVOID kpcrb = NULL;
-    PVOID idle_thread = NULL;
-    UINT32 idle_time = 0;
-    UINT32 kernel_time = 0;
-    UINT32 user_time = 0;
-
-    KeSetSystemAffinityThread(1ull << Core);
-
-    while (Core != KeGetCurrentProcessorNumber())
-        YieldProcessor();
-
-    kpcr = __readmsr(IA32_GS_BASE);
-    kpcrb = (UINT64)kpcr + KPCR_KPRCB_OFFSET;
-    idle_thread = *(UINT64*)((UINT64)kpcrb + KPCRB_IDLE_THREAD_OFFSET);
-
-    idle_time = *(UINT32*)((UINT64)idle_thread + KTHREAD_IDLE_TIME_OFFSET);
-    kernel_time = *(UINT32*)((UINT64)kpcrb + KPCRB_KERNEL_TIME_OFFSET);
-    user_time = *(UINT32*)((UINT64)kpcrb + KPCRB_USER_TIME_OFFSET);
-
-    return (
-        100 - (UINT32)(UInt32x32To64(idle_time, 100) /
-                       (UINT64)(kernel_time + user_time)));
 }
 
 BOOLEAN
@@ -2368,6 +2429,8 @@ VOID
 HeartbeatWorkItem(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
+
+    NT_ASSERT(Context != NULL);
 
     if (!ARGUMENT_PRESENT(Context))
         return;
