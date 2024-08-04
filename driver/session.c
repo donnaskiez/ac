@@ -187,7 +187,6 @@ SessionInitialise(_In_ PIRP Irp)
     }
 
     FindOurUserModeModuleEntry(HashOurUserModuleOnEntryCallback, session);
-
     session->is_session_active = TRUE;
 
 end:
