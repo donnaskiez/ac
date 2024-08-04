@@ -7,20 +7,18 @@ open source anti cheat (lol) which I made for fun.
 - Attached thread detection
 - Process module .text section integrity checks
 - NMI stackwalking via isr iretq
-- APC stackwalking via RtlCaptureStackBackTrace
-- DPC stackwalking via RtlCaptureStackBackTrace
+- APC, DPC stackwalking
 - Return address exception hooking detection
 - Chained .data pointer detection (iffy)
 - Handle stripping via obj callbacks
 - Process handle table enumeration
 - System module device object verification
 - System module .text integrity checks
-- Unlinked process detection
-- Removed thread PspCidTable entry detection
-- Dispatch routine validation
-- Extraction of hardware identifiers
+- Removal of threads cid table entry detection
+- Driver dispatch routine validation
+- Extraction of various hardware identifiers
 - EPT hook detection
-- Driver integrity checks both locally and over server
+- Various image integrity checks both of driver + module
 - Hypervisor detection
 - HalDispatch and HalPrivateDispatch routine validation
 - Dynamic import resolving & encryption

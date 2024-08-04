@@ -414,8 +414,6 @@ typedef struct _ACTIVE_SESSION {
  * Some nice macros courtesy of:
  * https://www.unknowncheats.me/forum/general-programming-and-reversing/523359-introduction-physical-memory.html
  */
-#define IS_LARGE_PAGE(x)   ((BOOLEAN)((x >> 7) & 1))
-#define IS_PAGE_PRESENT(x) ((BOOLEAN)(x & 1))
 
 #define PAGE_1GB_SHIFT     30
 #define PAGE_1GB_OFFSET(x) (x & (~(MAXUINT64 << PAGE_1GB_SHIFT)))

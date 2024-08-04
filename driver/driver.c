@@ -466,6 +466,7 @@ DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
     UnregisterProcessCreateNotifyRoutine();
     UnregisterImageLoadNotifyRoutine();
 
+
     DrvUnloadFreeThreadList();
     DrvUnloadFreeProcessList();
     DrvUnloadFreeDriverList();
@@ -1048,6 +1049,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 
     SetDriverLoadedFlag();
     TpmExtractEndorsementKey();
+    //PoolScanForManualMappedDrivers();
 
     DEBUG_INFO("Driver Entry Complete.");
     return STATUS_SUCCESS;

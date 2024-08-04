@@ -10,6 +10,12 @@ RtlHashmapDelete(_In_ PRTL_HASHMAP Hashmap)
     ExDeleteLookasideListEx(&Hashmap->pool);
 }
 
+VOID
+RtlHashmapSetInactive(_Inout_ PRTL_HASHMAP Hashmap)
+{
+    Hashmap->active = FALSE;
+}
+
 NTSTATUS
 RtlHashmapCreate(
     _In_ UINT32 BucketCount,

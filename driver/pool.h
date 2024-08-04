@@ -4,16 +4,12 @@
 #include <ntifs.h>
 #include "common.h"
 
-NTSTATUS
-FindUnlinkedProcesses();
-
-VOID
-GetPsActiveProcessHead(_Out_ PUINT64 Address);
-
-PKDDEBUGGER_DATA64
-GetGlobalDebuggerData();
+typedef BOOLEAN (*PAGE_CALLBACK)(_In_ UINT64 Page, _In_ UINT32 PageSize, _In_opt_ PVOID Context);
 
 NTSTATUS
-EnumerateBigPoolAllocations();
+PoolScanSystemSpace(_In_ PAGE_CALLBACK Callback, _In_opt_ PVOID Context);
+
+NTSTATUS
+PoolScanForManualMappedDrivers();
 
 #endif

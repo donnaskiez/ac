@@ -85,11 +85,7 @@ RtlHashmapHashKeyAndAcquireBucket(_Inout_ PRTL_HASHMAP Hashmap,
 VOID
 RtlHashmapReleaseBucket(_Inout_ PRTL_HASHMAP Hashmap, _In_ UINT32 Index);
 
-FORCEINLINE
 VOID
-RtlHashmapSetInactive(_Inout_ PRTL_HASHMAP Hashmap)
-{
-    Hashmap->active = FALSE;
-}
+RtlHashmapSetInactive(_Inout_ PRTL_HASHMAP Hashmap);
 
 #endif

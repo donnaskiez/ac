@@ -30,6 +30,9 @@ APERFMsrTimingCheck()
     KAFFINITY new_affinity = {0};
     KAFFINITY old_affinity = {0};
     UINT64 old_irql = 0;
+    UINT64 aperf_delta = 0;
+    UINT64 aperf_before = 0;
+    UINT64 aperf_after = 0;
     INT cpuid_result[4];
 
     /*
@@ -59,9 +62,9 @@ APERFMsrTimingCheck()
      * which we don't really care about and immediately after read the APERF
      * counter once again and store it in a seperate variable.
      */
-    UINT64 aperf_before = __readmsr(IA32_APERF_MSR) << 32;
+    aperf_before = __readmsr(IA32_APERF_MSR) << 32;
     __cpuid(cpuid_result, 1);
-    UINT64 aperf_after = __readmsr(IA32_APERF_MSR) << 32;
+    aperf_after = __readmsr(IA32_APERF_MSR) << 32;
 
     /*
      * Once we have performed our test, we want to make sure we are not
@@ -79,7 +82,7 @@ APERFMsrTimingCheck()
      * VMs such as VMWARE the aperf value will be 0, meaning the change will
      * be 0. This is a dead giveaway we are executing in a VM.
      */
-    UINT64 aperf_delta = aperf_after - aperf_before;
+    aperf_delta = aperf_after - aperf_before;
 
     return aperf_delta == 0 ? TRUE : FALSE;
 }
@@ -89,15 +92,16 @@ PerformVirtualizationDetection(_Inout_ PIRP Irp)
 {
     PAGED_CODE();
 
-    NTSTATUS status =
-        ValidateIrpOutputBuffer(Irp, sizeof(HYPERVISOR_DETECTION_REPORT));
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    HYPERVISOR_DETECTION_REPORT report = {0};
+
+    status = ValidateIrpOutputBuffer(Irp, sizeof(HYPERVISOR_DETECTION_REPORT));
 
     if (!NT_SUCCESS(status)) {
         DEBUG_ERROR("ValidateIrpOutputBuffer failed with status %x", status);
         return status;
     }
 
-    HYPERVISOR_DETECTION_REPORT report = {0};
     report.aperf_msr_timing_check = APERFMsrTimingCheck();
     report.invd_emulation_check = TestINVDEmulation();
 
